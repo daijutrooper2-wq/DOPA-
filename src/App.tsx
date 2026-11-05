@@ -2,6 +2,15 @@ import { useEffect } from 'react';
 
 export default function App() {
   useEffect(() => {
+    // Unregister legacy service workers from prior hosting (e.g. GitHub Pages) if present
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const registration of registrations) {
+          registration.unregister();
+        }
+      }).catch(() => {});
+    }
+
     // If the game scripts are already loaded and screen-container is empty, render the opening screen
     const timer = setTimeout(() => {
       const screenContainer = document.getElementById('screen-container');
