@@ -1,0 +1,6 @@
+{
+  "name": "ドパキン (DOPAKIN RPG)",
+  "description": "ドパガキングダムの熱き3v3バトルRPGゲーム",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
