@@ -1,14 +1,27 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
     <title>ドパキン (DOPAKIN RPG)</title>
     <meta name="description" content="ドパガキングダムの熱き3v3バトルRPGゲーム" />
     <meta property="og:title" content="ドパキン (DOPAKIN RPG)" />
     <meta property="og:description" content="ドパガキングダムの熱き3v3バトルRPGゲーム" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- PWA / Standalone & Landscape Support -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="ドパキン">
+
+    <!-- キャッシュ無効化メタタグ -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
 
     <script>
       // Clear any legacy Service Workers or caches from previous hosting domains
@@ -17,10 +30,6 @@
           for (let registration of registrations) {
             registration.unregister();
           }
-        }).catch(function() {});
-        // Register self-destructing sw to purge lingering registrations
-        navigator.serviceWorker.register('/sw.js').then(function(reg) {
-          reg.unregister();
         }).catch(function() {});
       }
       if (typeof window !== 'undefined' && 'caches' in window) {
@@ -32,24 +41,56 @@
       }
     </script>
 
-    <link rel="manifest" href="/manifest.json" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="ドパキン" />
+    <!-- アイコンの設定 -->
+    <link rel="icon" type="image/png" sizes="32x32" href="images/DOPAGAKINGDOM.png">
+    <link rel="apple-touch-icon" href="images/DOPAGAKINGDOM.png">
+    <link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon">
 
-    <link rel="icon" type="image/png" sizes="32x32" href="/images/DOPAGAKINGDOM.png" />
-    <link rel="apple-touch-icon" href="/images/DOPAGAKINGDOM.png" />
-    <link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon" />
+    <!-- Tailwind CSS CDN & Google Fonts -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DotGothic16&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="w-full h-full overflow-hidden flex flex-col items-center justify-center p-0 m-0 bg-slate-950">
 
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DotGothic16&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/style.css" />
-  </head>
-  <body class="w-full h-full overflow-hidden flex flex-col items-center justify-center p-0 m-0 bg-slate-950">
-    <div id="root" class="w-full h-full"></div>
-    <script type="module" src="/src/main.tsx"></script>
-    <script src="/battle-3v3.js"></script>
-    <script src="/game.js"></script>
-  </body>
+    <!-- 縦画面時の警告オーバーレイ -->
+    <div id="orientation-warning" class="fixed inset-0 bg-slate-950 z-[9999] flex-col items-center justify-center p-6 text-center">
+        <div class="text-4xl mb-4 animate-bounce">📱🔄</div>
+        <h2 class="text-xl font-bold text-amber-400 mb-2 font-pixel">横画面でお楽しみください</h2>
+        <p class="text-sm text-slate-300">このゲームは横画面専用です。<br>デバイスを横向きに回転させてください。</p>
+    </div>
+
+    <div id="app" class="w-full h-full flex flex-col justify-between pixel-box-dark relative overflow-hidden p-2 sm:p-4">
+        <!-- DYNAMIC CONTENT CONTAINER -->
+        <main id="screen-container" class="flex-1 flex flex-col justify-start items-center w-full relative overflow-y-auto pt-6">
+            <!-- Screen content injected via JS -->
+        </main>
+    </div>
+
+    <!-- MODAL / NOTIFICATION OVERLAY -->
+    <div id="modal-overlay" class="fixed inset-0 bg-black/85 hidden flex items-center justify-center p-2 sm:p-4 z-[9995]">
+        <div class="pixel-box bg-slate-900 max-w-md w-full p-3 sm:p-5 text-center relative border-amber-400 max-h-[90vh] flex flex-col">
+            <h3 id="modal-title" class="text-base sm:text-xl font-bold text-amber-400 mb-2 sm:mb-3 font-pixel"></h3>
+            <div id="modal-body" class="text-slate-200 mb-4 sm:mb-6 text-xs sm:text-sm leading-relaxed whitespace-pre-line max-h-[60vh] overflow-y-auto text-left flex-1 pr-1"></div>
+            <div id="modal-actions" class="flex justify-center gap-3">
+                <button onclick="closeModal()" class="pixel-btn pixel-btn-primary px-6 py-2 font-bold text-sm">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS SLIDE-IN PANEL -->
+    <div id="settings-backdrop" class="fixed inset-0 bg-black/75 hidden z-[9996] transition-opacity" onclick="closeSettingsPanel()"></div>
+    <div id="settings-slide-panel" class="fixed inset-y-0 right-0 z-[9997] w-1/2 bg-slate-900 border-l-4 border-amber-500 shadow-2xl transform translate-x-full transition-transform duration-300 ease-out flex flex-col p-4 overflow-y-auto">
+        <div class="flex justify-between items-center border-b border-amber-600/50 pb-3 mb-4">
+            <h3 class="text-base sm:text-lg font-bold text-amber-400 font-pixel">⚙️ 設定パネル</h3>
+            <button onclick="closeSettingsPanel()" class="pixel-btn pixel-btn-danger px-3 py-1 text-xs font-bold">✕ 閉じる</button>
+        </div>
+        <div id="settings-panel-body" class="flex-1 space-y-3 text-xs text-slate-200">
+        </div>
+    </div>
+
+    <!-- Standalone Game Scripts -->
+    <script src="battle-3v3.js"></script>
+    <script src="game.js"></script>
+</body>
 </html>
-
