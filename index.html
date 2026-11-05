@@ -10,24 +10,42 @@
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
 
-    <link rel="manifest" href="/manifest.json" />
+    <script>
+      // Clear any legacy Service Workers or caches from previous hosting domains
+      if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (let registration of registrations) {
+            registration.unregister();
+          }
+        }).catch(function() {});
+      }
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        caches.keys().then(function(names) {
+          for (let name of names) {
+            caches.delete(name);
+          }
+        }).catch(function() {});
+      }
+    </script>
+
+    <link rel="manifest" href="./manifest.json" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="ドパキン" />
 
-    <link rel="icon" type="image/png" sizes="32x32" href="/images/DOPAGAKINGDOM.png" />
-    <link rel="apple-touch-icon" href="/images/DOPAGAKINGDOM.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./images/DOPAGAKINGDOM.png" />
+    <link rel="apple-touch-icon" href="./images/DOPAGAKINGDOM.png" />
     <link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon" />
 
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DotGothic16&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="./style.css" />
   </head>
   <body class="w-full h-full overflow-hidden flex flex-col items-center justify-center p-0 m-0 bg-slate-950">
     <div id="root" class="w-full h-full"></div>
-    <script type="module" src="/src/main.tsx"></script>
-    <script src="/battle-3v3.js"></script>
-    <script src="/game.js"></script>
+    <script type="module" src="./src/main.tsx"></script>
+    <script src="./battle-3v3.js"></script>
+    <script src="./game.js"></script>
   </body>
 </html>
 
