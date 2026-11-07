@@ -1944,8 +1944,8 @@ static drawDopagaking(p, isCharged) {
                             </div>
                             <div class="w-full bg-amber-950/60 p-3.5 rounded border border-amber-400 space-y-2 text-xs font-mono flex-shrink-0">
                                 <div class="text-amber-300 font-bold mb-1.5 border-b border-amber-600 pb-1">✨ 固有パッシブスキル: 対・半浸闇化特効</div>
-                                <p class="text-amber-200 leading-relaxed font-bold">【条件】敵チームに「パシャ憎・半浸闇化状態」のキャラクターが存在する場合</p>
-                                <p class="text-slate-200 leading-relaxed">【効果】パッシブスキルが発動し、パシャ憎自身のクリティカル率が常時少量（+15%）上昇する。</p>
+                                <p class="text-amber-200 leading-relaxed font-bold">【パッシブ効果】敵チームに「パシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率が常に少量（+15%）上昇する。</p>
+                                <p class="text-slate-200 leading-relaxed">【発動条件】対戦開始時および毎ターン、敵チームに「パシャ憎・半浸闇化状態」が存在するか自動判定され、効果が適用されます。</p>
                             </div>
                     `;
                 }
@@ -2105,7 +2105,7 @@ dopagaking: {
                 image: 'pasha/pasha.webp',
                 allImage: 'pasha/pashaALL.webp',
                 dieImage: 'pasha/pashaDIE.webp',
-                desc: 'スマホとカメラを駆使するサポーター・回復特化。パッシブ: 敵チームに「パシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率が常に少量上昇する。',
+                desc: 'スマホとカメラを駆使するサポーター・回復特化。\n※パッシブ効果: 敵チームに「パシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率が常に少量上昇する。',
                 skills: [
                     { id: 'pasha_attack', name: '睨みつける', type: 'attack', power: 1.0, isNormalAttack: true, cooldown: 0, targetType: 'single_enemy', desc: '敵単体に標準ダメージを与える通常攻撃。' },
                     { id: 'pasha_flash', name: 'カメラフラッシュ', type: 'attack', power: 1.10, isNormalAttack: false, cooldown: 3, initialCooldown: 1, targetType: 'all_enemies', desc: '敵全体に小ダメージ＋選択した敵1体を1ターンの間行動不能にする。' },
@@ -5199,6 +5199,9 @@ case 'dopa_juggler_skill':
             }
             if (p.courtneyChargeCount && p.courtneyChargeCount > 0) {
                 badges += `<span class="bg-pink-950/95 text-pink-300 border-2 border-pink-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-2 inline-block">溜め(${p.courtneyChargeCount}回)</span>`;
+            }
+            if (p.pashaPassiveActive) {
+                badges += `<span class="bg-yellow-950/95 text-yellow-300 border-2 border-yellow-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-2 inline-block">対・半浸闇特効(会心UP)</span>`;
             }
             if (p.dopaChargeCount && p.dopaChargeCount > 0) {
                 badges += `<span class="bg-amber-950/95 text-amber-300 border-2 border-amber-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform -rotate-2 inline-block">チャージ(${p.dopaChargeCount}/5)</span>`;
