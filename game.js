@@ -80,16 +80,25 @@
                             if (id.startsWith('select-cvs-') || id.startsWith('new-select-cvs-')) {
                                 const charId = id.replace('select-cvs-', '').replace('new-select-cvs-', '');
                                 CharacterRenderer.drawCharacter(cvs, charId);
+                            } else if (id.startsWith('zukan-cvs-')) {
+                                const charId = id.replace('zukan-cvs-', '');
+                                CharacterRenderer.drawCharacter(cvs, charId);
                             } else if (id.startsWith('icon-sel-cvs-')) {
                                 CharacterRenderer.drawCharacter(cvs, id.replace('icon-sel-cvs-', ''));
                             } else if (id.startsWith('usage-cvs-')) {
                                 CharacterRenderer.drawCharacter(cvs, id.replace('usage-cvs-', ''));
                             } else if (id.startsWith('op-cvs-')) {
                                 CharacterRenderer.drawCharacter(cvs, id.replace('op-cvs-', ''));
-                            } else if ((id === 'header-profile-icon' || id === 'home-profile-icon') && typeof playerState !== 'undefined') {
+                            } else if ((id === 'header-profile-icon' || id === 'home-profile-icon' || id === 'new-battle-profile-icon') && typeof playerState !== 'undefined') {
                                 CharacterRenderer.drawCharacter(cvs, playerState.selectedIcon || 'courtney');
                             } else if (id === 'profile-main-icon' && typeof playerState !== 'undefined') {
                                 CharacterRenderer.drawCharacter(cvs, playerState.selectedIcon || 'courtney');
+                            } else if (id === 'zukan-detail-cvs') {
+                                const currentDetailId = window.lastZukanDetailId || 'courtney';
+                                CharacterRenderer.drawCharacter(cvs, currentDetailId);
+                            } else if (id === 'gacha-reveal-cvs') {
+                                const currentGachaId = window.lastGachaRevealId || 'courtney';
+                                CharacterRenderer.drawCharacter(cvs, currentGachaId);
                             } else if (id === 'opp-profile-cvs') {
                                 CharacterRenderer.drawCharacter(cvs, window.lastOppIcon || 'pasha');
                             } else if (id === 'p1-canvas' && typeof activeBattle !== 'undefined' && activeBattle && activeBattle.p1) {
@@ -102,6 +111,9 @@
                                 CharacterRenderer.drawCharacter(cvs, renderId, activeBattle.p2.isMiniZou, isCharged, activeBattle.p2.hp <= 0);
                             }
                         });
+                        if (typeof renderNewBattleScreen === 'function' && typeof activeNewBattle !== 'undefined' && activeNewBattle) {
+                            renderNewBattleScreen();
+                        }
                     };
                     img.onerror = () => { 
                         img.hasError = true; 
@@ -2180,6 +2192,8 @@ pasha_dark: {
                 type: '水属性 / アタッカー・カウンター特化',
                 hp: 182, atk: 28, def: 20, critRate: 0.06, eva: 17,
                 image: 'asaiomizu/asaiomizu.webp',
+                allImage: 'asaiomizu/asaiomizu2.webp',
+                dieImage: 'asaiomizu/asaiomizu3.webp',
                 desc: '攻撃を受けた際50%でカウンターが発動。「ディグ」で相手の技を偽装・コピーし、「クラブに行く」でクリティカル率を大幅アップ！',
                 skills: [
                     { id: 'asaiomizu_attack', name: '髪をかきあげる', type: 'attack', power: 1.15, isNormalAttack: true, cooldown: 0, targetType: 'single_enemy', desc: 'スタイリッシュな動作で敵単体に標準ダメージを与える通常攻撃。' },

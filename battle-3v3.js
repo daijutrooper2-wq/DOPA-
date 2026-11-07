@@ -1554,7 +1554,7 @@ function renderNewBattleScreen() {
                                         <div class="w-full bg-slate-900 h-1 rounded overflow-hidden mt-0.5"><div class="bg-emerald-400 h-full" style="width: ${pct}%;"></div></div>
                                     </div>
                                      <div id="new-ally-img-${origIdx}" class="w-full flex-1 flex items-center justify-center ${c.isShaking ? 'char-shake' : ''}">
-                                         <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain">
+                                         <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain" onerror="const fb='${charData.image || 'asaiomizu/asaiomizu.webp'}'; if(this.src!==fb) this.src=fb;">
                                      </div>
                                 </div>
                             `;
@@ -1577,6 +1577,7 @@ function renderNewBattleScreen() {
                             if (!c) return '';
                             const pct = Math.max(0, Math.min(100, Math.round((c.hp / c.maxHp) * 100)));
                             const img = getCharImg(c, false);
+                            const charData = CHARACTER_DATA[c.id] || {};
                             const isSelectable = newBattleViewMode === 'target_select' && (newBattleTargetSelectType === 'single_enemy' || newBattleTargetSelectSkillId === 'pasha_flash' || newBattleTargetSelectSkillId === 'asaiomizu_copied') && c.hp > 0;
                             const clickableAttr = isSelectable ? `onclick="selectNewBattleTarget(${origIdx}, false)" style="cursor: pointer;"` : '';
                             let posClasses = 'flex flex-col items-center justify-end relative transition-all duration-300 ';
@@ -1599,7 +1600,7 @@ function renderNewBattleScreen() {
                                         <div class="w-full bg-slate-900 h-1 rounded overflow-hidden mt-0.5"><div class="bg-red-500 h-full" style="width: ${pct}%;"></div></div>
                                     </div>
                                      <div id="new-enemy-img-${origIdx}" class="w-full flex-1 flex items-center justify-center ${c.isShaking ? 'char-shake' : ''}">
-                                         <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none" style="transform: scaleX(-1);">
+                                         <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none" style="transform: scaleX(-1);" onerror="const fb='${charData.image || 'asaiomizu/asaiomizu.webp'}'; if(this.src!==fb) this.src=fb;">
                                      </div>
                                 </div>
                             `;
