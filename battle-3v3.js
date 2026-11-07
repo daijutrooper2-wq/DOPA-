@@ -569,16 +569,10 @@ class Battle3v3Engine {
                 }
             });
 
-            let stunTarget = defender;
-            if (!stunTarget || stunTarget.hp <= 0) {
-                const livingEnemies = targetTeam.filter(e => e.hp > 0);
-                stunTarget = livingEnemies[Math.floor(Math.random() * livingEnemies.length)];
-            }
-
+            const stunTarget = (defender && this.getCharacterTeam(defender) !== this.getCharacterTeam(attacker) && defender.hp > 0) ? defender : targetTeam.find(e => e.hp > 0);
             if (stunTarget && stunTarget.hp > 0) {
                 stunTarget.stunTurns = 1;
-                this.triggerEffect(this.getCharacterTeam(stunTarget) === 'ally' ? 'Player' : 'Enemy', 'miss', '行動不能');
-                triggerNewBattleCharacterEffect(stunTarget, 'miss', '行動不能');
+                this.triggerEffect(this.getCharacterTeam(stunTarget) === 'ally' ? 'Player' : 'Enemy', 'miss', '行動不能', stunTarget);
             }
 
             if (typeof triggerCameraFlashGlobalEffect === 'function') {
@@ -586,7 +580,7 @@ class Battle3v3Engine {
             }
 
             const targetName = stunTarget ? stunTarget.charName : '敵';
-            this.log(`${attacker.charName}はカメラフラッシュを放った！ 敵全体に小ダメージを与え、${targetName}を1ターンの間行動不能にした！`, 'text-yellow-300 font-bold');
+            this.log(`📸 ${attacker.charName} はカメラフラッシュを放った！ 敵全体に小ダメージを与え、${targetName} を1ターンの間行動不能にした！`, 'text-yellow-300 font-bold');
             return;
         }
 
