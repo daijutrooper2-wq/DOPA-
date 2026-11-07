@@ -596,11 +596,15 @@ class Battle3v3Engine {
             teamList.forEach(a => {
                 if (a.hp > 0) {
                     a.hp = Math.min(a.maxHp, a.hp + hAmt);
-                    this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, a);
                 }
             });
 
             this.log(`📸 ${attacker.charName} はカメラロールを使用した！ 味方全員のHPが ${hAmt} 回復した！`, 'text-emerald-400 font-bold text-base');
+            teamList.forEach(a => {
+                if (a.hp > 0) {
+                    this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, a);
+                }
+            });
             if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
             if (typeof triggerCameraFlashGlobalEffect === 'function') {
                 triggerCameraFlashGlobalEffect();
