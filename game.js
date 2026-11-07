@@ -1944,8 +1944,8 @@ static drawDopagaking(p, isCharged) {
                             </div>
                             <div class="w-full bg-amber-950/60 p-3.5 rounded border border-amber-400 space-y-2 text-xs font-mono flex-shrink-0">
                                 <div class="text-amber-300 font-bold mb-1.5 border-b border-amber-600 pb-1">✨ 固有パッシブスキル: 対・半浸闇化特効</div>
-                                <p class="text-amber-200 leading-relaxed font-bold">【パッシブ効果】敵チームに「パシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率が常に少量（+15%）上昇する。</p>
-                                <p class="text-slate-200 leading-relaxed">【発動条件】対戦開始時および毎ターン、敵チームに「パシャ憎・半浸闇化状態」が存在するか自動判定され、効果が適用されます。</p>
+                                <p class="text-amber-200 leading-relaxed font-bold">【パッシブ効果】敵チームに「パシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率がバトル開始時から終了時まで10上昇する。</p>
+                                <p class="text-slate-200 leading-relaxed">【発動判定】バトル開始時および毎ターン自動判定され、敵チームに対象が存在する場合、パシャ憎のクリティカル率が常時+10%上昇します。</p>
                             </div>
                     `;
                 }
@@ -2105,7 +2105,7 @@ dopagaking: {
                 image: 'pasha/pasha.webp',
                 allImage: 'pasha/pashaALL.webp',
                 dieImage: 'pasha/pashaDIE.webp',
-                desc: 'スマホとカメラを駆使するサポーター・回復特化。\n※パッシブ効果: 敵チームに「パシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率が常に少量上昇する。',
+                desc: 'スマホとカメラを駆使するサポーター・回復特化。\n※パッシブ効果: 敵チームに「パシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率がバトル開始時から終了時まで10上昇する。',
                 skills: [
                     { id: 'pasha_attack', name: '睨みつける', type: 'attack', power: 1.0, isNormalAttack: true, cooldown: 0, targetType: 'single_enemy', desc: '敵単体に標準ダメージを与える通常攻撃。' },
                     { id: 'pasha_flash', name: 'カメラフラッシュ', type: 'attack', power: 1.10, isNormalAttack: false, cooldown: 3, initialCooldown: 1, targetType: 'all_enemies', desc: '敵全体に小ダメージ＋選択した敵1体を1ターンの間行動不能にする。' },
@@ -3729,7 +3729,7 @@ case 'dopa_juggler_skill':
                 let isCrit = false;
                 let effectiveCritRate = (attacker.critRate || 0.05) + (attacker.critRateBonus || 0);
                 if (attacker.id === 'pasha' && attacker.pashaPassiveActive) {
-                    effectiveCritRate += 0.15;
+                    effectiveCritRate += 0.10;
                 }
                 if (Math.random() < effectiveCritRate) {
                     isCrit = true;
@@ -5008,7 +5008,7 @@ case 'dopa_juggler_skill':
                                      const isLeader = origIdx === 0;
                                      const isTargetSelecting = (newBattleViewMode === 'target_select');
                                      const isSelectable = isTargetSelecting && newBattleTargetSelectType === 'single_ally' && c.hp > 0;
-                                     const clickableAttr = isSelectable ? `onclick="selectNewBattleTarget(${origIdx}, true)"` : '';
+                                     const clickableAttr = isSelectable ? `onclick="selectNewBattleTarget(${origIdx}, true)" style="cursor: pointer;"` : `onclick="openInBattleCharDetail('${c.id}', true, ${origIdx})" style="cursor: pointer;"`;
                                      const isCurrentActor = currentActor === c;
 
                                      let posClasses = 'flex flex-col items-center justify-end relative transition-all duration-300 ';
@@ -5074,7 +5074,7 @@ case 'dopa_juggler_skill':
                                      const isLeader = origIdx === 0;
                                      const isTargetSelecting = (newBattleViewMode === 'target_select');
                                      const isSelectable = isTargetSelecting && (newBattleTargetSelectType === 'single_enemy' || newBattleTargetSelectSkillId === 'asaiomizu_copied') && c.hp > 0;
-                                     const clickableAttr = isSelectable ? `onclick="selectNewBattleTarget(${origIdx}, false)"` : '';
+                                     const clickableAttr = isSelectable ? `onclick="selectNewBattleTarget(${origIdx}, false)" style="cursor: pointer;"` : `onclick="openInBattleCharDetail('${c.id}', false, ${origIdx})" style="cursor: pointer;"`;
                                      const isCurrentActor = currentActor === c;
                                      const flipStyle = 'transform: scaleX(-1);';
 
@@ -5201,7 +5201,7 @@ case 'dopa_juggler_skill':
                 badges += `<span class="bg-pink-950/95 text-pink-300 border-2 border-pink-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-2 inline-block">溜め(${p.courtneyChargeCount}回)</span>`;
             }
             if (p.pashaPassiveActive) {
-                badges += `<span class="bg-yellow-950/95 text-yellow-300 border-2 border-yellow-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-2 inline-block">対・半浸闇特効(会心UP)</span>`;
+                badges += `<span class="bg-yellow-950/95 text-yellow-300 border border-yellow-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md inline-block">特効[会心+10%]</span>`;
             }
             if (p.dopaChargeCount && p.dopaChargeCount > 0) {
                 badges += `<span class="bg-amber-950/95 text-amber-300 border-2 border-amber-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform -rotate-2 inline-block">チャージ(${p.dopaChargeCount}/5)</span>`;
@@ -6234,12 +6234,134 @@ case 'dopa_juggler_skill':
             area.innerHTML = statsHtml + matchupHtml + analysisHtml;
         }
 
+        function openInBattleCharDetail(charId, isAlly, idx) {
+            if (!activeNewBattle) return;
+            const c = isAlly ? activeNewBattle.allies?.[idx] : activeNewBattle.enemies?.[idx];
+            if (!c) return;
+
+            const master = CHARACTER_DATA[c.id] || {};
+            const effAtk = Math.floor(c.atk * (c.buffAtk || 1.0));
+            const effDef = Math.floor(c.def * (c.buffDef || 1.0));
+            let effCrit = (c.critRate || 0.05) + (c.critRateBonus || 0);
+            let pashaPassiveText = '';
+            if (c.id === 'pasha' && c.pashaPassiveActive) {
+                effCrit += 0.10;
+                pashaPassiveText = ' (対半浸闇特効 +10% 適用中)';
+            }
+            const critPercent = Math.round(effCrit * 100);
+            const evaPercent = Math.round(c.eva || 10);
+            const pct = Math.max(0, Math.min(100, Math.round((c.hp / c.maxHp) * 100)));
+
+            const existingModal = document.getElementById('in-battle-char-detail-modal');
+            if (existingModal) existingModal.remove();
+
+            const modalHtml = `
+                <div id="in-battle-char-detail-modal" class="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 select-none animate-fade-in">
+                    <div class="pixel-box-gold bg-slate-950/95 border-2 border-amber-400 p-3 sm:p-5 rounded-xl max-w-lg w-full max-h-[90vh] flex flex-col justify-between text-white shadow-2xl overflow-y-auto">
+                        
+                        <!-- ヘッダー -->
+                        <div class="flex items-center justify-between border-b border-amber-600/50 pb-2 mb-3">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs px-2 py-0.5 rounded font-pixel font-bold ${isAlly ? 'bg-emerald-950 text-emerald-300 border border-emerald-500' : 'bg-red-950 text-red-300 border border-red-500'}">
+                                    ${isAlly ? '🛡️ 味方' : '⚔️ 敵'}
+                                </span>
+                                <div>
+                                    <h3 class="text-base sm:text-lg font-bold text-amber-300 font-pixel leading-tight">${c.charName}</h3>
+                                    <p class="text-[10px] text-slate-400 font-mono">${master.title || ''}</p>
+                                </div>
+                            </div>
+                            <button onclick="document.getElementById('in-battle-char-detail-modal').remove()" class="pixel-btn pixel-btn-danger text-xs px-2.5 py-1 font-bold">✕ 閉じる</button>
+                        </div>
+
+                        <!-- キャラビジュアル ＆ ステータス -->
+                        <div class="grid grid-cols-12 gap-3 mb-3 items-center bg-slate-900/80 p-3 rounded-lg border border-slate-700">
+                            <div class="col-span-4 flex flex-col items-center justify-center">
+                                <div class="w-20 h-20 sm:w-24 sm:h-24 pixel-box bg-slate-950 flex items-center justify-center overflow-hidden border border-amber-500/50">
+                                    <canvas id="in-battle-detail-cvs" width="96" height="96" class="w-full h-full object-contain"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-span-8 space-y-1.5 font-mono text-xs">
+                                <div class="flex justify-between items-center bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                                    <span class="text-slate-400">HP:</span>
+                                    <span class="text-emerald-400 font-bold">${c.hp} / ${c.maxHp} (${pct}%)</span>
+                                </div>
+                                <div class="flex justify-between items-center bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                                    <span class="text-slate-400">攻撃力:</span>
+                                    <span class="text-red-400 font-bold">${effAtk} ${c.buffAtk && c.buffAtk !== 1.0 ? `(${c.buffAtk > 1.0 ? '▲UP' : '▼DOWN'})` : ''}</span>
+                                </div>
+                                <div class="flex justify-between items-center bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                                    <span class="text-slate-400">防御力:</span>
+                                    <span class="text-blue-400 font-bold">${effDef} ${c.buffDef && c.buffDef !== 1.0 ? `(${c.buffDef > 1.0 ? '▲UP' : '▼DOWN'})` : ''}</span>
+                                </div>
+                                <div class="flex justify-between items-center bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                                    <span class="text-slate-400">クリティカル率:</span>
+                                    <span class="text-yellow-300 font-bold">${critPercent}%<span class="text-[9px] text-amber-400 font-normal">${pashaPassiveText}</span></span>
+                                </div>
+                                <div class="flex justify-between items-center bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                                    <span class="text-slate-400">回避率:</span>
+                                    <span class="text-purple-300 font-bold">${evaPercent}%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        ${c.id === 'pasha' ? `
+                            <!-- パシャ憎 パッシブスキル枠 -->
+                            <div class="w-full bg-amber-950/70 p-3 rounded-lg border border-amber-400 mb-3 space-y-1 text-xs font-mono">
+                                <div class="flex items-center justify-between border-b border-amber-600/50 pb-1">
+                                    <span class="text-amber-300 font-bold font-pixel">✨ 固有パッシブ効果</span>
+                                    <span class="${c.pashaPassiveActive ? 'text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-500 font-bold' : 'text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700'}">
+                                        ${c.pashaPassiveActive ? '● 発動中 (会心率+10%)' : '○ 未発動'}
+                                    </span>
+                                </div>
+                                <p class="text-amber-200 text-[11px] leading-relaxed pt-1">
+                                    敵チームに「パシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率がバトル開始時から終了時まで10上昇する。
+                                </p>
+                            </div>
+                        ` : ''}
+
+                        <!-- 所持スキル一覧 -->
+                        <div class="space-y-1.5 mb-3 font-mono text-xs">
+                            <div class="text-amber-300 font-bold font-pixel text-xs border-b border-amber-900 pb-0.5">⚔️ スキル</div>
+                            ${(c.skills || []).map(s => {
+                                const cd = c.cooldowns?.[s.id] || 0;
+                                return `
+                                    <div class="bg-slate-900/90 p-2 rounded border border-slate-800">
+                                        <div class="flex justify-between items-center text-amber-200 font-bold text-[11px]">
+                                            <span>${s.name}</span>
+                                            <span class="text-[10px] ${cd > 0 ? 'text-red-400' : 'text-emerald-400'}">${cd > 0 ? `[CT: ${cd}T]` : '[使用可能]'}</span>
+                                        </div>
+                                        <p class="text-[10px] text-slate-300 leading-tight mt-0.5">${s.desc || ''}</p>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+
+                        <div class="flex justify-center pt-1">
+                            <button onclick="document.getElementById('in-battle-char-detail-modal').remove()" class="pixel-btn pixel-btn-primary px-6 py-2 text-xs font-bold font-pixel">
+                                閉じる
+                            </button>
+                        </div>
+
+                    </div>
+                </div>
+            `;
+
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            setTimeout(() => {
+                const cvs = document.getElementById('in-battle-detail-cvs');
+                if (cvs && typeof CharacterRenderer !== 'undefined' && CharacterRenderer.drawCharacter) {
+                    CharacterRenderer.drawCharacter(cvs, c.id);
+                }
+            }, 50);
+        }
+
         // HTML の onclick 属性から参照される関数をグローバル公開
         window.audioSystem = audioSystem;
         window.renderOpeningScreen = renderOpeningScreen;
         window.finishOpening = finishOpening;
         window.renderHomeScreen = renderHomeScreen;
         window.openCharDetail = openCharDetail;
+        window.openInBattleCharDetail = openInBattleCharDetail;
         window.openGachaModal = openGachaModal;
         window.executeGacha = executeGacha;
         window.openCharacterListModal = openCharacterListModal;
