@@ -2109,7 +2109,7 @@ dopagaking: {
                 skills: [
                     { id: 'pasha_attack', name: '睨みつける', type: 'attack', power: 1.0, isNormalAttack: true, cooldown: 0, targetType: 'single_enemy', desc: '敵単体に標準ダメージを与える通常攻撃。' },
                     { id: 'pasha_flash', name: 'カメラフラッシュ', type: 'attack', power: 1.35, isNormalAttack: false, cooldown: 3, initialCooldown: 1, targetType: 'all_enemies', desc: '敵全体に小ダメージを与え、選択した敵1体を1ターンの間行動不能にする（開幕1T待機 / CD: 3T）。' },
-                    { id: 'pasha_roll', name: 'カメラロール', type: 'heal', healRate: 0.40, cooldown: 5, initialCooldown: 2, targetType: 'all_allies', desc: '味方全員のHPを大きく回復。低確率で倒れた味方1人をHP40%で復活（1試合2回まで）。' },
+                    { id: 'pasha_roll', name: 'カメラロール', type: 'heal', healAmount: 60, cooldown: 5, initialCooldown: 2, targetType: 'all_allies', desc: '味方全員のHPを60回復。低確率で倒れた味方1人をHP40%で復活（1試合2回まで）。' },
                     { id: 'pasha_darkness', name: '暗黒封印解除', type: 'special', power: 1.85, isNormalAttack: false, cooldown: 3, targetType: 'single_ally', desc: '選択した味方1人に暗黒パワーを付与。3ターンの間、毎ターン開始時にHPが少量ずつランダム回復する。' }
                 ]
             },
@@ -3245,23 +3245,22 @@ pasha_dark: {
                     }
                     attacker.pashaRollUsedCount = (attacker.pashaRollUsedCount || 0) + 1;
 
-                    const healRate = skill.healRate || 0.40;
+                    const hAmt = skill.healAmount || 60;
                     const teamList = (this.getCharacterTeam(attacker) === 'ally') ? this.allies : this.enemies;
                     teamList.forEach(a => {
                         if (a.hp > 0) {
-                            const hAmt = Math.floor(a.maxHp * healRate);
                             a.hp = Math.min(a.maxHp, a.hp + hAmt);
-                            this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`);
+                            this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, a);
                         }
                     });
 
-                    this.log(`${attacker.charName}はカメラロールを使用した！ 味方全体のHPが大きく回復した！`, 'text-emerald-400 font-bold text-base');
-                    audioSystem.playHeal();
+                    this.log(`📸 ${attacker.charName} はカメラロールを使用した！ 味方全員のHPが ${hAmt} 回復した！`, 'text-emerald-400 font-bold text-base');
+                    if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
                     if (typeof triggerCameraFlashGlobalEffect === 'function') {
                         triggerCameraFlashGlobalEffect();
                     }
                     if (typeof this.triggerCutin === 'function') {
-                        this.triggerCutin('📸 カメラロール発動！', '味方全体が大回復 ＆ 思い出のシャッター！');
+                        this.triggerCutin('📸 カメラロール発動！', '味方全員のHP60回復 ＆ 思い出のシャッター！');
                     }
 
                     const deadAllies = teamList.filter(a => a.hp <= 0);
@@ -3273,15 +3272,12 @@ pasha_dark: {
                             const revivedHp = Math.floor(targetDead.maxHp * 0.40);
                             targetDead.hp = revivedHp;
 
-                            this.triggerEffect(this.getCharacterTeam(targetDead) === 'ally' ? 'Player' : 'Enemy', 'heal', '復活！');
-                            if (typeof triggerNewBattleCharacterEffect === 'function') {
-                                triggerNewBattleCharacterEffect(targetDead, 'buff', '復活');
-                            }
+                            this.triggerEffect(this.getCharacterTeam(targetDead) === 'ally' ? 'Player' : 'Enemy', 'heal', '復活！', targetDead);
                             const remainingRevive = maxReviveTotal - attacker.pashaRollReviveCount;
                             if (typeof this.triggerCutin === 'function') {
                                 this.triggerCutin('✨ カメラロールの奇跡！', `${targetDead.charName}がHP40%で復活！`);
                             }
-                            this.log(`カメラロールの奇跡が起きた！ 倒れていた${targetDead.charName}がHP40%で復活した！（残り復活回数: ${remainingRevive}回）`, 'text-yellow-300 font-bold text-base');
+                            this.log(`✨ カメラロールの奇跡が起きた！ 倒れていた${targetDead.charName}がHP40%で復活した！（残り復活可能回数: ${remainingRevive}回）`, 'text-yellow-300 font-bold text-base');
                         }
                     }
                     return;

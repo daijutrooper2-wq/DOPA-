@@ -597,24 +597,22 @@ class Battle3v3Engine {
             }
             attacker.pashaRollUsedCount = (attacker.pashaRollUsedCount || 0) + 1;
 
-            const healRate = skill.healRate || 0.40;
+            const hAmt = skill.healAmount || 60;
             const teamList = (this.getCharacterTeam(attacker) === 'ally') ? this.allies : this.enemies;
             teamList.forEach(a => {
                 if (a.hp > 0) {
-                    const hAmt = Math.floor(a.maxHp * healRate);
                     a.hp = Math.min(a.maxHp, a.hp + hAmt);
-                    this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`);
-                    triggerNewBattleCharacterEffect(a, 'heal', `+${hAmt}`);
+                    this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, a);
                 }
             });
 
-            this.log(`${attacker.charName}はカメラロールを使用した！ 味方全体のHPが大きく回復した！`, 'text-emerald-400 font-bold text-base');
-            audioSystem.playHeal();
+            this.log(`📸 ${attacker.charName} はカメラロールを使用した！ 味方全員のHPが ${hAmt} 回復した！`, 'text-emerald-400 font-bold text-base');
+            if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
             if (typeof triggerCameraFlashGlobalEffect === 'function') {
                 triggerCameraFlashGlobalEffect();
             }
             if (typeof this.triggerCutin === 'function') {
-                this.triggerCutin('📸 カメラロール発動！', '味方全体が大回復 ＆ 思い出のシャッター！');
+                this.triggerCutin('📸 カメラロール発動！', '味方全員のHP60回復 ＆ 思い出のシャッター！');
             }
 
             const deadAllies = teamList.filter(a => a.hp <= 0);
@@ -626,16 +624,12 @@ class Battle3v3Engine {
                     const revivedHp = Math.floor(targetDead.maxHp * 0.40);
                     targetDead.hp = revivedHp;
 
-                    this.triggerEffect(this.getCharacterTeam(targetDead) === 'ally' ? 'Player' : 'Enemy', 'heal', '復活！');
-                    triggerNewBattleCharacterEffect(targetDead, 'heal', '復活！');
-                    if (typeof triggerNewBattleCharacterEffect === 'function') {
-                        triggerNewBattleCharacterEffect(targetDead, 'buff', '復活');
-                    }
+                    this.triggerEffect(this.getCharacterTeam(targetDead) === 'ally' ? 'Player' : 'Enemy', 'heal', '復活！', targetDead);
                     const remainingRevive = maxReviveTotal - attacker.pashaRollReviveCount;
                     if (typeof this.triggerCutin === 'function') {
                         this.triggerCutin('✨ カメラロールの奇跡！', `${targetDead.charName}がHP40%で復活！`);
                     }
-                    this.log(`カメラロールの奇跡が起きた！ 倒れていた${targetDead.charName}がHP40%で復活した！（残り復活回数: ${remainingRevive}回）`, 'text-yellow-300 font-bold text-base');
+                    this.log(`✨ カメラロールの奇跡が起きた！ 倒れていた${targetDead.charName}がHP40%で復活した！（残り復活可能回数: ${remainingRevive}回）`, 'text-yellow-300 font-bold text-base');
                 }
             }
             return;
