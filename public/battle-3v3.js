@@ -911,10 +911,8 @@ class Battle3v3Engine {
 
         const side = this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy';
         if (defender.buffDef > 1.0 || defender.defendBuffTurns > 0) {
-            triggerNewBattleCharacterEffect(defender, 'def', '防御');
-            this.triggerEffect(side, 'def', '防御');
+            this.triggerEffect(side, 'def', '防御', defender);
         }
-        triggerNewBattleCharacterEffect(defender, isCounter ? 'counter_damage' : 'damage', `-${damage}`);
         let damageLog = skill.isNormalAttack ? `⚔️ ${attacker.charName}の${skill.name}！ ${defender.charName} に ${damage} のダメージ！` : `⚔ ${defender.charName} に ${damage} のダメージ！`;
         if (attacker.id === 'ndaihyo' && skill.isNormalAttack) {
             damageLog = `N高代表 の【バッティング】！ ${defender.charName} に ${damage} のダメージ！`;
@@ -927,7 +925,7 @@ class Battle3v3Engine {
             this.log(`【連動発動！】 岩盤星人 のノリノリな連続ダンス攻撃がヒット！`, 'text-emerald-300 font-bold');
         }
         this.log(damageLog, 'text-red-400 font-bold');
-        this.triggerEffect(side, isCounter ? 'counter_damage' : 'damage', `-${damage}`);
+        this.triggerEffect(side, isCounter ? 'counter_damage' : 'damage', `-${damage}`, defender);
         audioSystem.playHit();
         triggerNewBattleShake(defender);
 
@@ -1016,13 +1014,14 @@ class Battle3v3Engine {
         }
     }
 
-    triggerEffect(side, type, text) {
+    triggerEffect(side, type, text, targetChar = null) {
         if (this.onVisualEffect) this.onVisualEffect(side, type, text);
-        let targetChar = null;
-        if (side === 'Player') {
-            targetChar = this.currentAttacker && this.getCharacterTeam(this.currentAttacker) === 'ally' ? this.currentAttacker : this.p1;
-        } else if (side === 'Enemy') {
-            targetChar = this.currentAttacker && this.getCharacterTeam(this.currentAttacker) === 'enemy' ? this.currentAttacker : (this.enemies && this.enemies[0] ? this.enemies[0] : null);
+        if (!targetChar) {
+            if (side === 'Player') {
+                targetChar = (this.currentAttacker && this.getCharacterTeam && this.getCharacterTeam(this.currentAttacker) === 'ally') ? this.currentAttacker : (this.p1 || this.allies?.[0]);
+            } else if (side === 'Enemy') {
+                targetChar = (this.currentAttacker && this.getCharacterTeam && this.getCharacterTeam(this.currentAttacker) === 'enemy') ? this.currentAttacker : (this.p1TargetChar && this.p1TargetChar.hp > 0 ? this.p1TargetChar : (this.enemies ? this.enemies.find(e => e.hp > 0) || this.enemies[0] : null));
+            }
         }
         if (targetChar && typeof triggerNewBattleCharacterEffect === 'function') {
             triggerNewBattleCharacterEffect(targetChar, type, text);

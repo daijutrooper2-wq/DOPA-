@@ -3772,10 +3772,8 @@ case 'dopa_juggler_skill':
 
                 const side = defender === this.p1 ? 'Player' : 'Enemy';
                 if (this.isNewBattle && (defender.buffDef > 1.0 || defender.defendBuffTurns > 0)) {
-                    triggerCharacterEffect(defender, 'def', '防御');
-                    this.triggerEffect(side, 'def', '防御');
+                    this.triggerEffect(side, 'def', '防御', defender);
                 }
-                triggerCharacterEffect(defender, isCounter ? 'counter_damage' : 'damage', `-${damage}`);
                 let damageLog = `⚔ ${defender.charName} に ${damage} のダメージ！`;
                 if (attacker.id === 'ndaihyo' && skill.isNormalAttack) {
                     damageLog = `N高代表 の【バッティング】！ ${defender.charName} に ${damage} のダメージ！`;
@@ -3788,7 +3786,7 @@ case 'dopa_juggler_skill':
                     this.log(`【連動発動！】 岩盤星人 のノリノリな連続ダンス攻撃がヒット！`, 'text-emerald-300 font-bold');
                 }
                 this.log(`${damageLog}${isCrit ? ' (🔥会心)' : ''}${this.isSuddenDeath ? ' (🔥サドンデスUP)' : ''}`, 'text-red-400 font-bold');
-                this.triggerEffect(side, isCounter ? 'counter_damage' : 'damage', `-${damage}`);
+                this.triggerEffect(side, isCounter ? 'counter_damage' : 'damage', `-${damage}`, defender);
                 audioSystem.playHit();
                 if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
                 if (this.checkActiveAllyStatus()) return;
@@ -3955,16 +3953,17 @@ case 'dopa_juggler_skill':
                 }
             }
 
-            triggerEffect(side, type, text) {
+            triggerEffect(side, type, text, targetChar = null) {
                 if (this.currentTurnLogs && this.currentTurnLogs.length > 0) {
                     this.currentTurnLogs[this.currentTurnLogs.length - 1].effect = { side, type, text };
                 }
                 if (this.onVisualEffect) this.onVisualEffect(side, type, text);
-                let targetChar = null;
-                if (side === 'Player') {
-                    targetChar = this.currentAttacker && this.getCharacterTeam && this.getCharacterTeam(this.currentAttacker) === 'ally' ? this.currentAttacker : (this.p1 || this.allies?.[0]);
-                } else if (side === 'Enemy') {
-                    targetChar = this.currentAttacker && this.getCharacterTeam && this.getCharacterTeam(this.currentAttacker) === 'enemy' ? this.currentAttacker : (this.p2 || this.enemies?.[0]);
+                if (!targetChar) {
+                    if (side === 'Player') {
+                        targetChar = this.currentAttacker && this.getCharacterTeam && this.getCharacterTeam(this.currentAttacker) === 'ally' ? this.currentAttacker : (this.p1 || this.allies?.[0]);
+                    } else if (side === 'Enemy') {
+                        targetChar = this.currentAttacker && this.getCharacterTeam && this.getCharacterTeam(this.currentAttacker) === 'enemy' ? this.currentAttacker : (this.p1TargetChar && this.p1TargetChar.hp > 0 ? this.p1TargetChar : (this.p2 || (this.enemies ? this.enemies.find(e => e.hp > 0) || this.enemies[0] : null)));
+                    }
                 }
                 if (targetChar && typeof triggerCharacterEffect === 'function') {
                     triggerCharacterEffect(targetChar, type, text);
