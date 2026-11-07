@@ -2481,6 +2481,7 @@ pasha_dark: {
                     asaiomizuCritTurns: 0,
                     pashaPassiveActive: false,
                     stunTurns: 0,
+                    darknessPowerTurns: 0,
                     pashaRollUsedCount: 0,
                     pashaRollReviveCount: 0
                 };
@@ -2884,7 +2885,7 @@ pasha_dark: {
                         const hAmt = Math.floor(Math.random() * 21) + 10;
                         p.hp = Math.min(p.maxHp, p.hp + hAmt);
                         this.log(`🦇 ${p.charName} の暗黒パワーにより、ターン開始時にHPが ${hAmt} 回復した！（残り ${p.darknessPowerTurns}T）`, 'text-purple-300 font-bold');
-                        this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`);
+                        this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
                         if (typeof triggerNewBattleCharacterEffect === 'function') {
                             triggerNewBattleCharacterEffect(p, 'heal', `+${hAmt}`);
                         }
@@ -3289,13 +3290,13 @@ pasha_dark: {
                     return;
                 }
                 if (skill.id === 'pasha_darkness') {
-                    const target = defender || attacker;
+                    const target = (defender && this.getCharacterTeam(defender) === this.getCharacterTeam(attacker) && defender.hp > 0) ? defender : attacker;
                     target.darknessPowerTurns = 3;
                     const hAmt = Math.floor(Math.random() * 21) + 10;
                     target.hp = Math.min(target.maxHp, target.hp + hAmt);
                     this.log(`🦇 ${attacker.charName} は暗黒封印を解除し、${target.charName} に暗黒パワーを付与した！ HPが ${hAmt} 回復し、3ターンの間毎ターン開始時にHPがランダム回復する！`, 'text-purple-300 font-bold text-base');
                     audioSystem.playSpecial();
-                    this.triggerEffect(this.getCharacterTeam(target) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`);
+                    this.triggerEffect(this.getCharacterTeam(target) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, target);
                     if (typeof triggerNewBattleCharacterEffect === 'function') {
                         triggerNewBattleCharacterEffect(target, 'heal', `+${hAmt}`);
                         triggerNewBattleCharacterEffect(target, 'buff', '暗黒パワー');
