@@ -1298,6 +1298,7 @@ function handleNewBattleContinueChoice(action) {
 
     if (action === 'skip') {
         activeNewBattle.waitingForChoice = false;
+        activeNewBattle.isRunModalOpen = false;
         activeNewBattle.battleEnded = true;
         activeNewBattle.stopTimer();
         activeNewBattle.stopElapsedTimer();
@@ -1305,10 +1306,20 @@ function handleNewBattleContinueChoice(action) {
         renderNewBattleScreen();
     } else if (action === 'switch') {
         let nextIdx = -1;
-        for (let i = 0; i < activeNewBattle.allies.length; i++) {
-            if (activeNewBattle.allies[i].hp > 0) {
-                nextIdx = i;
-                break;
+        if (activeNewBattle.allies) {
+            for (let i = 0; i < activeNewBattle.allies.length; i++) {
+                if (activeNewBattle.allies[i].hp > 0 && activeNewBattle.allies[i] !== activeNewBattle.p1) {
+                    nextIdx = i;
+                    break;
+                }
+            }
+            if (nextIdx === -1) {
+                for (let i = 0; i < activeNewBattle.allies.length; i++) {
+                    if (activeNewBattle.allies[i].hp > 0) {
+                        nextIdx = i;
+                        break;
+                    }
+                }
             }
         }
         if (nextIdx === -1) {
@@ -1319,13 +1330,20 @@ function handleNewBattleContinueChoice(action) {
         activeNewBattle.activeAllyIndex = nextIdx;
         activeNewBattle.p1 = activeNewBattle.allies[nextIdx];
         activeNewBattle.waitingForChoice = false;
+        activeNewBattle.isRunModalOpen = false;
         activeNewBattle.p1Action = null;
         activeNewBattle.p1TargetIndex = null;
         activeNewBattle.p1TargetChar = null;
 
         activeNewBattle.log(`🔄 ${activeNewBattle.p1.charName} に操作権が引き継がれた！`, 'text-amber-300 font-bold');
+        if (activeNewBattle.onCutin) {
+            activeNewBattle.onCutin('🔄 キャラクター交代！', `${activeNewBattle.p1.charName} が戦闘を引き継ぎます！`);
+        }
         audioSystem.playBuff();
         activeNewBattle.startTimer();
+        renderNewBattleScreen();
+    } else if (action === 'cancel') {
+        activeNewBattle.isRunModalOpen = false;
         renderNewBattleScreen();
     }
 }
@@ -1389,7 +1407,7 @@ function renderNewBattleScreen() {
         commandAreaContent = `
             <div class="grid grid-cols-2 gap-1 w-full h-full relative z-20">
                 <button onclick="executeNewBattleAction('normal_attack_click')" class="pixel-btn pixel-btn-primary py-1 px-1 text-[11px] font-bold flex flex-col items-center justify-center text-center shadow cursor-pointer ${actionDisabledClass}"><span>⚔️ 通常攻撃</span></button>
-                <button onclick="executeNewBattleAction('run')" class="pixel-btn pixel-btn-danger py-1 px-1 text-[11px] font-bold flex flex-col items-center justify-center text-center shadow cursor-pointer ${actionDisabledClass}"><span>🏃 逃げる</span></button>
+                <button onclick="executeNewBattleAction('run')" class="pixel-btn pixel-btn-danger py-1 px-1 text-[11px] font-bold flex flex-col items-center justify-center text-center shadow cursor-pointer relative z-30 pointer-events-auto"><span>🏃 逃げる</span></button>
                 <button onclick="executeNewBattleAction('skill_click')" class="pixel-btn pixel-btn-success py-1 px-1 text-[11px] font-bold flex flex-col items-center justify-center text-center shadow cursor-pointer ${actionDisabledClass}"><span>✨ スキル</span></button>
                 <button onclick="executeNewBattleAction('setting')" class="pixel-btn pixel-btn-warning py-1 px-1 text-[11px] font-bold flex flex-col items-center justify-center text-center shadow cursor-pointer relative z-30 pointer-events-auto"><span>⚙️ 設定</span></button>
             </div>
@@ -1445,14 +1463,38 @@ function renderNewBattleScreen() {
     }
 
     let choicePopupHtml = '';
-    if (activeNewBattle && activeNewBattle.waitingForChoice) {
+    if (activeNewBattle && (activeNewBattle.waitingForChoice || activeNewBattle.isRunModalOpen)) {
+        const isRun = activeNewBattle.isRunModalOpen && !activeNewBattle.waitingForChoice;
+        const livingAlliesCount = activeNewBattle.allies ? activeNewBattle.allies.filter(a => a.hp > 0).length : 1;
+        const hasOtherAlly = activeNewBattle.allies 
+            ? activeNewBattle.allies.some(a => a.hp > 0 && a !== activeNewBattle.p1) 
+            : false;
+        const canSwitch = hasOtherAlly || (isRun && livingAlliesCount > 0);
+
+        const titleText = isRun ? '🏃 戦闘離脱・選択' : '⚠️ 操作キャラクター戦闘不能！';
+        const bodyText = isRun 
+            ? '逃げ出しますか？ バトルをスキップして結果を見るか、残っているキャラクターで戦い続けるか選択できます。' 
+            : '現在の操作キャラクターが倒れました。<br>どう行動しますか？';
+
         choicePopupHtml = `
-            <div class="fixed inset-0 bg-black/85 z-[999] flex items-center justify-center p-4">
-                <div class="pixel-box-gold bg-slate-900 border-amber-400 max-w-md w-full p-6 text-center relative shadow-2xl flex flex-col items-center space-y-4">
-                    <div class="text-xl font-pixel font-black text-red-500 animate-bounce">⚠️ 操作キャラクター戦闘不能！</div>
+            <div class="fixed inset-0 bg-black/85 z-[999] flex items-center justify-center p-4 animate-fadeIn">
+                <div class="pixel-box-gold bg-slate-900 border-amber-400 max-w-md w-full p-5 sm:p-6 text-center relative shadow-2xl flex flex-col items-center space-y-4">
+                    <div class="text-xl sm:text-2xl font-pixel font-black text-red-500 animate-bounce">${titleText}</div>
+                    <p class="text-xs sm:text-sm text-slate-200 font-mono leading-relaxed">${bodyText}</p>
                     <div class="flex flex-col gap-3 w-full mt-2">
-                        <button onclick="handleNewBattleContinueChoice('skip')" class="pixel-btn pixel-btn-danger py-3 px-4 text-xs font-bold font-pixel">🏁 結果を見る</button>
-                        <button onclick="handleNewBattleContinueChoice('switch')" class="pixel-btn pixel-btn-primary py-3 px-4 text-xs font-bold font-pixel">🔄 次のキャラへ交代</button>
+                        <button onclick="handleNewBattleContinueChoice('skip')" class="pixel-btn pixel-btn-danger py-3 px-4 text-xs sm:text-sm font-bold font-pixel flex items-center justify-center gap-2 shadow-lg cursor-pointer">
+                            <span>🏁 結果を見る（バトルをスキップ）</span>
+                        </button>
+                        ${canSwitch ? `
+                        <button onclick="handleNewBattleContinueChoice('switch')" class="pixel-btn pixel-btn-primary py-3 px-4 text-xs sm:text-sm font-bold font-pixel flex items-center justify-center gap-2 shadow-lg cursor-pointer">
+                            <span>🔄 残っているキャラを使用し戦い続ける</span>
+                        </button>
+                        ` : ''}
+                        ${isRun ? `
+                        <button onclick="handleNewBattleContinueChoice('cancel')" class="pixel-btn pixel-btn-warning py-2 px-4 text-xs font-bold font-pixel flex items-center justify-center gap-2 shadow-lg cursor-pointer">
+                            <span>✕ キャンセルして戻る</span>
+                        </button>
+                        ` : ''}
                     </div>
                 </div>
             </div>
@@ -1602,6 +1644,13 @@ function executeNewBattleAction(actionType) {
         openNewBattleSettingsPanel();
         return;
     }
+    if (actionType === 'run') {
+        audioSystem.playSelect();
+        if (!activeNewBattle || activeNewBattle.battleEnded) return;
+        activeNewBattle.isRunModalOpen = true;
+        renderNewBattleScreen();
+        return;
+    }
     if (!activeNewBattle || activeNewBattle.battleEnded || activeNewBattle.isProcessing || activeNewBattle.p1Action !== null) return;
     audioSystem.playSelect();
 
@@ -1620,16 +1669,6 @@ function executeNewBattleAction(actionType) {
         newBattleViewMode = 'main';
         isNewBattleSkillModalOpen = false;
         renderNewBattleScreen();
-        return;
-    }
-    if (actionType === 'run') {
-        showConfirmModal("バトル終了", "本当に終了しますか？", () => {
-            if (activeNewBattle) {
-                activeNewBattle.stopTimer();
-                activeNewBattle = null;
-            }
-            renderBotModesScreen();
-        }, "はい");
         return;
     }
     if (actionType === 'setting') {
