@@ -3302,21 +3302,17 @@ pasha_dark: {
                 }
                 if (skill.id === 'iwaba_rap') {
                     const teamList = (this.getCharacterTeam(attacker) === 'ally') ? this.allies : this.enemies;
-                    if (teamList && teamList.length > 0) {
-                        teamList.forEach(a => {
-                            if (a.hp > 0) {
-                                a.buffDef *= 1.40;
-                                a.defendBuffTurns = 3;
-                                this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'buff', '防御UP!');
-                                if (typeof triggerNewBattleCharacterEffect === 'function') {
-                                    triggerNewBattleCharacterEffect(a, 'buff', '防御UP!');
-                                }
-                            }
-                        });
-                    } else {
-                        attacker.buffDef *= 1.40;
-                        attacker.defendBuffTurns = 3;
-                    }
+                    const side = this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy';
+                    const targets = (teamList && teamList.length > 0) ? teamList : [attacker];
+
+                    targets.forEach(a => {
+                        if (a.hp > 0) {
+                            a.buffDef *= 1.40;
+                            a.defendBuffTurns = 3;
+                            this.triggerEffect(side, 'buff', '防御UP!', a);
+                        }
+                    });
+
                     this.log(`🎤 ${attacker.charName} の【フリースタイル】！ 魂のラップで3ターンの間、味方全員の防御力が大幅に強化された！`, 'text-emerald-300 font-bold text-base');
                     if (typeof audioSystem !== 'undefined' && audioSystem.playBuff) {
                         audioSystem.playBuff();
@@ -3328,15 +3324,13 @@ pasha_dark: {
                 }
                 if (skill.id === 'iwaba_song') {
                     const target = defender || attacker;
+                    const side = this.getCharacterTeam(target) === 'ally' ? 'Player' : 'Enemy';
                     target.tempEvadeNext = true;
                     this.log(`🎵 ${attacker.charName} の【ソウルソング】！ 魂の歌声が響き渡り、${target.charName} は次の相手からの攻撃を1回だけ完全に無効化するバリアを纏った！`, 'text-emerald-300 font-bold text-base');
                     if (typeof audioSystem !== 'undefined' && audioSystem.playSpecial) {
                         audioSystem.playSpecial();
                     }
-                    this.triggerEffect(this.getCharacterTeam(target) === 'ally' ? 'Player' : 'Enemy', 'buff', '無効化バリア');
-                    if (typeof triggerNewBattleCharacterEffect === 'function') {
-                        triggerNewBattleCharacterEffect(target, 'buff', '無効化バリア[1回]');
-                    }
+                    this.triggerEffect(side, 'buff', '無効化バリア', target);
                     if (typeof this.triggerCutin === 'function') {
                         this.triggerCutin('🎵 ソウルソング発動！', `${target.charName} に攻撃1回無効化バリア付与！`);
                     }
