@@ -1534,7 +1534,7 @@ function renderNewBattleScreen() {
                             const pct = Math.max(0, Math.min(100, Math.round((c.hp / c.maxHp) * 100)));
                             const img = getCharImg(c, true);
                             const isSelectable = newBattleViewMode === 'target_select' && newBattleTargetSelectType === 'single_ally' && c.hp > 0;
-                            const clickableAttr = isSelectable ? `onclick="selectNewBattleTarget(${origIdx}, true)" style="cursor: pointer;"` : `onclick="openInBattleCharDetail('${c.id}', true, ${origIdx})" style="cursor: pointer;"`;
+                            const clickableAttr = isSelectable ? `onclick="selectNewBattleTarget(${origIdx}, true)" style="cursor: pointer;"` : '';
                             let posClasses = 'flex flex-col items-center justify-end relative transition-all duration-300 ';
                             if (posType === 'center') {
                                 posClasses += 'w-[36%] h-[82%] z-30 scale-105 translate-y-3';
@@ -1583,7 +1583,7 @@ function renderNewBattleScreen() {
                             const img = getCharImg(c, false);
                             const charData = CHARACTER_DATA[c.id] || {};
                             const isSelectable = newBattleViewMode === 'target_select' && (newBattleTargetSelectType === 'single_enemy' || newBattleTargetSelectSkillId === 'pasha_flash' || newBattleTargetSelectSkillId === 'asaiomizu_copied') && c.hp > 0;
-                            const clickableAttr = isSelectable ? `onclick="selectNewBattleTarget(${origIdx}, false)" style="cursor: pointer;"` : `onclick="openInBattleCharDetail('${c.id}', false, ${origIdx})" style="cursor: pointer;"`;
+                            const clickableAttr = isSelectable ? `onclick="selectNewBattleTarget(${origIdx}, false)" style="cursor: pointer;"` : '';
                             let posClasses = 'flex flex-col items-center justify-end relative transition-all duration-300 ';
                             if (posType === 'center') {
                                 posClasses += 'w-[36%] h-[82%] z-30 scale-105 translate-y-3';
