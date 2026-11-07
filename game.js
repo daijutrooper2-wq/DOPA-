@@ -3740,7 +3740,7 @@ case 'dopa_juggler_skill':
                     this.log(`🔥✨【クリティカルヒット発動！！】 1.5倍の会心ダメージ (${damage})！！`, 'text-yellow-300 font-black text-base');
                     this.triggerCutin('🔥 クリティカルヒット！！', '会心の一撃！ 1.5倍ダメージ炸裂！');
                     triggerCharacterEffect(defender, 'crit', 'クリティカル！');
-                    this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'buff', 'CRITICAL! 1.5x');
+                    this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'crit', 'クリティカル！');
 
                     const defCvsId = defender === this.p1 ? 'p1-canvas' : 'p2-canvas';
                     const defCvs = document.getElementById(defCvsId);

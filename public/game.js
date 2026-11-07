@@ -2268,6 +2268,7 @@ pasha_dark: {
                 this.p2 = this.createBattlePlayer(p2CharId, isOnline ? 'Player 2' : 'BOT (CPU)', 2);
                 this.activeAllyIndex = 0;
                 this.waitingForChoice = false;
+                this.battleData = { pashaRollUsedCount: 0, pashaRollReviveCount: 0 };
 
                 if (this.isNewBattle) {
                     const allIds = Object.keys(CHARACTER_DATA);
@@ -3235,27 +3236,23 @@ pasha_dark: {
                     return;
                 }
                 if (skill.id === 'pasha_roll') {
-                    if ((attacker.pashaRollUsedCount || 0) >= 2) {
-                        this.log(`⚠️ ${attacker.charName} の カメラロール は1試合に最大2回までしか使用できません！`, 'text-amber-300 font-bold');
+                    if ((this.battleData?.pashaRollUsedCount || 0) >= 2) {
+                        this.log(`⚠️ カメラロールは1試合に最大2回までしか使用できません！`, 'text-amber-300 font-bold');
                         return;
                     }
-                    attacker.pashaRollUsedCount = (attacker.pashaRollUsedCount || 0) + 1;
+                    this.battleData = this.battleData || { pashaRollUsedCount: 0, pashaRollReviveCount: 0 };
+                    this.battleData.pashaRollUsedCount = (this.battleData.pashaRollUsedCount || 0) + 1;
 
                     const hAmt = skill.healAmount || 60;
                     const teamList = (this.getCharacterTeam(attacker) === 'ally') ? this.allies : this.enemies;
                     teamList.forEach(a => {
                         if (a.hp > 0) {
                             a.hp = Math.min(a.maxHp, a.hp + hAmt);
-                            // Ensure only one effect call is made here. triggerEffect handles triggering the visual.
+                            this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, a);
                         }
                     });
 
                     this.log(`📸 ${attacker.charName} はカメラロールを使用した！ 味方全員のHPが ${hAmt} 回復した！`, 'text-emerald-400 font-bold text-base');
-                    teamList.forEach(a => {
-                        if (a.hp > 0) {
-                            this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, a);
-                        }
-                    });
                     if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
                     if (typeof triggerCameraFlashGlobalEffect === 'function') {
                         triggerCameraFlashGlobalEffect();
@@ -3266,15 +3263,15 @@ pasha_dark: {
 
                     const deadAllies = teamList.filter(a => a.hp <= 0);
                     const maxReviveTotal = 2;
-                    if (deadAllies.length > 0 && (attacker.pashaRollReviveCount || 0) < maxReviveTotal) {
+                    if (deadAllies.length > 0 && (this.battleData.pashaRollReviveCount || 0) < maxReviveTotal) {
                         if (Math.random() < 0.30) {
-                            attacker.pashaRollReviveCount = (attacker.pashaRollReviveCount || 0) + 1;
+                            this.battleData.pashaRollReviveCount = (this.battleData.pashaRollReviveCount || 0) + 1;
                             const targetDead = deadAllies[Math.floor(Math.random() * deadAllies.length)];
                             const revivedHp = Math.floor(targetDead.maxHp * 0.40);
                             targetDead.hp = revivedHp;
 
                             this.triggerEffect(this.getCharacterTeam(targetDead) === 'ally' ? 'Player' : 'Enemy', 'heal', '復活！', targetDead);
-                            const remainingRevive = maxReviveTotal - attacker.pashaRollReviveCount;
+                            const remainingRevive = maxReviveTotal - this.battleData.pashaRollReviveCount;
                             if (typeof this.triggerCutin === 'function') {
                                 this.triggerCutin('✨ カメラロールの奇跡！', `${targetDead.charName}がHP40%で復活！`);
                             }
@@ -3743,7 +3740,7 @@ case 'dopa_juggler_skill':
                     this.log(`🔥✨【クリティカルヒット発動！！】 1.5倍の会心ダメージ (${damage})！！`, 'text-yellow-300 font-black text-base');
                     this.triggerCutin('🔥 クリティカルヒット！！', '会心の一撃！ 1.5倍ダメージ炸裂！');
                     triggerCharacterEffect(defender, 'crit', 'クリティカル！');
-                    this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'buff', 'CRITICAL! 1.5x');
+                    this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'crit', 'クリティカル！');
 
                     const defCvsId = defender === this.p1 ? 'p1-canvas' : 'p2-canvas';
                     const defCvs = document.getElementById(defCvsId);

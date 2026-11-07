@@ -29,6 +29,7 @@ class Battle3v3Engine {
         this.p2 = this.createBattlePlayer(p2CharId, 'BOT (CPU)', 2);
         this.activeAllyIndex = 0;
         this.waitingForChoice = false;
+        this.battleData = { pashaRollUsedCount: 0, pashaRollReviveCount: 0 };
 
         const allIds = Object.keys(CHARACTER_DATA);
         const otherAllyIds = allIds.filter(id => id !== p1CharId);
