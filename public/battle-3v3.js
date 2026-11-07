@@ -217,7 +217,9 @@ class Battle3v3Engine {
             stunTurns: 0,
             darknessPowerTurns: 0,
             pashaRollUsedCount: 0,
-            pashaRollReviveCount: 0
+            pashaRollReviveCount: 0,
+            iwabaBathTurns: 0,
+            iwabaEvaBonus: 0
         };
     }
 
@@ -338,6 +340,13 @@ class Battle3v3Engine {
                 const hAmt = Math.floor(Math.random() * 21) + 10;
                 p.hp = Math.min(p.maxHp, p.hp + hAmt);
                 this.log(`🦇 ${p.charName} の暗黒パワーにより、ターン開始時にHPが ${hAmt} 回復した！（残り ${p.darknessPowerTurns}T）`, 'text-purple-300 font-bold');
+                this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
+                if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
+            }
+            if (p.hp > 0 && p.iwabaBathTurns && p.iwabaBathTurns > 0) {
+                const hAmt = Math.max(15, Math.floor(p.maxHp * 0.10));
+                p.hp = Math.min(p.maxHp, p.hp + hAmt);
+                this.log(`♨️ ${p.charName} は岩盤浴の温まり効果でHPが ${hAmt} 回復した！（持続残り ${p.iwabaBathTurns}T）`, 'text-emerald-300 font-bold');
                 this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
                 if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
             }
@@ -684,25 +693,25 @@ class Battle3v3Engine {
 
         if (skill.id === 'iwaba_bath') {
             const teamList = (this.getCharacterTeam(attacker) === 'ally') ? this.allies : this.enemies;
-            if (teamList) {
-                teamList.forEach(a => {
-                    if (a.hp > 0) {
-                        const hAmt = Math.floor(a.maxHp * 0.20);
-                        a.hp = Math.min(a.maxHp, a.hp + hAmt);
-                        a.eva = Math.min(60, (a.eva || 10) + 10);
-                        this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`);
-                        triggerNewBattleCharacterEffect(a, 'heal', `+${hAmt}`);
-                    }
-                });
-            } else {
-                const hAmt = Math.floor(attacker.maxHp * 0.20);
-                attacker.hp = Math.min(attacker.maxHp, attacker.hp + hAmt);
-                attacker.eva = Math.min(60, (attacker.eva || 10) + 10);
+            const side = this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy';
+            const targets = (teamList && teamList.length > 0) ? teamList : [attacker];
+
+            targets.forEach(a => {
+                if (a.hp > 0) {
+                    a.iwabaBathTurns = 2;
+                    a.iwabaEvaBonus = 15;
+                    const hAmt = Math.max(15, Math.floor(a.maxHp * 0.10));
+                    a.hp = Math.min(a.maxHp, a.hp + hAmt);
+                    this.triggerEffect(side, 'heal', `+${hAmt}`, a);
+                }
+            });
+
+            this.log(`♨️ ${attacker.charName} の【岩盤浴ブースト】！ 温まり効果で2ターンの間、味方全員のHPを毎ターン少量回復＆回避率を中強化（+15%）！`, 'text-emerald-300 font-bold text-base');
+            if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) {
+                audioSystem.playHeal();
             }
-            this.log(`♨️ ${attacker.charName} の【岩盤浴ブースト】！ 温まり効果で味方全員のHPが回復し回避率が上昇した！`, 'text-emerald-300 font-bold text-base');
-            audioSystem.playHeal();
             if (typeof this.triggerCutin === 'function') {
-                this.triggerCutin('♨️ 岩盤浴ブースト！', '味方全員のHP回復 ＆ 回避率上昇！');
+                this.triggerCutin('♨️ 岩盤浴ブースト！', '2ターンの間 味方全員持続回復 ＆ 回避率+15%！');
             }
             return;
         }
@@ -847,7 +856,7 @@ class Battle3v3Engine {
         }
 
         if (!isStealth) {
-            const effectiveEva = Math.max(0, (defender.eva || 10) - (defender.evaDebuff || 0));
+            const effectiveEva = Math.max(0, (defender.eva || 10) + (defender.iwabaEvaBonus || 0) - (defender.evaDebuff || 0));
             const hitRate = 100 - effectiveEva;
             if (Math.random() * 100 > hitRate) {
                 this.log(`🌀 ${defender.charName} は攻撃を回避した！`, 'text-sky-300');
@@ -970,6 +979,13 @@ class Battle3v3Engine {
             Object.keys(p.cooldowns).forEach(key => {
                 if (p.cooldowns[key] > 0) p.cooldowns[key]--;
             });
+            if (p.iwabaBathTurns > 0) {
+                p.iwabaBathTurns--;
+                if (p.iwabaBathTurns === 0) {
+                    p.iwabaEvaBonus = 0;
+                    this.log(`♨️ ${p.charName} の岩盤浴の温まり効果が終了した。`, 'text-slate-400 text-xs');
+                }
+            }
             if (p.defendBuffTurns > 0) {
                 p.defendBuffTurns--;
                 if (p.defendBuffTurns === 0) {
@@ -1538,8 +1554,11 @@ function renderNewBattleScreen() {
                                         </div>
                                         <div class="w-full bg-slate-900 h-1 rounded overflow-hidden mt-0.5"><div class="bg-emerald-400 h-full" style="width: ${pct}%;"></div></div>
                                     </div>
-                                     <div id="new-ally-img-${origIdx}" class="w-full flex-1 flex items-center justify-center ${c.isShaking ? 'char-shake' : ''}">
+                                     <div id="new-ally-img-${origIdx}" class="w-full flex-1 flex items-center justify-center relative ${c.isShaking ? 'char-shake' : ''}">
                                          <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain" onerror="const fb='${charData.image || 'asaiomizu/asaiomizu.webp'}'; if(this.src!==fb) this.src=fb;">
+                                         <div class="absolute bottom-0 left-0 z-30 flex flex-col gap-0.5 items-start pointer-events-none">
+                                             ${typeof getStatusBadgesHtml === 'function' ? getStatusBadgesHtml(c, true) : ''}
+                                         </div>
                                      </div>
                                 </div>
                             `;
@@ -1584,8 +1603,11 @@ function renderNewBattleScreen() {
                                         </div>
                                         <div class="w-full bg-slate-900 h-1 rounded overflow-hidden mt-0.5"><div class="bg-red-500 h-full" style="width: ${pct}%;"></div></div>
                                     </div>
-                                     <div id="new-enemy-img-${origIdx}" class="w-full flex-1 flex items-center justify-center ${c.isShaking ? 'char-shake' : ''}">
+                                     <div id="new-enemy-img-${origIdx}" class="w-full flex-1 flex items-center justify-center relative ${c.isShaking ? 'char-shake' : ''}">
                                          <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none" style="transform: scaleX(-1);" onerror="const fb='${charData.image || 'asaiomizu/asaiomizu.webp'}'; if(this.src!==fb) this.src=fb;">
+                                         <div class="absolute bottom-0 right-0 z-30 flex flex-col gap-0.5 items-end pointer-events-none">
+                                             ${typeof getStatusBadgesHtml === 'function' ? getStatusBadgesHtml(c, false) : ''}
+                                         </div>
                                      </div>
                                 </div>
                             `;

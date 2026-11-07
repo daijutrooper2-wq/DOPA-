@@ -2484,7 +2484,9 @@ pasha_dark: {
                     stunTurns: 0,
                     darknessPowerTurns: 0,
                     pashaRollUsedCount: 0,
-                    pashaRollReviveCount: 0
+                    pashaRollReviveCount: 0,
+                    iwabaBathTurns: 0,
+                    iwabaEvaBonus: 0
                 };
             }
 
@@ -2886,6 +2888,13 @@ pasha_dark: {
                         const hAmt = Math.floor(Math.random() * 21) + 10;
                         p.hp = Math.min(p.maxHp, p.hp + hAmt);
                         this.log(`🦇 ${p.charName} の暗黒パワーにより、ターン開始時にHPが ${hAmt} 回復した！（残り ${p.darknessPowerTurns}T）`, 'text-purple-300 font-bold');
+                        this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
+                        if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
+                    }
+                    if (p.hp > 0 && p.iwabaBathTurns && p.iwabaBathTurns > 0) {
+                        const hAmt = Math.max(15, Math.floor(p.maxHp * 0.10));
+                        p.hp = Math.min(p.maxHp, p.hp + hAmt);
+                        this.log(`♨️ ${p.charName} は岩盤浴の温まり効果でHPが ${hAmt} 回復した！（持続残り ${p.iwabaBathTurns}T）`, 'text-emerald-300 font-bold');
                         this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
                         if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
                     }
@@ -3335,29 +3344,25 @@ pasha_dark: {
                 }
                 if (skill.id === 'iwaba_bath') {
                     const teamList = (this.getCharacterTeam(attacker) === 'ally') ? this.allies : this.enemies;
-                    if (teamList && teamList.length > 0) {
-                        teamList.forEach(a => {
-                            if (a.hp > 0) {
-                                const hAmt = Math.floor(a.maxHp * 0.20);
-                                a.hp = Math.min(a.maxHp, a.hp + hAmt);
-                                a.eva = Math.min(60, (a.eva || 10) + 10);
-                                this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`);
-                                if (typeof triggerNewBattleCharacterEffect === 'function') {
-                                    triggerNewBattleCharacterEffect(a, 'heal', `+${hAmt}`);
-                                }
-                            }
-                        });
-                    } else {
-                        const hAmt = Math.floor(attacker.maxHp * 0.20);
-                        attacker.hp = Math.min(attacker.maxHp, attacker.hp + hAmt);
-                        attacker.eva = Math.min(60, (attacker.eva || 10) + 10);
-                    }
-                    this.log(`♨️ ${attacker.charName} の【岩盤浴ブースト】！ 温まり効果で味方全員のHPが回復し回避率が上昇した！`, 'text-emerald-300 font-bold text-base');
+                    const side = this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy';
+                    const targets = (teamList && teamList.length > 0) ? teamList : [attacker];
+
+                    targets.forEach(a => {
+                        if (a.hp > 0) {
+                            a.iwabaBathTurns = 2;
+                            a.iwabaEvaBonus = 15;
+                            const hAmt = Math.max(15, Math.floor(a.maxHp * 0.10));
+                            a.hp = Math.min(a.maxHp, a.hp + hAmt);
+                            this.triggerEffect(side, 'heal', `+${hAmt}`, a);
+                        }
+                    });
+
+                    this.log(`♨️ ${attacker.charName} の【岩盤浴ブースト】！ 温まり効果で2ターンの間、味方全員のHPを毎ターン少量回復＆回避率を中強化（+15%）！`, 'text-emerald-300 font-bold text-base');
                     if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) {
                         audioSystem.playHeal();
                     }
                     if (typeof this.triggerCutin === 'function') {
-                        this.triggerCutin('♨️ 岩盤浴ブースト！', '味方全員のHP回復 ＆ 回避率上昇！');
+                        this.triggerCutin('♨️ 岩盤浴ブースト！', '2ターンの間 味方全員持続回復 ＆ 回避率+15%！');
                     }
                     return;
                 }
@@ -3694,7 +3699,7 @@ case 'dopa_juggler_skill':
                 }
 
                 if (!isStealth) {
-                    const effectiveEva = Math.max(0, (defender.eva || 10) - (defender.evaDebuff || 0));
+                    const effectiveEva = Math.max(0, (defender.eva || 10) + (defender.iwabaEvaBonus || 0) - (defender.evaDebuff || 0));
                     const hitRate = 100 - effectiveEva;
                     if (Math.random() * 100 > hitRate) {
                         this.log(`🌀 ${defender.charName} は攻撃を回避した！`, 'text-sky-300');
@@ -3894,6 +3899,13 @@ case 'dopa_juggler_skill':
                     Object.keys(p.cooldowns).forEach(key => {
                         if (p.cooldowns[key] > 0) p.cooldowns[key]--;
                     });
+                    if (p.iwabaBathTurns > 0) {
+                        p.iwabaBathTurns--;
+                        if (p.iwabaBathTurns === 0) {
+                            p.iwabaEvaBonus = 0;
+                            this.log(`♨️ ${p.charName} の岩盤浴の温まり効果が終了した。`, 'text-slate-400 text-xs');
+                        }
+                    }
                     if (p.defendBuffTurns > 0) {
                         p.defendBuffTurns--;
                         if (p.defendBuffTurns === 0) {
@@ -5208,8 +5220,12 @@ case 'dopa_juggler_skill':
             if (p.dopaChargeCount && p.dopaChargeCount > 0) {
                 badges += `<span class="bg-amber-950/95 text-amber-300 border-2 border-amber-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform -rotate-2 inline-block">チャージ(${p.dopaChargeCount}/5)</span>`;
             }
+            if (p.iwabaBathTurns && p.iwabaBathTurns > 0) {
+                badges += `<span class="bg-amber-950/95 text-amber-300 border border-amber-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md inline-block">岩盤浴[${p.iwabaBathTurns}T]</span>`;
+            }
             return badges;
         }
+        window.getStatusBadgesHtml = getStatusBadgesHtml;
 
         function renderLogItem(l) {
             let bgStyle = 'bg-slate-900/80 border border-slate-700/80 text-amber-300 text-center font-bold';
@@ -6251,7 +6267,12 @@ case 'dopa_juggler_skill':
                 pashaPassiveText = ' (対半浸闇特効 +10% 適用中)';
             }
             const critPercent = Math.round(effCrit * 100);
-            const evaPercent = Math.round(c.eva || 10);
+            const effEva = Math.max(0, (c.eva || 10) + (c.iwabaEvaBonus || 0) - (c.evaDebuff || 0));
+            const evaPercent = Math.round(effEva);
+            let iwabaBathText = '';
+            if (c.iwabaBathTurns && c.iwabaBathTurns > 0) {
+                iwabaBathText = ` (岩盤浴 +${c.iwabaEvaBonus || 15}% 適用中[${c.iwabaBathTurns}T])`;
+            }
             const pct = Math.max(0, Math.min(100, Math.round((c.hp / c.maxHp) * 100)));
 
             const existingModal = document.getElementById('in-battle-char-detail-modal');
@@ -6301,7 +6322,7 @@ case 'dopa_juggler_skill':
                                 </div>
                                 <div class="flex justify-between items-center bg-slate-950 px-2 py-1 rounded border border-slate-800">
                                     <span class="text-slate-400">回避率:</span>
-                                    <span class="text-purple-300 font-bold">${evaPercent}%</span>
+                                    <span class="text-purple-300 font-bold">${evaPercent}%<span class="text-[9px] text-amber-400 font-normal">${iwabaBathText}</span></span>
                                 </div>
                             </div>
                         </div>
