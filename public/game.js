@@ -2494,7 +2494,8 @@ pasha_dark: {
                     pashaRollUsedCount: 0,
                     pashaRollReviveCount: 0,
                     iwabaBathTurns: 0,
-                    iwabaEvaBonus: 0
+                    iwabaEvaBonus: 0,
+                    ndaihyoTacticsTurns: 0
                 };
             }
 
@@ -3183,20 +3184,44 @@ pasha_dark: {
                 }
                 if (skill.id === 'ndaihyo_tactics') {
                     const targetTeam = (this.getCharacterTeam(attacker) === 'ally') ? this.enemies : this.allies;
+                    let hasPasha = false;
+
+                    targetTeam.forEach(e => {
+                        if (e.hp > 0 && (e.id === 'pasha' || e.id === 'pasha_dark')) {
+                            hasPasha = true;
+                        }
+                    });
+
                     targetTeam.forEach(e => {
                         if (e.hp > 0) {
-                            if (['pasha', 'pasha_dark'].includes(e.id)) {
-                                e.buffAtk *= 0.3;
-                                this.log(`【特効発動！】 ${e.charName}は激怒され、攻撃力が大幅に激減した！`, 'text-yellow-300 font-bold text-base');
-                                this.triggerCutin('🎯 特効発動！', 'パシャ憎へのムカつきが極限に達した！');
+                            const isPashaType = (e.id === 'pasha' || e.id === 'pasha_dark');
+                            e.ndaihyoTacticsTurns = 2;
+                            if (isPashaType) {
+                                e.buffAtk *= 0.35;
+                                e.buffDef *= 0.80;
+                                this.triggerEffect(this.getCharacterTeam(e) === 'ally' ? 'Player' : 'Enemy', 'buff', '攻撃大幅DOWN!', e);
                             } else {
                                 e.buffAtk *= 0.80;
                                 e.buffDef *= 0.80;
+                                this.triggerEffect(this.getCharacterTeam(e) === 'ally' ? 'Player' : 'Enemy', 'buff', '能力DOWN', e);
                             }
-
                         }
                     });
-                    this.log(`N高代表 はパシャ憎へのムカつきを放った！ 敵全体の攻撃力と防御力が低下！`, 'text-cyan-300 font-bold');
+
+                    if (hasPasha) {
+                        this.log(`🎯 ${attacker.charName} の【パシャ憎絶許】発動！！ パシャ憎の存在により敵全体の攻撃力が大幅低下し、防御力も低下した！（持続2T）`, 'text-yellow-300 font-bold text-base');
+                        if (typeof this.triggerCutin === 'function') {
+                            this.triggerCutin('🎯 パシャ憎絶許！', 'パシャ憎特効発動！ 攻撃力大幅低下＆防御低下！');
+                        }
+                    } else {
+                        this.log(`📉 ${attacker.charName} の【パシャ憎絶許】！ 敵全体の攻撃力と防御力が2ターンの間低下した！`, 'text-cyan-300 font-bold text-base');
+                        if (typeof this.triggerCutin === 'function') {
+                            this.triggerCutin('📉 パシャ憎絶許！', '敵全体の攻撃力・防御力が2ターン低下！');
+                        }
+                    }
+                    if (typeof audioSystem !== 'undefined' && audioSystem.playBuff) {
+                        audioSystem.playBuff();
+                    }
                     return;
                 }
                 if (skill.id === 'ndaihyo_mind') {
@@ -3960,6 +3985,14 @@ case 'dopa_juggler_skill':
                         if (p.iwabaBathTurns === 0) {
                             p.iwabaEvaBonus = 0;
                             this.log(`♨️ ${p.charName} の岩盤浴の温まり効果が終了した。`, 'text-slate-400 text-xs');
+                        }
+                    }
+                    if (p.ndaihyoTacticsTurns > 0) {
+                        p.ndaihyoTacticsTurns--;
+                        if (p.ndaihyoTacticsTurns === 0) {
+                            p.buffAtk = Math.max(1.0, p.buffAtk);
+                            p.buffDef = Math.max(1.0, p.buffDef);
+                            this.log(`📉 ${p.charName} の「パシャ憎絶許」による能力低下効果が終了した。`, 'text-slate-400 text-xs');
                         }
                     }
                     if (p.defendBuffTurns > 0) {

@@ -219,7 +219,8 @@ class Battle3v3Engine {
             pashaRollUsedCount: 0,
             pashaRollReviveCount: 0,
             iwabaBathTurns: 0,
-            iwabaEvaBonus: 0
+            iwabaEvaBonus: 0,
+            ndaihyoTacticsTurns: 0
         };
     }
 
@@ -779,7 +780,51 @@ class Battle3v3Engine {
             return;
         }
 
-        if (skill.targetType === 'all_enemies' || skill.id === 'ndaihyo_tactics' || skill.id === 'eggplant_burst') {
+        if (skill.id === 'ndaihyo_tactics') {
+            const targetTeam = (this.getCharacterTeam(attacker) === 'ally') ? this.enemies : this.allies;
+            let hasPasha = false;
+
+            targetTeam.forEach(e => {
+                if (e.hp > 0 && (e.id === 'pasha' || e.id === 'pasha_dark')) {
+                    hasPasha = true;
+                }
+            });
+
+            targetTeam.forEach(e => {
+                if (e.hp > 0) {
+                    const isPashaType = (e.id === 'pasha' || e.id === 'pasha_dark');
+                    e.ndaihyoTacticsTurns = 2;
+                    if (isPashaType) {
+                        e.buffAtk *= 0.35;
+                        e.buffDef *= 0.80;
+                        this.triggerEffect(this.getCharacterTeam(e) === 'ally' ? 'Player' : 'Enemy', 'buff', '攻撃大幅DOWN!', e);
+                    } else {
+                        e.buffAtk *= 0.80;
+                        e.buffDef *= 0.80;
+                        this.triggerEffect(this.getCharacterTeam(e) === 'ally' ? 'Player' : 'Enemy', 'buff', '能力DOWN', e);
+                    }
+                    triggerNewBattleShake(e);
+                }
+            });
+
+            if (hasPasha) {
+                this.log(`🎯 ${attacker.charName} の【パシャ憎絶許】発動！！ パシャ憎の存在により敵全体の攻撃力が大幅低下し、防御力も低下した！（持続2T）`, 'text-yellow-300 font-bold text-base');
+                if (typeof this.triggerCutin === 'function') {
+                    this.triggerCutin('🎯 パシャ憎絶許！', 'パシャ憎特効発動！ 攻撃力大幅低下＆防御低下！');
+                }
+            } else {
+                this.log(`📉 ${attacker.charName} の【パシャ憎絶許】！ 敵全体の攻撃力と防御力が2ターンの間低下した！`, 'text-cyan-300 font-bold text-base');
+                if (typeof this.triggerCutin === 'function') {
+                    this.triggerCutin('📉 パシャ憎絶許！', '敵全体の攻撃力・防御力が2ターン低下！');
+                }
+            }
+            if (typeof audioSystem !== 'undefined' && audioSystem.playBuff) {
+                audioSystem.playBuff();
+            }
+            return;
+        }
+
+        if (skill.targetType === 'all_enemies' || skill.id === 'eggplant_burst') {
             const targetTeam = (this.getCharacterTeam(attacker) === 'ally') ? this.enemies : this.allies;
             targetTeam.forEach(e => {
                 if (e.hp > 0) {
@@ -1029,6 +1074,14 @@ class Battle3v3Engine {
                 if (p.iwabaBathTurns === 0) {
                     p.iwabaEvaBonus = 0;
                     this.log(`♨️ ${p.charName} の岩盤浴の温まり効果が終了した。`, 'text-slate-400 text-xs');
+                }
+            }
+            if (p.ndaihyoTacticsTurns > 0) {
+                p.ndaihyoTacticsTurns--;
+                if (p.ndaihyoTacticsTurns === 0) {
+                    p.buffAtk = Math.max(1.0, p.buffAtk);
+                    p.buffDef = Math.max(1.0, p.buffDef);
+                    this.log(`📉 ${p.charName} の「パシャ憎絶許」による能力低下効果が終了した。`, 'text-slate-400 text-xs');
                 }
             }
             if (p.defendBuffTurns > 0) {
