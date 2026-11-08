@@ -3951,6 +3951,7 @@ case 'dopa_juggler_skill':
                 this.turn++;
 
                 allFighters.forEach(p => {
+                    if (p.hp <= 0) return;
                     Object.keys(p.cooldowns).forEach(key => {
                         if (p.cooldowns[key] > 0) p.cooldowns[key]--;
                     });

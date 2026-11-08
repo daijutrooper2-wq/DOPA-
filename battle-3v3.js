@@ -1020,6 +1020,7 @@ class Battle3v3Engine {
         this.turn++;
         const allFighters = [...this.allies, ...this.enemies];
         allFighters.forEach(p => {
+            if (p.hp <= 0) return;
             Object.keys(p.cooldowns).forEach(key => {
                 if (p.cooldowns[key] > 0) p.cooldowns[key]--;
             });
