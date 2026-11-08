@@ -714,6 +714,52 @@ class Battle3v3Engine {
             return;
         }
 
+        if (skill.id === 'moenan_play') {
+            const healRate = skill.healRate || 0.30;
+            const hAmt = Math.floor(attacker.maxHp * healRate);
+            attacker.hp = Math.min(attacker.maxHp, attacker.hp + hAmt);
+
+            const hadDebuff = (attacker.buffAtk < 1.0) || 
+                              (attacker.buffDef < 1.0) || 
+                              ((attacker.stunTurns || 0) > 0) || 
+                              ((attacker.evaDebuff || 0) > 0) || 
+                              ((attacker.crimeDefDownTurns || 0) > 0) || 
+                              ((attacker.nightmareDefTurns || 0) > 0) || 
+                              attacker.isResting;
+
+            attacker.buffAtk = Math.max(1.0, attacker.buffAtk);
+            attacker.buffDef = Math.max(1.0, attacker.buffDef);
+            attacker.buffAtkTurns = 0;
+            attacker.crimeDefDownTurns = 0;
+            attacker.nightmareDefTurns = 0;
+            attacker.stunTurns = 0;
+            attacker.evaDebuff = 0;
+            attacker.enemyEvaTurns = 0;
+            attacker.isResting = false;
+
+            const side = this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy';
+            this.triggerEffect(side, 'heal', `+${hAmt}`, attacker);
+
+            if (hadDebuff) {
+                setTimeout(() => {
+                    if (typeof triggerNewBattleCharacterEffect === 'function') {
+                        triggerNewBattleCharacterEffect(attacker, 'buff', 'デバフ全解除');
+                    } else if (typeof triggerCharacterEffect === 'function') {
+                        triggerCharacterEffect(attacker, 'buff', 'デバフ全解除');
+                    }
+                }, 350);
+            }
+
+            this.log(`🐱 ${attacker.charName} の【こももと遊ぶ】！ 愛猫に癒やされてHPが ${hAmt} 回復！${hadDebuff ? 'かかっていたデバフを全解除した！' : '（解除するデバフなし）'}`, 'text-emerald-300 font-bold text-base');
+            if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) {
+                audioSystem.playHeal();
+            }
+            if (typeof this.triggerCutin === 'function') {
+                this.triggerCutin('🐱 こももと遊ぶ！', '愛猫に癒やされHP小回復＆デバフ全解除！');
+            }
+            return;
+        }
+
         if (skill.type === 'heal' || skill.type === 'heal_cleanse' || skill.type === 'heal_buff' || skill.id === 'courtney_aegu' || skill.type === 'courtney_aegu_skill' || skill.type === 'momo_chie_skill') {
             const healRate = skill.healRate || 0.35;
             const hAmt = Math.floor(attacker.maxHp * healRate);

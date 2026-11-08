@@ -2180,7 +2180,7 @@ pasha_dark: {
                 desc: '鋭い爪の通常攻撃はクリティカル率が高い。「筋トレ追い込み」からの全力投球で敵を圧倒する。',
                 skills: [
                     { id: 'moenan_cat', name: '高速猫パンチ', type: 'attack', power: 1.10, isNormalAttack: true, cooldown: 0, targetType: 'single_enemy', desc: '鋭い爪の通常攻撃。他の通常攻撃よりもクリティカル率が高い。' },
-                    { id: 'moenan_play', name: 'こももと遊ぶ', type: 'heal_cleanse', healRate: 0.40, cooldown: 2, targetType: 'self', desc: '愛猫に癒やされてHPを回復＋かかっているデバフを全解除する。' },
+                    { id: 'moenan_play', name: 'こももと遊ぶ', type: 'heal_cleanse', healRate: 0.30, cooldown: 2, targetType: 'self', desc: '愛猫に癒やされて自身のHPを小回復＋自身のかかっているデバフを全解除する。' },
                     { id: 'moenan_handball', name: '全力投球', type: 'attack', power: 1.60, isNormalAttack: false, cooldown: 2, targetType: 'single_enemy', desc: '唸りをあげるハンドボールシュートを叩き込み、敵単体に中ダメージを与える！' },
                     { id: 'moenan_workout', name: '筋トレ追い込み', type: 'buff', buffType: 'atk', amount: 2.0, turns: 1, cooldown: 3, targetType: 'self', desc: '筋肉を限界まで追い込み、次の1ターンの間、自分の攻撃力を大幅に向上させる！' }
                 ]
@@ -2240,6 +2240,14 @@ pasha_dark: {
                         }
                         const analysis = skills.find(s => s.id === 'ndaihyo_analysis');
                         if (analysis) return analysis.id;
+                    }
+
+                    if (botChar.id === 'moenan') {
+                        const hadDebuff = (botChar.buffAtk < 1.0) || (botChar.buffDef < 1.0) || ((botChar.evaDebuff || 0) > 0);
+                        if (hpRatio < 0.6 || hadDebuff) {
+                            const play = skills.find(s => s.id === 'moenan_play');
+                            if (play) return play.id;
+                        }
                     }
 
                     const chosen = skills[Math.floor(Math.random() * skills.length)];
@@ -3361,6 +3369,52 @@ pasha_dark: {
                     return;
                 }
 
+                if (skill.id === 'moenan_play') {
+                    const healRate = skill.healRate || 0.30;
+                    const hAmt = Math.floor(attacker.maxHp * healRate);
+                    attacker.hp = Math.min(attacker.maxHp, attacker.hp + hAmt);
+
+                    const hadDebuff = (attacker.buffAtk < 1.0) || 
+                                      (attacker.buffDef < 1.0) || 
+                                      ((attacker.stunTurns || 0) > 0) || 
+                                      ((attacker.evaDebuff || 0) > 0) || 
+                                      ((attacker.crimeDefDownTurns || 0) > 0) || 
+                                      ((attacker.nightmareDefTurns || 0) > 0) || 
+                                      attacker.isResting;
+
+                    attacker.buffAtk = Math.max(1.0, attacker.buffAtk);
+                    attacker.buffDef = Math.max(1.0, attacker.buffDef);
+                    attacker.buffAtkTurns = 0;
+                    attacker.crimeDefDownTurns = 0;
+                    attacker.nightmareDefTurns = 0;
+                    attacker.stunTurns = 0;
+                    attacker.evaDebuff = 0;
+                    attacker.enemyEvaTurns = 0;
+                    attacker.isResting = false;
+
+                    const side = this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy';
+                    this.triggerEffect(side, 'heal', `+${hAmt}`, attacker);
+
+                    if (hadDebuff) {
+                        setTimeout(() => {
+                            if (typeof triggerNewBattleCharacterEffect === 'function') {
+                                triggerNewBattleCharacterEffect(attacker, 'buff', 'デバフ全解除');
+                            } else if (typeof triggerCharacterEffect === 'function') {
+                                triggerCharacterEffect(attacker, 'buff', 'デバフ全解除');
+                            }
+                        }, 350);
+                    }
+
+                    this.log(`🐱 ${attacker.charName} の【こももと遊ぶ】！ 愛猫に癒やされてHPが ${hAmt} 回復！${hadDebuff ? 'かかっていたデバフを全解除した！' : '（解除するデバフなし）'}`, 'text-emerald-300 font-bold text-base');
+                    if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) {
+                        audioSystem.playHeal();
+                    }
+                    if (typeof this.triggerCutin === 'function') {
+                        this.triggerCutin('🐱 こももと遊ぶ！', '愛猫に癒やされHP小回復＆デバフ全解除！');
+                    }
+                    return;
+                }
+
                if (attacker.id === 'dopagaking' && skill.id === 'dopa_inheritance') {
                     if ((attacker.dopaChargeCount || 0) < 5 || !attacker.selectedInheritChar) {
                         this.log(`👑 チャージが完了していないか、キャラクターが選択されていません！`, 'text-amber-300 font-bold');
@@ -3574,12 +3628,19 @@ case 'dopa_juggler_skill':
                         audioSystem.playBuff();
                         break;
                     case 'heal_cleanse':
-                        const hCleanseAmt = Math.floor(attacker.maxHp * (skill.healRate || 0.35));
+                        const hCleanseAmt = Math.floor(attacker.maxHp * (skill.healRate || 0.30));
                         attacker.hp = Math.min(attacker.maxHp, attacker.hp + hCleanseAmt);
                         attacker.buffAtk = Math.max(1.0, attacker.buffAtk);
                         attacker.buffDef = Math.max(1.0, attacker.buffDef);
-                        this.log(`💚 ${attacker.charName} は集中力を高めて HP${hCleanseAmt} 回復！デバフをリセット！`, 'text-emerald-400 font-bold');
-                        this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'heal', `+${hCleanseAmt}`);
+                        attacker.buffAtkTurns = 0;
+                        attacker.crimeDefDownTurns = 0;
+                        attacker.nightmareDefTurns = 0;
+                        attacker.stunTurns = 0;
+                        attacker.evaDebuff = 0;
+                        attacker.enemyEvaTurns = 0;
+                        attacker.isResting = false;
+                        this.log(`🐱 ${attacker.charName} は愛猫に癒やされて HP${hCleanseAmt} 回復！デバフを全解除！`, 'text-emerald-400 font-bold');
+                        this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'heal', `+${hCleanseAmt}`, attacker);
                         audioSystem.playHeal();
                         break;
                     case 'dig':
