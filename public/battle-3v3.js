@@ -982,11 +982,9 @@ class Battle3v3Engine {
         }
 
         let extraHitTriggered = false;
-        if (attacker.id === 'iwaba' && skill.isNormalAttack) {
-            if (Math.random() < 0.2) {
+        if (attacker.id === 'iwaba' && skill.isNormalAttack && defender.hp > 0) {
+            if (Math.random() < 0.20) {
                 extraHitTriggered = true;
-                let extraDmg = Math.floor(damage * 0.6);
-                damage += extraDmg;
             }
         }
 
@@ -1004,13 +1002,23 @@ class Battle3v3Engine {
         } else if (attacker.id === 'iwaba' && skill.isNormalAttack) {
             damageLog = `岩盤星人 の【ブレイクダンス】！ ${defender.charName} に ${damage} のダメージ！`;
         }
-        if (extraHitTriggered) {
-            this.log(`【連動発動！】 岩盤星人 のノリノリな連続ダンス攻撃がヒット！`, 'text-emerald-300 font-bold');
-        }
         this.log(damageLog, 'text-red-400 font-bold');
         this.triggerEffect(side, isCounter ? 'counter_damage' : 'damage', `-${damage}`, defender);
         audioSystem.playHit();
         triggerNewBattleShake(defender);
+
+        if (extraHitTriggered && defender.hp > 0) {
+            this.log(`✨【パッシブ発動！】 岩盤星人のブレイクダンスが2回連続ヒットした！`, 'text-yellow-300 font-bold text-base');
+            if (typeof this.triggerCutin === 'function') {
+                this.triggerCutin('✨ ブレイクダンス2回ヒット！', 'リズムに乗った連続攻撃！');
+            }
+            let extraDmg = Math.max(8, Math.floor(damage * 0.8));
+            defender.hp = Math.max(0, defender.hp - extraDmg);
+            this.log(`⚔️ 岩盤星人の【ブレイクダンス追加ヒット】！ ${defender.charName} に ${extraDmg} の追加ダメージ！`, 'text-red-400 font-bold');
+            this.triggerEffect(side, 'damage', `-${extraDmg}`, defender);
+            audioSystem.playHit();
+            triggerNewBattleShake(defender);
+        }
 
         this.checkActiveAllyStatus();
 
