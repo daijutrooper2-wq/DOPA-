@@ -3127,7 +3127,7 @@ pasha_dark: {
                     audioSystem.playBuff();
                     
                     // チャージ加算時のポップアップ表示
-                    this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'buff', `溜め+1 (${attacker.courtneyChargeCount})`, attacker);
+                    this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'pink', `溜め+1 (${attacker.courtneyChargeCount})`, attacker);
                     
                     // ターン強制終了は行わない（常時選択可能スキルのため）
                     return;
@@ -4309,6 +4309,8 @@ pasha_dark: {
                 color = 'text-yellow-300 text-xs sm:text-sm font-bold font-pixel drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]';
             } else if (type === 'def' || type === 'defense') {
                 color = 'text-blue-300 text-xs sm:text-sm font-pixel drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]';
+            } else if (type === 'pink') {
+                color = 'text-pink-400 text-base sm:text-lg font-black drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]';
             }
 
             pop.classList.add(...color.split(' '));
@@ -5045,10 +5047,6 @@ pasha_dark: {
                 const isCharged = (isC && (player.courtneyChargeCount || 0) > 0) ||
                                   (isD && (player.dopaChargeCount || 0) > 0 && (player.dopaChargeCount || 0) < 6);
 
-                if (isC && (player.courtneyChargeCount || 0) > 0 && charData.chargedImage) {
-                    return charData.chargedImage;
-                }
-                
                 if (isCharged && charData.chargedImage) {
                     return charData.chargedImage;
                 }
