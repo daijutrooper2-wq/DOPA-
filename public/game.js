@@ -2914,17 +2914,6 @@ pasha_dark: {
                 this.turnJustStarted = false;
                 this.currentTurnLogs = [];
 
-                const allFighters = [...(this.allies || [this.p1]), ...(this.enemies || [this.p2])];
-                allFighters.forEach(p => {
-                    if (p.hp > 0 && p.iwabaBathTurns && p.iwabaBathTurns > 0) {
-                        const hAmt = Math.max(15, Math.floor(p.maxHp * 0.10));
-                        p.hp = Math.min(p.maxHp, p.hp + hAmt);
-                        this.log(`♨️ ${p.charName} は岩盤浴の温まり効果でHPが ${hAmt} 回復した！（持続残り ${p.iwabaBathTurns}T）`, 'text-emerald-300 font-bold');
-                        this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
-                        if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
-                    }
-                });
-
                 this.checkPashaPassive();
 
                 if (this.isSuddenDeath) {
@@ -4088,6 +4077,13 @@ pasha_dark: {
                         if (p.cooldowns[key] > 0) p.cooldowns[key]--;
                     });
                     if (p.iwabaBathTurns > 0) {
+                        // 回復処理
+                        const hAmt = Math.max(15, Math.floor(p.maxHp * 0.10));
+                        p.hp = Math.min(p.maxHp, p.hp + hAmt);
+                        this.log(`♨️ ${p.charName} は岩盤浴の温まり効果でHPが ${hAmt} 回復した！（持続残り ${p.iwabaBathTurns}T）`, 'text-emerald-300 font-bold');
+                        this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
+                        if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
+
                         p.iwabaBathTurns--;
                         if (p.iwabaBathTurns === 0) {
                             p.iwabaEvaBonus = 0;
