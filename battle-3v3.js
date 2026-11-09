@@ -494,13 +494,19 @@ class Battle3v3Engine {
             return;
         }
 
-        if (skillId === 'courtney_charge_only') {
+        if (skillId === 'courtney_charge_only' || skillId === 'courtney_charge') {
             if ((attacker.courtneyChargeCount || 0) < 8) {
                 attacker.courtneyChargeCount = (attacker.courtneyChargeCount || 0) + 1;
             }
-            this.log(`⚡ ${attacker.charName} は 「FEEL SO HOT ///」 のチャージを進めた！（現在溜め: ${attacker.courtneyChargeCount}回）`, 'text-pink-400 font-bold');
-            audioSystem.playBuff();
-            this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'buff', `溜め+1 (${attacker.courtneyChargeCount})`);
+            const side = (this.getCharacterTeam && this.getCharacterTeam(attacker) === 'ally') || attacker === this.p1 ? 'Player' : 'Enemy';
+            this.log(`⚡ ${attacker.charName} は 「FEEL SO HOT ///」 のチャージを進めた！（現在チャージ: ${attacker.courtneyChargeCount}/8回）`, 'text-pink-400 font-bold font-pixel');
+            if (typeof audioSystem !== 'undefined' && audioSystem.playBuff) audioSystem.playBuff();
+            this.triggerEffect(side, 'pink', `💖 チャージ+1 (${attacker.courtneyChargeCount}/8)`, attacker);
+            if (attacker.courtneyChargeCount >= 8) {
+                if (typeof this.triggerCutin === 'function') {
+                    this.triggerCutin('💖 MAXチャージ完了！', '「FEEL SO HOT ///」最大威力解放可能！（150ダメージ）');
+                }
+            }
             return;
         }
 
@@ -552,6 +558,72 @@ class Battle3v3Engine {
     applySkill(attacker, defender, skill) {
         this.log(`💥 ${attacker.charName} の 「${skill.name}」！`, 'text-emerald-300 font-bold');
         audioSystem.playCharacterSound(attacker.id);
+
+        if (skill.id === 'courtney_charge' || skill.id === 'courtney_charge_only' || skill.type === 'courtney_charge_only') {
+            if ((attacker.courtneyChargeCount || 0) < 8) {
+                attacker.courtneyChargeCount = (attacker.courtneyChargeCount || 0) + 1;
+            }
+            const side = (this.getCharacterTeam && this.getCharacterTeam(attacker) === 'ally') || attacker === this.p1 ? 'Player' : 'Enemy';
+            this.log(`⚡ ${attacker.charName} は 「FEEL SO HOT ///」 のチャージを進めた！（現在チャージ: ${attacker.courtneyChargeCount}/8回）`, 'text-pink-400 font-bold font-pixel');
+            if (typeof audioSystem !== 'undefined' && audioSystem.playBuff) audioSystem.playBuff();
+            this.triggerEffect(side, 'pink', `💖 チャージ+1 (${attacker.courtneyChargeCount}/8)`, attacker);
+            if (attacker.courtneyChargeCount >= 8) {
+                if (typeof this.triggerCutin === 'function') {
+                    this.triggerCutin('💖 MAXチャージ完了！', '「FEEL SO HOT ///」最大威力解放可能！（150ダメージ）');
+                }
+            }
+            return;
+        }
+
+        if (skill.id === 'courtney_feel' || skill.type === 'courtney_charge_release') {
+            const charges = attacker.courtneyChargeCount || 0;
+            if (charges < 1) {
+                this.log(`💖 チャージが1回以上必要です！`, 'text-pink-300');
+                return;
+            }
+            let releaseDmg = 18;
+            if (charges >= 8) releaseDmg = 150;
+            else if (charges === 7) releaseDmg = 130;
+            else if (charges === 6) releaseDmg = 110;
+            else if (charges === 5) releaseDmg = 90;
+            else if (charges === 4) releaseDmg = 70;
+            else if (charges === 3) releaseDmg = 50;
+            else if (charges === 2) releaseDmg = 32;
+            else releaseDmg = 18;
+
+            if (typeof audioSystem !== 'undefined' && audioSystem.playSpecial) audioSystem.playSpecial();
+            const targetSide = this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy';
+            this.triggerEffect(targetSide, 'damage', `🔥 ${releaseDmg} DMG!`, defender);
+            defender.hp = Math.max(0, defender.hp - releaseDmg);
+            if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
+
+            this.log(`💖🔥 SPコートニーの 「FEEL SO HOT ///」解放！！ (溜め ${charges}回) ⇒ ${defender.charName} に ${releaseDmg} の爆発ダメージ！！`, 'text-pink-400 font-black text-base');
+            attacker.courtneyChargeCount = 0;
+            return;
+        }
+
+        if (skill.id === 'courtney_attack' || skill.type === 'courtney_attack_skill') {
+            const opposingTeam = (this.getCharacterTeam(attacker) === 'ally' ? this.enemies : this.allies).filter(e => e.hp > 0);
+            if (typeof audioSystem !== 'undefined' && audioSystem.playHit) audioSystem.playHit();
+            opposingTeam.forEach(e => {
+                e.hp = Math.max(0, e.hp - 13);
+                if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(e);
+                this.triggerEffect(this.getCharacterTeam(e) === 'ally' ? 'Player' : 'Enemy', 'damage', '-13', e);
+            });
+            this.log(`💖 ${attacker.charName} の「ミツメル」！ 相手チーム全員をじっと見つめて13の固定ダメージを与えた！`, 'text-pink-300 font-bold');
+            return;
+        }
+
+        if (skill.id === 'courtney_yoseru' || skill.type === 'courtney_yoseru_skill') {
+            let yoseruDmg = Math.max(4, Math.floor(attacker.atk * 0.3));
+            defender.hp = Math.max(0, defender.hp - yoseruDmg);
+            if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
+            defender.buffDef = 0.0;
+            this.log(`💋 ${attacker.charName} の「ヨセル」！ ${yoseruDmg} ダメージを与え、1ターンの間 ${defender.charName} の防御力を 0 にした！`, 'text-pink-300 font-bold');
+            this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'damage', `-${yoseruDmg}`, defender);
+            if (typeof audioSystem !== 'undefined' && audioSystem.playHit) audioSystem.playHit();
+            return;
+        }
 
         if (skill.id === 'ndaihyo_mind') {
             const healRate = skill.healRate || 0.20;
@@ -1502,13 +1574,21 @@ function renderNewBattleScreen() {
     const getCharImg = (player, isPlayerSide) => {
         const isC = player.id === 'courtney';
         const isA = player.id === 'asaiomizu';
+        const isD = player.id === 'dopagaking';
         const charData = CHARACTER_DATA[player.id] || {};
         if (player.hp <= 0) {
             if (charData.dieImage) return charData.dieImage;
             if (isA) return 'asaiomizu/asaiomizu3.webp';
             return charData.image || player.image;
         }
-        if (player.eggplantReady && charData.chargedImage) {
+        if (isD && (player.dopaChargeCount || 0) >= 6 && player.selectedInheritChar) {
+            const targetData = CHARACTER_DATA[player.selectedInheritChar];
+            if (targetData) return targetData.image || targetData.allImage || player.image;
+        }
+        const isCharged = (isC && (player.courtneyChargeCount || 0) > 0) ||
+                          (isD && (player.dopaChargeCount || 0) > 0) ||
+                          player.eggplantReady;
+        if (isCharged && charData.chargedImage) {
             return charData.chargedImage;
         }
         if (isA) return 'asaiomizu/asaiomizu2.webp';
@@ -1582,12 +1662,15 @@ function renderNewBattleScreen() {
         }
         let skillsHtml = skills.map(s => {
             const cd = p1.cooldowns[s.id] || 0;
+            const isPashaRollLimit = (s.id === 'pasha_roll' && (p1.pashaRollUsedCount || 0) >= 2);
+            const isDopaChargeFull = (p1.id === 'dopagaking' && (s.id === 'dopa_charge' || s.id === 'dopa_charge_skill' || s.type === 'dopa_charge_skill') && (p1.dopaChargeCount || 0) >= 6);
             const isDopaObeyLocked = (p1.id === 'dopagaking' && (s.id === 'dopa_obey' || s.id === 'dopa_inheritance') && (p1.dopaChargeCount || 0) < 6);
-            const disabled = cd > 0 || isPashaRollLimit || isDopaObeyLocked;
+            const isCourtneyLocked = (p1.id === 'courtney' && (s.id === 'courtney_feel' || s.id === 'courtney_charge_release') && (p1.courtneyChargeCount || 0) < 1);
+            const disabled = cd > 0 || isPashaRollLimit || isDopaChargeFull || isDopaObeyLocked || isCourtneyLocked;
             return `
                 <button onclick="${disabled ? '' : `executeNewBattleAction('${s.id}')`}" class="pixel-box bg-slate-900 border ${disabled ? 'border-slate-700 opacity-60 cursor-not-allowed' : 'border-emerald-400 hover:border-emerald-300 cursor-pointer'} p-3 text-left shadow flex flex-col justify-between w-full">
                     <div class="flex justify-between items-center w-full mb-1">
-                        <span class="font-pixel text-xs text-emerald-300 font-bold">${s.name} ${cd > 0 ? `(CT:${cd})` : ''} ${s.id === 'pasha_roll' ? `(残り使用: ${2 - (p1.pashaRollUsedCount || 0)}回)` : ''}</span>
+                        <span class="font-pixel text-xs text-emerald-300 font-bold">${s.name} ${cd > 0 ? `(CT:${cd})` : ''} ${s.id === 'pasha_roll' ? `(残り使用: ${2 - (p1.pashaRollUsedCount || 0)}回)` : ''} ${isDopaChargeFull ? '(MAX 6/6)' : ''}</span>
                     </div>
                     <div class="text-[11px] text-slate-200 font-mono">${s.desc}</div>
                 </button>
@@ -1911,6 +1994,8 @@ function triggerNewBattleCharacterEffect(targetChar, type, text) {
         color = 'text-cyan-300 text-xs sm:text-sm font-bold font-pixel drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]';
     } else if (type === 'counter_damage') {
         color = 'text-cyan-400 text-sm sm:text-base font-bold font-pixel drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]';
+    } else if (type === 'pink') {
+        color = 'text-pink-400 text-sm sm:text-base font-bold font-pixel drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]';
     }
 
     pop.classList.add(...color.split(' '));
@@ -1931,6 +2016,27 @@ function triggerNewBattleCharacterEffect(targetChar, type, text) {
     document.body.appendChild(pop);
 
     setTimeout(() => pop.remove(), 1200);
+}
+
+if (typeof window.getStatusBadgesHtml === 'undefined') {
+    window.getStatusBadgesHtml = function(p, isAlly = true) {
+        let badges = '';
+        if (p.courtneyChargeCount && p.courtneyChargeCount > 0) {
+            if (p.courtneyChargeCount >= 8) {
+                badges += `<span class="bg-pink-600 text-white border-2 border-pink-300 px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-pixel font-bold shadow-lg animate-bounce inline-block">🔥 MAXチャージ(8/8)</span>`;
+            } else {
+                badges += `<span class="bg-pink-900/95 text-pink-200 border-2 border-pink-400 px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-pixel font-bold shadow-lg animate-pulse inline-block">💖 チャージ(${p.courtneyChargeCount}/8)</span>`;
+            }
+        }
+        if (p.dopaChargeCount && p.dopaChargeCount > 0) {
+            if (p.dopaChargeCount >= 6) {
+                badges += `<span class="bg-amber-600 text-white border-2 border-amber-300 px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-pixel font-bold shadow-lg animate-bounce inline-block">👑 MAXチャージ(6/6)</span>`;
+            } else {
+                badges += `<span class="bg-amber-950/95 text-amber-300 border-2 border-amber-400 px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-pixel font-bold shadow-md transform -rotate-2 inline-block">チャージ(${p.dopaChargeCount}/6)</span>`;
+            }
+        }
+        return badges;
+    };
 }
 
 // Window bindings
