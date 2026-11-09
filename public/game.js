@@ -4905,6 +4905,9 @@ case 'dopa_juggler_skill':
         function renderNewBattleScreen() {
             const container = document.getElementById('screen-container');
             if (!container || !activeNewBattle) return;
+            if (typeof refreshActiveBattleTooltip === 'function') {
+                refreshActiveBattleTooltip();
+            }
 
             const p1 = activeNewBattle.p1;
             const p2 = activeNewBattle.p2;

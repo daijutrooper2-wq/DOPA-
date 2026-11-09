@@ -1480,6 +1480,9 @@ function handleNewBattleContinueChoice(action) {
 function renderNewBattleScreen() {
     const container = document.getElementById('screen-container');
     if (!container || !activeNewBattle) return;
+    if (typeof refreshActiveBattleTooltip === 'function') {
+        refreshActiveBattleTooltip();
+    }
 
     const p1 = activeNewBattle.p1;
     const p2 = activeNewBattle.p2;
@@ -1961,6 +1964,22 @@ function triggerNewBattleShake(targetChar) {
 let battleTooltipTimer = null;
 window._currentTooltipChar = null;
 
+function refreshActiveBattleTooltip() {
+    const tooltip = document.getElementById('battle-char-tooltip');
+    if (tooltip && tooltip.style.display === 'block' && window._currentTooltipChar && activeNewBattle) {
+        let team = 'ally';
+        let idx = activeNewBattle.allies ? activeNewBattle.allies.indexOf(window._currentTooltipChar) : -1;
+        if (idx === -1 && activeNewBattle.enemies) {
+            team = 'enemy';
+            idx = activeNewBattle.enemies.indexOf(window._currentTooltipChar);
+        }
+        if (idx !== -1) {
+            showBattleCharTooltip(team, idx, null);
+        }
+    }
+}
+window.refreshActiveBattleTooltip = refreshActiveBattleTooltip;
+
 function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
     if (typeof newBattleViewMode !== 'undefined' && newBattleViewMode === 'target_select') {
         hideBattleCharTooltip();
@@ -2003,23 +2022,64 @@ function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
     if (!c) return;
 
     const charTitle = c.title || (typeof CHARACTER_DATA !== 'undefined' && CHARACTER_DATA[c.id] && CHARACTER_DATA[c.id].title) || '';
-    const effectiveAtk = Math.max(1, Math.round(c.atk * (c.buffAtk || 1.0)));
-    const effectiveDef = Math.max(0, Math.round(c.def * (c.buffDef || 1.0)));
-    const effectiveCrit = Math.max(0, Math.round(((c.critRate || 0.05) + (c.critRateBonus || 0)) * 100));
-    const effectiveEva = Math.max(0, (c.eva || 10) + (c.iwabaEvaBonus || 0) - (c.evaDebuff || 0));
+
+    // 攻撃力計算
+    const buffAtkMult = c.buffAtk || 1.0;
+    const effectiveAtk = Math.max(1, Math.round(c.atk * buffAtkMult));
+    let atkHtml = `<b class="text-amber-400 font-bold">${effectiveAtk}</b>`;
+    if (buffAtkMult < 0.99) {
+        atkHtml = `<b class="text-red-400 font-bold">${effectiveAtk}</b> <span class="text-[8px] text-red-400 font-sans">↓</span>`;
+    } else if (buffAtkMult > 1.01) {
+        atkHtml = `<b class="text-emerald-400 font-bold">${effectiveAtk}</b> <span class="text-[8px] text-emerald-400 font-sans">↑</span>`;
+    }
+
+    // 防御力計算
+    const buffDefMult = c.buffDef || 1.0;
+    const effectiveDef = Math.max(0, Math.round(c.def * buffDefMult));
+    let defHtml = `<b class="text-blue-400 font-bold">${effectiveDef}</b>`;
+    if (buffDefMult < 0.99) {
+        defHtml = `<b class="text-red-400 font-bold">${effectiveDef}</b> <span class="text-[8px] text-red-400 font-sans">↓</span>`;
+    } else if (buffDefMult > 1.01) {
+        defHtml = `<b class="text-emerald-400 font-bold">${effectiveDef}</b> <span class="text-[8px] text-emerald-400 font-sans">↑</span>`;
+    }
+
+    // 会心率計算
+    const critBonus = c.critRateBonus || 0;
+    const effectiveCrit = Math.max(0, Math.round(((c.critRate || 0.05) + critBonus) * 100));
+    let critHtml = `<b class="text-yellow-400 font-bold">${effectiveCrit}%</b>`;
+    if (critBonus < -0.01) {
+        critHtml = `<b class="text-red-400 font-bold">${effectiveCrit}%</b> <span class="text-[8px] text-red-400 font-sans">↓</span>`;
+    } else if (critBonus > 0.01) {
+        critHtml = `<b class="text-emerald-400 font-bold">${effectiveCrit}%</b> <span class="text-[8px] text-emerald-400 font-sans">↑</span>`;
+    }
+
+    // 回避率計算
+    const evaDebuff = c.evaDebuff || 0;
+    const iwabaEva = c.iwabaEvaBonus || 0;
+    const netEvaChange = iwabaEva - evaDebuff;
+    const effectiveEva = Math.max(0, (c.eva || 10) + netEvaChange);
+    let evaHtml = `<b class="text-sky-400 font-bold">${effectiveEva}%</b>`;
+    if (netEvaChange < 0) {
+        evaHtml = `<b class="text-red-400 font-bold">${effectiveEva}%</b> <span class="text-[8px] text-red-400 font-sans">↓</span>`;
+    } else if (netEvaChange > 0) {
+        evaHtml = `<b class="text-emerald-400 font-bold">${effectiveEva}%</b> <span class="text-[8px] text-emerald-400 font-sans">↑</span>`;
+    }
+
+    const badgesHtml = typeof getStatusBadgesHtml === 'function' ? getStatusBadgesHtml(c, isAlly) : '';
 
     let statsHtml = `
         <div class="font-bold text-amber-300 font-pixel text-xs mb-1 border-b border-amber-600/50 pb-1 flex justify-between items-center gap-2">
             <span>${c.charName}</span>
             <span class="text-[9px] text-slate-400 font-sans">${charTitle}</span>
         </div>
-        <div class="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-slate-200 mb-1.5 font-mono">
+        <div class="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-slate-200 mb-1 font-mono">
             <div>HP: <b class="text-emerald-400">${c.hp}/${c.maxHp}</b></div>
-            <div>攻撃: <b class="text-amber-400">${effectiveAtk}</b></div>
-            <div>防御: <b class="text-blue-400">${effectiveDef}</b></div>
-            <div>会率: <b class="text-yellow-400">${effectiveCrit}%</b></div>
-            <div>回避: <b class="text-sky-400">${effectiveEva}%</b></div>
+            <div>攻撃: ${atkHtml}</div>
+            <div>防御: ${defHtml}</div>
+            <div>会率: ${critHtml}</div>
+            <div>回避: ${evaHtml}</div>
         </div>
+        ${badgesHtml ? `<div class="flex flex-wrap gap-1 my-1 border-t border-slate-800 pt-1">${badgesHtml}</div>` : ''}
         <div class="border-t border-slate-700 pt-1">
             <div class="text-[9px] font-bold text-amber-200 mb-1">✨ 所持スキル一覧</div>
             <div class="space-y-1 tooltip-skill-scroll">
