@@ -3633,7 +3633,7 @@ pasha_dark: {
                         opposingTeamC.forEach(e => {
                             e.hp = Math.max(0, e.hp - 13);
                             if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(e);
-                            this.triggerEffect(this.getCharacterTeam(e) === 'ally' ? 'Player' : 'Enemy', 'damage', '-13');
+                            this.triggerEffect(this.getCharacterTeam(e) === 'ally' ? 'Player' : 'Enemy', 'damage', '-13', e);
                         });
                         this.log(`💖 ${attacker.charName} の「ミツメル」！ 相手チーム全員をじっと見つめて13の固定ダメージを与えた！`, 'text-pink-300 font-bold');
                         break;
