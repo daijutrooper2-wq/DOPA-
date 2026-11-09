@@ -5045,6 +5045,10 @@ pasha_dark: {
                 const isCharged = (isC && (player.courtneyChargeCount || 0) > 0) ||
                                   (isD && (player.dopaChargeCount || 0) > 0 && (player.dopaChargeCount || 0) < 6);
 
+                if (isC && (player.courtneyChargeCount || 0) > 0 && charData.chargedImage) {
+                    return charData.chargedImage;
+                }
+                
                 if (isCharged && charData.chargedImage) {
                     return charData.chargedImage;
                 }
