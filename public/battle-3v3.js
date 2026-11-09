@@ -778,18 +778,21 @@ class Battle3v3Engine {
             return;
         }
 
-        if (skill.type === 'heal' || skill.type === 'heal_cleanse' || skill.type === 'heal_buff' || skill.id === 'courtney_aegu' || skill.type === 'courtney_aegu_skill' || skill.type === 'momo_chie_skill') {
+        if (skill.type === 'heal' || skill.type === 'heal_cleanse' || skill.type === 'heal_buff' || skill.id === 'courtney_aegu' || skill.type === 'courtney_aegu_skill' || skill.type === 'momo_chie_skill' || skill.id === 'momo_chie') {
             const healRate = skill.healRate || 0.35;
             const hAmt = Math.floor(attacker.maxHp * healRate);
             attacker.hp = Math.min(attacker.maxHp, attacker.hp + hAmt);
-            this.log(`💚 ${attacker.charName} は HPを ${hAmt} 回復！`, 'text-emerald-400 font-bold');
+            this.log(`🩷 ${attacker.charName} は「チエを呼ぶ」！ HPを ${hAmt} 回復し、2ターンの間自身の回避率がアップ！`, 'text-pink-300 font-bold');
             this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`);
             audioSystem.playHeal();
             if (skill.id === 'courtney_aegu' || skill.type === 'courtney_aegu_skill') {
                 attacker.tempEvadeNext = true;
                 this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'buff', '完全回避構え');
             }
-            if (skill.type === 'heal_buff' || skill.type === 'momo_chie_skill') {
+            if (skill.type === 'momo_chie_skill' || skill.id === 'momo_chie') {
+                attacker.momoEvaTurns = 2;
+                this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'buff', '回避UP (2T)');
+            } else if (skill.type === 'heal_buff') {
                 attacker.buffDef *= 1.35;
                 attacker.eva = Math.min(60, (attacker.eva || 10) + 15);
                 this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'buff', '回避・防御UP!');
@@ -967,7 +970,8 @@ class Battle3v3Engine {
         }
 
         if (!isStealth) {
-            const effectiveEva = Math.max(0, (defender.eva || 10) + (defender.iwabaEvaBonus || 0) - (defender.evaDebuff || 0));
+            const momoEvaBonus = (defender.momoEvaTurns > 0) ? 20 : 0;
+            const effectiveEva = Math.max(0, (defender.eva || 10) + (defender.iwabaEvaBonus || 0) + momoEvaBonus - (defender.evaDebuff || 0));
             const hitRate = 100 - effectiveEva;
             if (Math.random() * 100 > hitRate) {
                 this.log(`🌀 ${defender.charName} は攻撃を回避した！`, 'text-sky-300');
@@ -1131,6 +1135,12 @@ class Battle3v3Engine {
             if (p.enemyEvaTurns > 0) {
                 p.enemyEvaTurns--;
                 if (p.enemyEvaTurns === 0) p.evaDebuff = 0;
+            }
+            if (p.momoEvaTurns > 0) {
+                p.momoEvaTurns--;
+                if (p.momoEvaTurns === 0) {
+                    this.log(`🩷 ${p.charName} の「チエを呼ぶ」回避アップ効果が終了した。`, 'text-slate-400 text-xs');
+                }
             }
             if (p.digActive) {
                 p.digActive = false;
@@ -1572,8 +1582,8 @@ function renderNewBattleScreen() {
         }
         let skillsHtml = skills.map(s => {
             const cd = p1.cooldowns[s.id] || 0;
-            const isPashaRollLimit = (s.id === 'pasha_roll' && (p1.pashaRollUsedCount || 0) >= 2);
-            const disabled = cd > 0 || isPashaRollLimit;
+            const isDopaObeyLocked = (p1.id === 'dopagaking' && (s.id === 'dopa_obey' || s.id === 'dopa_inheritance') && (p1.dopaChargeCount || 0) < 6);
+            const disabled = cd > 0 || isPashaRollLimit || isDopaObeyLocked;
             return `
                 <button onclick="${disabled ? '' : `executeNewBattleAction('${s.id}')`}" class="pixel-box bg-slate-900 border ${disabled ? 'border-slate-700 opacity-60 cursor-not-allowed' : 'border-emerald-400 hover:border-emerald-300 cursor-pointer'} p-3 text-left shadow flex flex-col justify-between w-full">
                     <div class="flex justify-between items-center w-full mb-1">
@@ -2056,7 +2066,8 @@ function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
     // 回避率計算
     const evaDebuff = c.evaDebuff || 0;
     const iwabaEva = c.iwabaEvaBonus || 0;
-    const netEvaChange = iwabaEva - evaDebuff;
+    const momoEva = (c.momoEvaTurns > 0) ? 20 : 0;
+    const netEvaChange = iwabaEva + momoEva - evaDebuff;
     const effectiveEva = Math.max(0, (c.eva || 10) + netEvaChange);
     let evaHtml = `<b class="text-sky-400 font-bold">${effectiveEva}%</b>`;
     if (netEvaChange < 0) {

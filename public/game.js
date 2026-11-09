@@ -1918,11 +1918,11 @@ static drawDopagaking(p, isCharged) {
                                 <div class="w-full bg-slate-950 p-3.5 rounded border border-amber-800 space-y-2 text-xs font-mono flex-shrink-0">
                                     <div class="text-amber-300 font-bold mb-1.5 border-b border-amber-900 pb-1">📊 ステータス ${!['dopagaking', 'courtney', 'pasha_dark'].includes(c.id) ? '' : '(※カスタマイズ対象外)'}</div>
                                     <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                                        <div class="flex justify-between bg-slate-900 p-1.5 rounded"><span class="text-slate-400">HP:</span><span class="text-emerald-400 font-bold">${c.hp}</span></div>
-                                        <div class="flex justify-between bg-slate-900 p-1.5 rounded"><span class="text-slate-400">攻撃力:</span><span class="text-red-400 font-bold">${c.atk}</span></div>
-                                        <div class="flex justify-between bg-slate-900 p-1.5 rounded"><span class="text-slate-400">防御力:</span><span class="text-blue-400 font-bold">${c.def}</span></div>
-                                        <div class="flex justify-between bg-slate-900 p-1.5 rounded"><span class="text-slate-400">クリ率:</span><span class="text-yellow-400 font-bold">${Math.round(c.critRate * 100)}%</span></div>
-                                        <div class="flex justify-between bg-slate-900 p-1.5 rounded col-span-2 sm:col-span-2"><span class="text-slate-400">回避率:</span><span class="text-purple-400 font-bold">${c.eva}%</span></div>
+                                        <div class="flex justify-between bg-slate-900 p-1.5 rounded"><span class="text-slate-400">HP:</span><span class="text-emerald-400 font-bold">${c.id === 'dopagaking' ? '？' : c.hp}</span></div>
+                                        <div class="flex justify-between bg-slate-900 p-1.5 rounded"><span class="text-slate-400">攻撃力:</span><span class="text-red-400 font-bold">${c.id === 'dopagaking' ? '？' : c.atk}</span></div>
+                                        <div class="flex justify-between bg-slate-900 p-1.5 rounded"><span class="text-slate-400">防御力:</span><span class="text-blue-400 font-bold">${c.id === 'dopagaking' ? '？' : c.def}</span></div>
+                                        <div class="flex justify-between bg-slate-900 p-1.5 rounded"><span class="text-slate-400">クリ率:</span><span class="text-yellow-400 font-bold">${c.id === 'dopagaking' ? '？%' : Math.round(c.critRate * 100) + '%'}</span></div>
+                                        <div class="flex justify-between bg-slate-900 p-1.5 rounded col-span-2 sm:col-span-2"><span class="text-slate-400">回避率:</span><span class="text-purple-400 font-bold">${c.id === 'dopagaking' ? '？%' : c.eva + '%'}</span></div>
                                     </div>
                                 </div>
                     `;
@@ -2034,28 +2034,29 @@ static drawDopagaking(p, isCharged) {
         const CHARACTER_DATA = {
 
 
-dopagaking: {
-    id: 'dopagaking',
-    name: 'ドパガキング',
-    title: 'ドパガキングダムの国王',
-    type: '運命属性 / 完全ランダム型',
-    hp: 200, // ※バトル開始時にランダム上書きされます
-    atk: 18, def: 12, critRate: 0.05, eva: 15,
-    dopaChargeCount: 0,
-    selectedInheritChar: null,
-    maxHpRandom: 200,
-    image: 'dopagaking/dopagaking.webp',
-    allImage: 'dopagaking/dopagakingALL.webp',
-    dieImage: 'dopagaking/dopagakingDIE.webp',
-    chargedImage: 'dopagaking/dopagakingcharge.webp',
-    desc: 'すべてを運に任せる完全ランダム型の国王。アイコンタップで「王位継承」をチャージし、他キャラの力の4倍ダメージを叩き込む！',
-    skills: [
-        { id: 'dopa_juggler', name: 'ジャグラー', type: 'dopa_juggler_skill', power: 1.0, isNormalAttack: false, cooldown: 0, desc: '0～50の完全ランダムダメージを与える通常攻撃！' },
-        { id: 'dopa_majesty', name: '王の威厳', type: 'dopa_majesty_skill', cooldown: 2, desc: '70%で次の攻撃を完全に回避、30%でHPを60回復する！' },
-        { id: 'dopa_godluck', name: '神頼み', type: 'dopa_godluck_skill', cooldown: 10, desc: '95%で自分が10ダメージ、5%で相手に1000ダメージを与える極限のギャンブル！' },
-        { id: 'dopa_inheritance', name: '王位継承', type: 'dopa_inheritance_skill', cooldown: 0, desc: 'アイコン5回タップでチャージ！選ばれたキャラの通常攻撃×4のダメージを与える(次のターン)' }
-    ]
-},
+            dopagaking: {
+                id: 'dopagaking',
+                name: 'ドパガキング',
+                title: 'ドパガキングダムの国王',
+                type: '運属性 / アタッカー・ギャンブル特化',
+                hp: 200, // ※キャラクター選択画面では「？」表示。バトル開始時に 130 〜 250 の間でランダム決定
+                atk: 18, def: 12, critRate: 0.05, eva: 15,
+                dopaChargeCount: 0,
+                selectedInheritChar: null,
+                maxHpRandom: 200,
+                image: 'dopagaking/dopagaking.webp',
+                allImage: 'dopagaking/dopagakingALL.webp',
+                dieImage: 'dopagaking/dopagakingDIE.webp',
+                chargedImage: 'dopagaking/dopagakingcharge.webp',
+                desc: 'すべてを運に任せる完全ランダム型の国王。「王に従え」をチャージ後、ランダムで相手チームキャラから1体が選ばれ、クールダウン数を無視して任意のスキルを1つ選び使用可能。',
+                skills: [
+                    { id: 'dopa_juggler', name: 'ジャグラー', type: 'dopa_juggler_skill', power: 1.0, isNormalAttack: true, cooldown: 0, initialCooldown: 0, targetType: 'single_enemy', desc: '【最初から利用可】敵単体に完全ランダムダメージを与える通常攻撃。（CD: 0）' },
+                    { id: 'dopa_charge', name: 'チャージ', type: 'dopa_charge_skill', cooldown: 0, initialCooldown: 0, targetType: 'self', desc: '【最初から利用可】「王に従え」の解放に必要なチャージを蓄積する。（CD: 0、最大6回蓄積）' },
+                    { id: 'dopa_majesty', name: '王の威厳', type: 'dopa_majesty_skill', cooldown: 2, initialCooldown: 0, targetType: 'self', desc: '【最初から利用可】70%で敵の攻撃を完全回避、30%で自身のHPを回復する補助技。（CD: 2ターン）' },
+                    { id: 'dopa_godluck', name: '神頼み', type: 'dopa_godluck_skill', cooldown: 4, initialCooldown: 0, targetType: 'single_enemy', desc: '【開幕使用可 / 使用後CD: 4T】95%で自傷10ダメージ、5%で敵単体に極大1000ダメージを与える一撃必殺技。' },
+                    { id: 'dopa_obey', name: '王に従え', type: 'dopa_obey_skill', cooldown: 0, initialCooldown: 0, targetType: 'self', desc: '【チャージ6回で解放】相手チームからランダム選ばれたキャラの全スキルをCD無視で1つ選択して発動！' }
+                ]
+            },
 
 
 
@@ -3530,48 +3531,88 @@ pasha_dark: {
                         break;
 
 
-case 'dopa_juggler_skill':
+        case 'dopa_juggler_skill':
             // 0～50の完全ランダムダメージ
             const jugglerDmg = Math.floor(Math.random() * 51);
             defender.hp = Math.max(0, defender.hp - jugglerDmg);
             if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
 
             this.log(`🃏 ドパガキングの「ジャグラー」！ 完全ランダムダメージ ⇒ ${defender.charName} に ${jugglerDmg} のダメージ！`, 'text-purple-300 font-bold');
-            this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'damage', `-${jugglerDmg}`);
+            this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'damage', `-${jugglerDmg}`);
             audioSystem.playHit();
             break;
 
+        case 'dopa_charge_skill':
+            attacker.dopaChargeCount = Math.min(6, (attacker.dopaChargeCount || 0) + 1);
+            if (attacker.dopaChargeCount === 6) {
+                this.log(`👑 ドパガキングは6回目のチャージを完了！「王に従え」が解禁された！`, 'text-amber-300 font-bold font-pixel');
+                this.triggerCutin('👑「王に従え」解禁！', 'チャージ完了！相手のスキルを奪い発動可能！');
+                this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'buff', '「王に従え」解禁！');
+            } else {
+                this.log(`👑 ドパガキングの「チャージ」！ （現在チャージ: ${attacker.dopaChargeCount}/6）`, 'text-amber-300 font-bold');
+                this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'buff', `チャージ+1 (${attacker.dopaChargeCount}/6)`);
+            }
+            audioSystem.playBuff();
+            break;
+
         case 'dopa_majesty_skill':
-            // 70%で次の攻撃を完全に回避、30%でHP60回復
+            // 70%で敵の攻撃を完全回避(1T)、30%でHP60回復
             if (Math.random() < 0.7) {
                 attacker.tempEvadeNext = true;
-                this.log(`👑 ${attacker.charName} の「王の威厳」！ 次の攻撃を完全に回避する構えをとった！`, 'text-amber-300 font-bold');
-                this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'buff', '完全回避構え');
+                this.log(`👑 ${attacker.charName} の「王の威厳」！ 次の敵の攻撃を絶対に回避する構えをとった！`, 'text-amber-300 font-bold');
+                this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'buff', '完全回避構え');
                 audioSystem.playBuff();
             } else {
                 attacker.hp = Math.min(attacker.maxHp, attacker.hp + 60);
-                this.log(`👑 ${attacker.charName} の「王の威厳」！ ライフが 60 回復した！`, 'text-emerald-400 font-bold');
-                this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'heal', '+60');
+                this.log(`👑 ${attacker.charName} の「王の威厳」！ 自身のHPが 60 回復した！`, 'text-emerald-400 font-bold');
+                this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'heal', '+60');
                 audioSystem.playHeal();
             }
             break;
 
         case 'dopa_godluck_skill':
-            // 95%で自分に10ダメージ、5%で相手に1000ダメージ
+            // 95%で自分が50ダメージ、5%で相手に1000ダメージ（HP50%以上ならHP1耐え）
             if (Math.random() < 0.05) {
-                defender.hp = Math.max(0, defender.hp - 1000);
+                const isHp50OrMore = (defender.hp / defender.maxHp) >= 0.5;
+                if (isHp50OrMore) {
+                    const hitDmg = defender.hp - 1;
+                    defender.hp = 1;
+                    this.log(`✨⚡【神頼み 5%的中！！】 ${defender.charName} に ${hitDmg} の超絶ダメージ！！（相手のHPが50%以上だったためHP1で踏みとどまった！）`, 'text-yellow-300 font-black font-pixel text-base');
+                    this.triggerCutin('⚡ 神頼み 5%的中！！', '超絶ダメージ！(HP50%以上耐え)');
+                    this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'damage', `-${hitDmg}`);
+                } else {
+                    defender.hp = 0;
+                    this.log(`✨⚡【神頼み 5%的中！！】 ${defender.charName} に 1000 の必殺ダメージ！！`, 'text-yellow-300 font-black font-pixel text-base');
+                    this.triggerCutin('⚡ 神頼み 5%的中！！', '奇跡の1000ダメージで撃破！');
+                    this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'damage', '-1000');
+                }
                 if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
-
-                this.log(`✨⚡【神頼み 5%的中！！】 ${defender.charName} に 1000 の超絶ダメージ！！`, 'text-yellow-300 font-black font-pixel text-base');
-                this.triggerCutin('⚡ 神頼み 5%的中！！', '奇跡の1000ダメージ炸裂！');
-                this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'damage', '-1000');
                 audioSystem.playSpecial();
             } else {
-                attacker.hp = Math.max(1, attacker.hp - 10);
-
-                this.log(`🎲 ${attacker.charName} のキャラクター「神頼み」… 運が悪く、自分に 10 のダメージを受けた！`, 'text-red-400 font-bold');
-                this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'damage', '-10');
+                attacker.hp = Math.max(0, attacker.hp - 50);
+                this.log(`🎲 ${attacker.charName} の「神頼み」… 運悪く失敗し、自分に 50 のダメージを受けた！`, 'text-red-400 font-bold');
+                this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'damage', '-50');
+                if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(attacker);
                 audioSystem.playHit();
+            }
+            break;
+
+        case 'dopa_obey_skill':
+            const livingEnemies = (this.getCharacterTeam(attacker) === 'ally' ? this.enemies : this.allies).filter(e => e.hp > 0);
+            if (livingEnemies.length === 0) break;
+            const chosenEnemy = livingEnemies[Math.floor(Math.random() * livingEnemies.length)];
+            
+            if (attacker === this.p1 && typeof openDopaObeyModal === 'function') {
+                openDopaObeyModal(attacker, chosenEnemy);
+            } else {
+                // Enemy AI: Pick a random skill from chosen enemy and execute
+                const enemySkills = chosenEnemy.skills || [];
+                if (enemySkills.length > 0) {
+                    const pickedSkill = enemySkills[Math.floor(Math.random() * enemySkills.length)];
+                    this.log(`👑【王に従え】ドパガキングは【${chosenEnemy.charName}】の技「${pickedSkill.name}」を発動！`, 'text-amber-300 font-bold');
+                    this.applySkillEffect(attacker, defender, pickedSkill);
+                }
+                attacker.dopaChargeCount = 0;
             }
             break;
 
@@ -3645,9 +3686,8 @@ case 'dopa_juggler_skill':
                     case 'momo_chie_skill':
                         const hChie = Math.floor(attacker.maxHp * (skill.healRate || 0.35));
                         attacker.hp = Math.min(attacker.maxHp, attacker.hp + hChie);
-                        attacker.eva = (attacker.eva || 10) + 20;
                         attacker.momoEvaTurns = 2;
-                        this.log(`🩷 ${attacker.charName} は「チエを呼ぶ」！ HPが ${hChie} 回復し、2ターンの間回避率が大幅アップ！`, 'text-pink-300 font-bold');
+                        this.log(`🩷 ${attacker.charName} は「チエを呼ぶ」！ HPが ${hChie} 回復し、2ターンの間自身の回避率がアップ！`, 'text-pink-300 font-bold');
                         this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'heal', `+${hChie}`);
                         audioSystem.playHeal();
                         break;
@@ -3828,7 +3868,8 @@ case 'dopa_juggler_skill':
                 }
 
                 if (!isStealth) {
-                    const effectiveEva = Math.max(0, (defender.eva || 10) + (defender.iwabaEvaBonus || 0) - (defender.evaDebuff || 0));
+                    const momoEvaBonus = (defender.momoEvaTurns > 0) ? 20 : 0;
+                    const effectiveEva = Math.max(0, (defender.eva || 10) + (defender.iwabaEvaBonus || 0) + momoEvaBonus - (defender.evaDebuff || 0));
                     const hitRate = 100 - effectiveEva;
                     if (Math.random() * 100 > hitRate) {
                         this.log(`🌀 ${defender.charName} は攻撃を回避した！`, 'text-sky-300');
@@ -4098,7 +4139,9 @@ case 'dopa_juggler_skill':
                     }
                     if (p.momoEvaTurns > 0) {
                         p.momoEvaTurns--;
-                        if (p.momoEvaTurns === 0) p.eva -= 20;
+                        if (p.momoEvaTurns === 0) {
+                            this.log(`🩷 ${p.charName} の「チエを呼ぶ」回避アップ効果が終了した。`, 'text-slate-400 text-xs');
+                        }
                     }
                     if (p.digActive) {
                         p.digActive = false;
@@ -4650,11 +4693,19 @@ case 'dopa_juggler_skill':
                 const isSelected = selected === c.id;
 
                 let statDisplay = '';
-                if (sortOrder === 'hp') statDisplay = `<span class="text-[9px] sm:text-[10px] text-emerald-400 font-bold">HP: ${c.hp}</span>`;
-                else if (sortOrder === 'atk') statDisplay = `<span class="text-[9px] sm:text-[10px] text-amber-400 font-bold">攻: ${c.atk}</span>`;
-                else if (sortOrder === 'def') statDisplay = `<span class="text-[9px] sm:text-[10px] text-cyan-400 font-bold">防: ${c.def}</span>`;
-                else if (sortOrder === 'critRate') statDisplay = `<span class="text-[9px] sm:text-[10px] text-purple-400 font-bold">クリ: ${Math.round(c.critRate * 100)}%</span>`;
-                else if (sortOrder === 'eva') statDisplay = `<span class="text-[9px] sm:text-[10px] text-blue-400 font-bold">避: ${c.eva}%</span>`;
+                if (c.id === 'dopagaking') {
+                    if (sortOrder === 'hp') statDisplay = `<span class="text-[9px] sm:text-[10px] text-emerald-400 font-bold">HP: ？</span>`;
+                    else if (sortOrder === 'atk') statDisplay = `<span class="text-[9px] sm:text-[10px] text-amber-400 font-bold">攻: ？</span>`;
+                    else if (sortOrder === 'def') statDisplay = `<span class="text-[9px] sm:text-[10px] text-cyan-400 font-bold">防: ？</span>`;
+                    else if (sortOrder === 'critRate') statDisplay = `<span class="text-[9px] sm:text-[10px] text-purple-400 font-bold">クリ: ？%</span>`;
+                    else if (sortOrder === 'eva') statDisplay = `<span class="text-[9px] sm:text-[10px] text-blue-400 font-bold">避: ？%</span>`;
+                } else {
+                    if (sortOrder === 'hp') statDisplay = `<span class="text-[9px] sm:text-[10px] text-emerald-400 font-bold">HP: ${c.hp}</span>`;
+                    else if (sortOrder === 'atk') statDisplay = `<span class="text-[9px] sm:text-[10px] text-amber-400 font-bold">攻: ${c.atk}</span>`;
+                    else if (sortOrder === 'def') statDisplay = `<span class="text-[9px] sm:text-[10px] text-cyan-400 font-bold">防: ${c.def}</span>`;
+                    else if (sortOrder === 'critRate') statDisplay = `<span class="text-[9px] sm:text-[10px] text-purple-400 font-bold">クリ: ${Math.round(c.critRate * 100)}%</span>`;
+                    else if (sortOrder === 'eva') statDisplay = `<span class="text-[9px] sm:text-[10px] text-blue-400 font-bold">避: ${c.eva}%</span>`;
+                }
 
                 html += `
                     <div onclick="openCharDetail('${c.id}', 'new_select', '${sortOrder}', '${sortDir}', ${onlyOwned})" 
@@ -5039,7 +5090,7 @@ case 'dopa_juggler_skill':
                     const cd = p1.cooldowns[s.id] || 0;
                     const isCd = cd > 0;
                     const isPashaRollLimit = (s.id === 'pasha_roll' && (p1.pashaRollUsedCount || 0) >= 2);
-                    const disabled = isCd || isPashaRollLimit || (p1.id === 'dopagaking' && s.id === 'dopa_inheritance' && (p1.dopaChargeCount || 0) < 5);
+                    const disabled = isCd || isPashaRollLimit || (p1.id === 'dopagaking' && (s.id === 'dopa_obey' || s.id === 'dopa_inheritance') && (p1.dopaChargeCount || 0) < 6);
                     return `
                         <button onclick="${disabled ? '' : `executeNewBattleAction('${s.id}')`}" class="pixel-box bg-slate-900 border ${disabled ? 'border-slate-700 opacity-60 cursor-not-allowed' : 'border-emerald-400 hover:border-emerald-300 cursor-pointer'} p-3 text-left shadow flex flex-col justify-between w-full transition-all">
                             <div class="flex justify-between items-center w-full mb-1">
@@ -5372,10 +5423,13 @@ case 'dopa_juggler_skill':
                 badges += `<span class="bg-yellow-950/95 text-yellow-300 border border-yellow-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md inline-block">特効[会心+10%]</span>`;
             }
             if (p.dopaChargeCount && p.dopaChargeCount > 0) {
-                badges += `<span class="bg-amber-950/95 text-amber-300 border-2 border-amber-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform -rotate-2 inline-block">チャージ(${p.dopaChargeCount}/5)</span>`;
+                badges += `<span class="bg-amber-950/95 text-amber-300 border-2 border-amber-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform -rotate-2 inline-block">チャージ(${p.dopaChargeCount}/6)</span>`;
             }
             if (p.iwabaBathTurns && p.iwabaBathTurns > 0) {
                 badges += `<span class="bg-amber-950/95 text-amber-300 border border-amber-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md inline-block">岩盤浴[${p.iwabaBathTurns}T]</span>`;
+            }
+            if (p.momoEvaTurns && p.momoEvaTurns > 0) {
+                badges += `<span class="bg-emerald-950/95 text-emerald-300 border-2 border-emerald-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform -rotate-2 inline-block">回避UP [${p.momoEvaTurns}T]</span>`;
             }
             if (p.enemyEvaTurns && p.enemyEvaTurns > 0 && p.evaDebuff && p.evaDebuff > 0) {
                 badges += `<span class="bg-red-950/95 text-red-300 border-2 border-red-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-2 inline-block">回避DOWN [${p.enemyEvaTurns}T]</span>`;
@@ -6413,6 +6467,63 @@ case 'dopa_juggler_skill':
                 toggleBattleCharTooltip(charObjOrId, true, event || window.event);
             }
         }
+
+        let _activeDopaObeyAttacker = null;
+        let _activeDopaObeyTarget = null;
+
+        function openDopaObeyModal(attacker, targetEnemy) {
+            if (!targetEnemy || !targetEnemy.skills) return;
+            _activeDopaObeyAttacker = attacker;
+            _activeDopaObeyTarget = targetEnemy;
+
+            let modal = document.getElementById('dopa-obey-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'dopa-obey-modal';
+                document.body.appendChild(modal);
+            }
+
+            let skillButtonsHtml = targetEnemy.skills.map(s => `
+                <button onclick="executeDopaObeySkill('${s.id}')" class="pixel-box bg-slate-900 border border-amber-400 hover:border-amber-300 p-3 text-left shadow flex flex-col justify-between w-full transition-all cursor-pointer">
+                    <div class="flex justify-between items-center w-full mb-1">
+                        <span class="font-pixel text-xs sm:text-sm text-amber-300 font-bold flex items-center gap-2">
+                            <span>👑</span>
+                            <span>${s.name}</span>
+                        </span>
+                    </div>
+                    <div class="text-[11px] sm:text-xs text-slate-200 font-mono leading-relaxed">${s.desc}</div>
+                </button>
+            `).join('');
+
+            modal.className = "fixed inset-0 bg-black/85 z-[100] flex items-center justify-center p-4 animate-fadeIn";
+            modal.innerHTML = `
+                <div class="pixel-box bg-slate-900 border-2 border-amber-400 max-w-md w-full p-4 text-center relative shadow-2xl flex flex-col max-h-[85vh]">
+                    <div class="text-amber-400 font-pixel text-sm sm:text-base font-bold mb-1">👑【王に従え】発動！</div>
+                    <div class="text-xs text-slate-300 font-mono mb-3">相手の【<b class="text-amber-300">${targetEnemy.charName}</b>】の全スキルから1つ選択して発動！（CD無視）</div>
+                    <div class="space-y-2 overflow-y-auto flex-1 pr-1">
+                        ${skillButtonsHtml}
+                    </div>
+                </div>
+            `;
+            modal.style.display = 'flex';
+        }
+
+        function executeDopaObeySkill(skillId) {
+            const modal = document.getElementById('dopa-obey-modal');
+            if (modal) modal.style.display = 'none';
+            if (activeNewBattle && _activeDopaObeyAttacker && _activeDopaObeyTarget) {
+                const skill = _activeDopaObeyTarget.skills.find(s => s.id === skillId) || { id: skillId, name: skillId, type: 'attack', power: 1.0 };
+                activeNewBattle.log(`👑【王に従え】ドパガキングは【${_activeDopaObeyTarget.charName}】の技「${skill.name}」を発動！`, 'text-amber-300 font-bold font-pixel');
+                activeNewBattle.applySkillEffect(_activeDopaObeyAttacker, _activeDopaObeyTarget, skill);
+                _activeDopaObeyAttacker.dopaChargeCount = 0;
+                _activeDopaObeyAttacker = null;
+                _activeDopaObeyTarget = null;
+                if (typeof renderNewBattleScreen === 'function') renderNewBattleScreen();
+            }
+        }
+
+        window.openDopaObeyModal = openDopaObeyModal;
+        window.executeDopaObeySkill = executeDopaObeySkill;
 
         // HTML の onclick 属性から参照される関数をグローバル公開
         window.audioSystem = audioSystem;
