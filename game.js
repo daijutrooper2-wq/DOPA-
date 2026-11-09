@@ -5169,7 +5169,9 @@ case 'dopa_juggler_skill':
                                      const isLeader = origIdx === 0;
                                      const isTargetSelecting = (newBattleViewMode === 'target_select');
                                      const isSelectable = isTargetSelecting && newBattleTargetSelectType === 'single_ally' && c.hp > 0;
-                                     const clickableAttr = isSelectable ? `onclick="selectNewBattleTarget(${origIdx}, true)" style="cursor: pointer;"` : '';
+                                     const cardClickAttr = isSelectable 
+                                         ? `onclick="selectNewBattleTarget(${origIdx}, true)" style="cursor: pointer;"` 
+                                         : `onclick="if(typeof toggleBattleCharTooltip === 'function') toggleBattleCharTooltip('ally', ${origIdx}, event)" style="cursor: pointer;"`;
                                      const isCurrentActor = currentActor === c;
 
                                      let posClasses = 'flex flex-col items-center justify-end relative transition-all duration-300 ';
@@ -5179,12 +5181,12 @@ case 'dopa_juggler_skill':
                                           posClasses += 'w-[30%] h-[72%] z-25 opacity-95 -translate-y-6';
                                       }
 
-                                     const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : '';
+                                     const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : 'hover:scale-105 hover:brightness-110';
                                      const deadStyle = c.hp <= 0 ? 'opacity-40 grayscale' : '';
                                      const hpBarPosClass = 'absolute -top-6 left-1/2 -translate-x-1/2 w-[95%] min-w-[65px] z-40 flex flex-col items-center bg-black/85 backdrop-blur-md px-1 py-0.5 rounded border border-white/20 shadow-lg';
 
                                      return `
-                                         <div id="ally-char-${origIdx}" ${clickableAttr} data-char-team="ally" data-char-idx="${origIdx}" class="${posClasses} ${interactiveStyle} ${deadStyle}">
+                                         <div id="ally-char-${origIdx}" ${cardClickAttr} data-char-team="ally" data-char-idx="${origIdx}" class="${posClasses} ${interactiveStyle} ${deadStyle}" title="タップして詳細を表示">
                                             ${isCurrentActor ? '<div class="absolute -top-12 left-1/2 -translate-x-1/2 text-amber-400 font-bold text-sm animate-arrow-float z-50 drop-shadow-md">▼</div>' : ''}
                                             
                                              <!-- 頭上のステータスUI -->
@@ -5200,7 +5202,7 @@ case 'dopa_juggler_skill':
 
                                             <!-- 全身スプライト -->
                                             <div id="ally-shake-${origIdx}" class="w-full flex-1 flex items-center justify-center relative drop-shadow-[0_8px_8px_rgba(0,0,0,0.8)] ${c.isShaking ? 'char-shake' : ''}">
-                                               <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain">
+                                               <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none">
                                                ${isLeader ? '<div class="absolute bottom-0 right-0 bg-emerald-600 text-white px-1 py-0.5 rounded text-[7px] font-pixel shadow">LEADER</div>' : ''}
                                                <div class="absolute bottom-1 left-1 z-30 flex flex-col gap-0.5 items-start pointer-events-none">
                                                    ${getStatusBadgesHtml(c, true)}
@@ -5235,7 +5237,9 @@ case 'dopa_juggler_skill':
                                      const isLeader = origIdx === 0;
                                      const isTargetSelecting = (newBattleViewMode === 'target_select');
                                      const isSelectable = isTargetSelecting && (newBattleTargetSelectType === 'single_enemy' || newBattleTargetSelectSkillId === 'asaiomizu_copied') && c.hp > 0;
-                                     const clickableAttr = isSelectable ? `onclick="selectNewBattleTarget(${origIdx}, false)" style="cursor: pointer;"` : '';
+                                     const cardClickAttr = isSelectable 
+                                         ? `onclick="selectNewBattleTarget(${origIdx}, false)" style="cursor: pointer;"` 
+                                         : `onclick="if(typeof toggleBattleCharTooltip === 'function') toggleBattleCharTooltip('enemy', ${origIdx}, event)" style="cursor: pointer;"`;
                                      const isCurrentActor = currentActor === c;
                                      const flipStyle = 'transform: scaleX(-1);';
 
@@ -5246,12 +5250,12 @@ case 'dopa_juggler_skill':
                                           posClasses += 'w-[30%] h-[72%] z-25 opacity-95 -translate-y-6';
                                       }
 
-                                     const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : '';
+                                     const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : 'hover:scale-105 hover:brightness-110';
                                      const deadStyle = c.hp <= 0 ? 'opacity-40 grayscale' : '';
                                      const hpBarPosClass = 'absolute -top-6 left-1/2 -translate-x-1/2 w-[95%] min-w-[65px] z-40 flex flex-col items-center bg-black/85 backdrop-blur-md px-1 py-0.5 rounded border border-white/20 shadow-lg';
 
                                      return `
-                                         <div id="enemy-char-${origIdx}" ${clickableAttr} data-char-team="enemy" data-char-idx="${origIdx}" class="${posClasses} ${interactiveStyle} ${deadStyle}">
+                                         <div id="enemy-char-${origIdx}" ${cardClickAttr} data-char-team="enemy" data-char-idx="${origIdx}" class="${posClasses} ${interactiveStyle} ${deadStyle}" title="タップして詳細を表示">
                                            ${isCurrentActor ? '<div class="absolute -top-12 left-1/2 -translate-x-1/2 text-amber-400 font-bold text-sm animate-arrow-float z-50 drop-shadow-md">▼</div>' : ''}
                                            
                                              <!-- 頭上のステータスUI -->
@@ -6401,9 +6405,10 @@ case 'dopa_juggler_skill':
 
             area.innerHTML = statsHtml + matchupHtml + analysisHtml;
         }
-        function openInBattleCharDetail() {
-            const existingModal = document.getElementById('in-battle-char-detail-modal');
-            if (existingModal) existingModal.remove();
+        function openInBattleCharDetail(charObjOrId, event) {
+            if (typeof toggleBattleCharTooltip === 'function') {
+                toggleBattleCharTooltip(charObjOrId, true, event || window.event);
+            }
         }
 
         // HTML の onclick 属性から参照される関数をグローバル公開

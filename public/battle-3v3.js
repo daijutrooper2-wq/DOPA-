@@ -1664,20 +1664,22 @@ function renderNewBattleScreen() {
                             if (!c) return '';
                             const pct = Math.max(0, Math.min(100, Math.round((c.hp / c.maxHp) * 100)));
                             const img = getCharImg(c, true);
-                            const isSelectable = newBattleViewMode === 'target_select' && newBattleTargetSelectType === 'single_ally' && c.hp > 0;
-                            const clickableAttr = isSelectable ? `onclick="selectNewBattleTarget(${origIdx}, true)" style="cursor: pointer;"` : '';
+                            const cardClickAttr = isSelectable 
+                                ? `onclick="selectNewBattleTarget(${origIdx}, true)" style="cursor: pointer;"` 
+                                : `onclick="if(typeof toggleBattleCharTooltip === 'function') toggleBattleCharTooltip('ally', ${origIdx}, event)" style="cursor: pointer;"`;
                             let posClasses = 'flex flex-col items-center justify-end relative transition-all duration-300 ';
                             if (posType === 'center') {
                                 posClasses += 'w-[36%] h-[82%] z-30 scale-105 translate-y-3';
                             } else {
                                 posClasses += 'w-[30%] h-[72%] z-25 opacity-95 -translate-y-6';
                             }
-                            const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : '';
+                            const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : 'hover:scale-105 hover:brightness-110';
                             const deadStyle = c.hp <= 0 ? 'opacity-40 grayscale' : '';
                             return `
-                                <div id="new-ally-char-${origIdx}" ${clickableAttr} 
+                                <div id="new-ally-char-${origIdx}" ${cardClickAttr} 
                                      data-char-team="ally" data-char-idx="${origIdx}"
-                                     class="${posClasses} ${interactiveStyle} ${deadStyle}">
+                                     class="${posClasses} ${interactiveStyle} ${deadStyle}"
+                                     title="タップして詳細を表示">
                                     <div class="absolute -top-5 left-1/2 -translate-x-1/2 w-[95%] min-w-[65px] z-40 bg-black/85 px-1 py-0.5 rounded border border-white/20 text-[8px] text-emerald-300 flex flex-col items-center">
                                         <div class="flex justify-between items-center w-full">
                                             <span class="truncate">${c.charName}</span>
@@ -1686,7 +1688,7 @@ function renderNewBattleScreen() {
                                         <div class="w-full bg-slate-900 h-1 rounded overflow-hidden mt-0.5"><div class="bg-emerald-400 h-full" style="width: ${pct}%;"></div></div>
                                     </div>
                                      <div id="new-ally-img-${origIdx}" class="w-full flex-1 flex items-center justify-center relative ${c.isShaking ? 'char-shake' : ''}">
-                                         <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain" onerror="const fb='${charData.image || 'asaiomizu/asaiomizu.webp'}'; if(this.src!==fb) this.src=fb;">
+                                         <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none" onerror="const fb='${charData.image || 'asaiomizu/asaiomizu.webp'}'; if(this.src!==fb) this.src=fb;">
                                          <div class="absolute bottom-0 left-0 z-30 flex flex-col gap-0.5 items-start pointer-events-none">
                                              ${typeof getStatusBadgesHtml === 'function' ? getStatusBadgesHtml(c, true) : ''}
                                          </div>
@@ -1714,19 +1716,22 @@ function renderNewBattleScreen() {
                             const img = getCharImg(c, false);
                             const charData = CHARACTER_DATA[c.id] || {};
                             const isSelectable = newBattleViewMode === 'target_select' && (newBattleTargetSelectType === 'single_enemy' || newBattleTargetSelectSkillId === 'pasha_flash' || newBattleTargetSelectSkillId === 'asaiomizu_copied') && c.hp > 0;
-                            const clickableAttr = isSelectable ? `onclick="selectNewBattleTarget(${origIdx}, false)" style="cursor: pointer;"` : '';
+                            const cardClickAttr = isSelectable 
+                                ? `onclick="selectNewBattleTarget(${origIdx}, false)" style="cursor: pointer;"` 
+                                : `onclick="if(typeof toggleBattleCharTooltip === 'function') toggleBattleCharTooltip('enemy', ${origIdx}, event)" style="cursor: pointer;"`;
                             let posClasses = 'flex flex-col items-center justify-end relative transition-all duration-300 ';
                             if (posType === 'center') {
                                 posClasses += 'w-[36%] h-[82%] z-30 scale-105 translate-y-3';
                             } else {
                                 posClasses += 'w-[30%] h-[72%] z-25 opacity-95 -translate-y-6';
                             }
-                            const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : '';
+                            const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : 'hover:scale-105 hover:brightness-110';
                             const deadStyle = c.hp <= 0 ? 'opacity-40 grayscale' : '';
                             return `
-                                <div id="new-enemy-char-${origIdx}" ${clickableAttr} 
+                                <div id="new-enemy-char-${origIdx}" ${cardClickAttr} 
                                      data-char-team="enemy" data-char-idx="${origIdx}"
-                                     class="${posClasses} ${interactiveStyle} ${deadStyle}">
+                                     class="${posClasses} ${interactiveStyle} ${deadStyle}"
+                                     title="タップして詳細を表示">
                                     <div class="absolute -top-5 left-1/2 -translate-x-1/2 w-[95%] min-w-[65px] z-40 bg-black/85 px-1 py-0.5 rounded border border-white/20 text-[8px] text-red-300 flex flex-col items-center">
                                         <div class="flex justify-between items-center w-full">
                                             <span class="truncate">${c.charName}</span>
@@ -1954,6 +1959,7 @@ function triggerNewBattleShake(targetChar) {
 }
 
 let battleTooltipTimer = null;
+window._currentTooltipChar = null;
 
 function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
     if (typeof newBattleViewMode !== 'undefined' && newBattleViewMode === 'target_select') {
@@ -1996,24 +2002,30 @@ function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
     }
     if (!c) return;
 
+    const charTitle = c.title || (typeof CHARACTER_DATA !== 'undefined' && CHARACTER_DATA[c.id] && CHARACTER_DATA[c.id].title) || '';
+    const effectiveAtk = Math.max(1, Math.round(c.atk * (c.buffAtk || 1.0)));
+    const effectiveDef = Math.max(0, Math.round(c.def * (c.buffDef || 1.0)));
+    const effectiveCrit = Math.max(0, Math.round(((c.critRate || 0.05) + (c.critRateBonus || 0)) * 100));
+    const effectiveEva = Math.max(0, (c.eva || 10) + (c.iwabaEvaBonus || 0) - (c.evaDebuff || 0));
+
     let statsHtml = `
-        <div class="font-bold text-amber-300 font-pixel text-xs mb-1 border-b border-amber-600/50 pb-1 flex justify-between items-center">
+        <div class="font-bold text-amber-300 font-pixel text-xs mb-1 border-b border-amber-600/50 pb-1 flex justify-between items-center gap-2">
             <span>${c.charName}</span>
-            <span class="text-[9px] text-slate-400">${c.title || ''}</span>
+            <span class="text-[9px] text-slate-400 font-sans">${charTitle}</span>
         </div>
         <div class="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-slate-200 mb-1.5 font-mono">
             <div>HP: <b class="text-emerald-400">${c.hp}/${c.maxHp}</b></div>
-            <div>攻撃: <b class="text-amber-400">${c.atk}</b></div>
-            <div>防御: <b class="text-blue-400">${c.def}</b></div>
-            <div>会率: <b class="text-yellow-400">${Math.round((c.critRate || 0.05) * 100)}%</b></div>
-            <div>回避: <b class="text-sky-400">${c.eva || 10}%</b></div>
+            <div>攻撃: <b class="text-amber-400">${effectiveAtk}</b></div>
+            <div>防御: <b class="text-blue-400">${effectiveDef}</b></div>
+            <div>会率: <b class="text-yellow-400">${effectiveCrit}%</b></div>
+            <div>回避: <b class="text-sky-400">${effectiveEva}%</b></div>
         </div>
         <div class="border-t border-slate-700 pt-1">
             <div class="text-[9px] font-bold text-amber-200 mb-1">✨ 所持スキル一覧</div>
             <div class="space-y-1 tooltip-skill-scroll">
     `;
 
-    c.skills.forEach(s => {
+    (c.skills || []).forEach(s => {
         let cdText = '';
         if (isAlly) {
             const cd = c.cooldowns && c.cooldowns[s.id] ? c.cooldowns[s.id] : 0;
@@ -2036,21 +2048,47 @@ function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
     tooltip.classList.remove('hidden');
     tooltip.style.display = 'block';
 
-    const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientX : window.innerWidth / 2));
-    const clientY = event.clientY || (event.touches && event.touches[0] ? event.touches[0].clientY : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientY : window.innerHeight / 2));
+    const clientX = event && (event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientX : null)));
+    const clientY = event && (event.clientY || (event.touches && event.touches[0] ? event.touches[0].clientY : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientY : null)));
 
-    let left = clientX + 15;
-    let top = clientY - 40;
+    let left = (clientX !== null && clientX !== undefined) ? clientX + 15 : window.innerWidth / 2 - 140;
+    let top = (clientY !== null && clientY !== undefined) ? clientY - 40 : window.innerHeight / 2 - 100;
+
     if (left + 260 > window.innerWidth) {
-        left = clientX - 275;
+        left = Math.max(10, (clientX || window.innerWidth / 2) - 275);
     }
-    if (top + 200 > window.innerHeight) {
-        top = window.innerHeight - 210;
+    if (top + 220 > window.innerHeight) {
+        top = Math.max(10, window.innerHeight - 230);
     }
     if (top < 10) top = 10;
 
     tooltip.style.left = `${Math.max(10, left)}px`;
     tooltip.style.top = `${Math.max(10, top)}px`;
+}
+
+function toggleBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
+    if (event) {
+        if (typeof event.stopPropagation === 'function') event.stopPropagation();
+    }
+    let targetChar = null;
+    let isAlly = true;
+
+    if (typeof teamOrChar === 'string' && activeNewBattle) {
+        isAlly = (teamOrChar === 'ally');
+        targetChar = isAlly ? (activeNewBattle.allies && activeNewBattle.allies[posIdxOrIsAlly]) : (activeNewBattle.enemies && activeNewBattle.enemies[posIdxOrIsAlly]);
+    } else {
+        targetChar = teamOrChar;
+        isAlly = posIdxOrIsAlly;
+    }
+
+    const tooltip = document.getElementById('battle-char-tooltip');
+    if (tooltip && tooltip.style.display === 'block' && window._currentTooltipChar === targetChar) {
+        hideBattleCharTooltip();
+        window._currentTooltipChar = null;
+    } else {
+        window._currentTooltipChar = targetChar;
+        showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event);
+    }
 }
 
 function hideBattleCharTooltip() {
@@ -2063,6 +2101,7 @@ function hideBattleCharTooltip() {
         tooltip.classList.add('hidden');
         tooltip.style.display = 'none';
     }
+    window._currentTooltipChar = null;
 }
 
 function triggerCameraFlashGlobalEffect() {
@@ -2075,6 +2114,7 @@ function triggerCameraFlashGlobalEffect() {
 window.triggerCameraFlashGlobalEffect = triggerCameraFlashGlobalEffect;
 
 window.showBattleCharTooltip = showBattleCharTooltip;
+window.toggleBattleCharTooltip = toggleBattleCharTooltip;
 window.hideBattleCharTooltip = hideBattleCharTooltip;
 
 if (typeof window._battleTooltipInitialized === 'undefined') {
@@ -2105,6 +2145,14 @@ if (typeof window._battleTooltipInitialized === 'undefined') {
         }
     });
 
+    document.addEventListener('click', (e) => {
+        const charCard = e.target.closest('[data-char-team]');
+        const tooltip = document.getElementById('battle-char-tooltip');
+        if (!charCard && (!tooltip || !tooltip.contains(e.target))) {
+            hideBattleCharTooltip();
+        }
+    });
+
     document.addEventListener('touchstart', (e) => {
         if (!activeNewBattle || activeNewBattle.battleEnded) return;
         if (typeof newBattleViewMode !== 'undefined' && newBattleViewMode === 'target_select') return;
@@ -2119,14 +2167,14 @@ if (typeof window._battleTooltipInitialized === 'undefined') {
                 showBattleCharTooltip(c, team === 'ally', e);
                 battleTooltipTimer = setTimeout(() => {
                     hideBattleCharTooltip();
-                }, 2500);
+                }, 3000);
             }
         } else if (tooltip && tooltip.contains(e.target)) {
             if (battleTooltipTimer) {
                 clearTimeout(battleTooltipTimer);
                 battleTooltipTimer = setTimeout(() => {
                     hideBattleCharTooltip();
-                }, 2500);
+                }, 3000);
             }
         } else {
             hideBattleCharTooltip();
