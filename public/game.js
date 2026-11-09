@@ -2063,21 +2063,22 @@ static drawDopagaking(p, isCharged) {
 
             courtney: {
                 id: 'courtney',
-                name: 'コートニー',
+                name: 'SPコートニー',
                 title: 'メロメロ海外ガール',
-                type: '恋属性 / 溜め・爆発型',
+                type: '恋属性 / タンク・一発特化',
                 hp: 190, atk: 18, def: 15, critRate: 0.04, eva: 18,
                 courtneyChargeCount: 0,
                 image: 'courtney/ALT.webp',
                 allImage: 'courtney/ALT11.webp',
                 dieImage: 'courtney/ALT3.webp',
                 chargedImage: 'courtney/ALTchange2.webp',
-                desc: '相手をメロメロにして戦う海外ガール。王国初となる「溜め技」を駆使し、最大8回までチャージして一撃の爆発力を高める！',
+                desc: '相手をメロメロにして戦う海外ガール。「溜め技」を駆使し、最大8回までチャージして一撃の爆発力を高める。',
                 skills: [
-                    { id: 'courtney_attack', name: 'ミツメル', type: 'attack', power: 1.0, isNormalAttack: true, cooldown: 0, desc: '相手をじっと見つめて攻撃する通常攻撃。' },
-                    { id: 'courtney_yoseru', name: 'ヨセル', type: 'courtney_yoseru_skill', power: 1.1, isNormalAttack: false, cooldown: 2, desc: '少量のダメージを与えつつ、1ターンの間相手の防御力を0にするデバフスキル！' },
-                    { id: 'courtney_aegu', name: 'アエグ', type: 'courtney_aegu_skill', healRate: 0.45, cooldown: 3, desc: '次の相手の攻撃を必ず回避し、自身のライフを45パーセント回復する！' },
-                    { id: 'courtney_feel', name: 'FEEL SO HOT ///', type: 'courtney_charge_release', cooldown: 0, desc: '（アイコンタップでチャージ）最大8回までチャージ可能、最大110ダメージ！' }
+                    { id: 'courtney_attack', name: 'ミツメル', type: 'courtney_attack_skill', power: 1.0, isNormalAttack: true, cooldown: 0, targetType: 'all_enemies', desc: '【CD: 0 / 全体攻撃】相手チーム全員をじっと見つめて攻撃する（固定ダメージ13）。' },
+                    { id: 'courtney_charge', name: 'チャージ', type: 'courtney_charge_only', cooldown: 0, initialCooldown: 0, targetType: 'self', desc: '【CD: 0 / 特殊】「FEEL SO HOT ///」のチャージを行う（最大8回）。使用すると出番が終了する。' },
+                    { id: 'courtney_yoseru', name: 'ヨセル', type: 'courtney_yoseru_skill', power: 0.3, isNormalAttack: false, cooldown: 1, targetType: 'single_enemy', desc: '【CD: 1T / デバフ攻撃】少量のダメージ（攻撃力の30%）を与えつつ、1ターンの間相手の防御力を0にする！' },
+                    { id: 'courtney_aegu', name: 'アエグ', type: 'courtney_aegu_skill', healRate: 0.45, cooldown: 3, targetType: 'self', desc: '【CD: 3T / 回復・防御】最大HPの45%（85.5）を回復し、次の相手の攻撃を絶対回避する！' },
+                    { id: 'courtney_feel', name: 'FEEL SO HOT ///', type: 'courtney_charge_release', cooldown: 0, targetType: 'single_enemy', desc: '【CD: 0 / 条件付き】チャージ1回以上で選択可能。最大8チャージで150大ダメージ！' }
                 ]
             },
              ndaihyo: {
@@ -3625,25 +3626,45 @@ pasha_dark: {
             break;
 
 
-                    case 'courtney_charge_release':
+                    case 'courtney_attack_skill':
+                    case 'courtney_attack': {
+                        const opposingTeamC = (this.getCharacterTeam(attacker) === 'ally' ? this.enemies : this.allies).filter(e => e.hp > 0);
+                        audioSystem.playHit();
+                        opposingTeamC.forEach(e => {
+                            e.hp = Math.max(0, e.hp - 13);
+                            if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(e);
+                            this.triggerEffect(this.getCharacterTeam(e) === 'ally' ? 'Player' : 'Enemy', 'damage', '-13');
+                        });
+                        this.log(`💖 ${attacker.charName} の「ミツメル」！ 相手チーム全員をじっと見つめて13の固定ダメージを与えた！`, 'text-pink-300 font-bold');
+                        break;
+                    }
+                    case 'courtney_charge_release': {
                         const charges = attacker.courtneyChargeCount || 0;
-                        let releaseDmg = 12; // 一度もためずに解放すると弱い攻撃
-                        if (charges >= 7) {
-                            releaseDmg = 110; // 7回溜めると最大110ダメージ
-                        } else if (charges > 0) {
-                            releaseDmg = 15 + (charges * 13);
+                        if (charges < 1) {
+                            this.log(`💖 チャージが1回以上必要です！`, 'text-pink-300');
+                            break;
                         }
+                        let releaseDmg = 18;
+                        if (charges >= 8) releaseDmg = 150;
+                        else if (charges === 7) releaseDmg = 130;
+                        else if (charges === 6) releaseDmg = 110;
+                        else if (charges === 5) releaseDmg = 90;
+                        else if (charges === 4) releaseDmg = 70;
+                        else if (charges === 3) releaseDmg = 50;
+                        else if (charges === 2) releaseDmg = 32;
+                        else releaseDmg = 18;
 
                         audioSystem.playSpecial();
-                        this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'damage', `🔥 ${releaseDmg} DMG!`);
+                        this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'damage', `🔥 ${releaseDmg} DMG!`);
                         defender.hp = Math.max(0, defender.hp - releaseDmg);
                         if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
         
-                        this.log(`💖🔥 コートニーの 「FEEL SO HOT ///」解放！！ (溜め ${charges}回) ⇒ ${defender.charName} に ${releaseDmg} の爆発ダメージ！！`, 'text-pink-400 font-black text-base');
+                        this.log(`💖🔥 SPコートニーの 「FEEL SO HOT ///」解放！！ (溜め ${charges}回) ⇒ ${defender.charName} に ${releaseDmg} の爆発ダメージ！！`, 'text-pink-400 font-black text-base');
                         attacker.courtneyChargeCount = 0;
                         break;
-                    case 'courtney_yoseru_skill':
-                        let yoseruDmg = Math.max(8, Math.floor(attacker.atk * 0.9 - defender.def * 0.3));
+                    }
+                    case 'courtney_yoseru_skill': {
+                        let yoseruDmg = Math.max(4, Math.floor(attacker.atk * 0.3));
                         defender.hp = Math.max(0, defender.hp - yoseruDmg);
                         if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
                         defender.buffDef = 0.0;
@@ -3652,14 +3673,16 @@ pasha_dark: {
                         this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'damage', `-${yoseruDmg}`);
                         audioSystem.playHit();
                         break;
-                    case 'courtney_aegu_skill':
-                        attacker.tempEvadeNext = true; // 次の相手の攻撃を必ず回避
-                        const healAmtAegu = Math.floor(attacker.maxHp * 0.45); // 自身のライフを45%回復
+                    }
+                    case 'courtney_aegu_skill': {
+                        attacker.tempEvadeNext = true;
+                        const healAmtAegu = Math.floor(attacker.maxHp * 0.45);
                         attacker.hp = Math.min(attacker.maxHp, attacker.hp + healAmtAegu);
-                        this.log(`✨ ${attacker.charName} の「アエグ」！ ライフを ${healAmtAegu} (45%) 回復し、次の相手の攻撃を必ず回避する構えをとった！`, 'text-pink-300 font-bold');
+                        this.log(`✨ ${attacker.charName} の「アエグ」！ ライフを ${healAmtAegu} (45%) 回復し、次の相手の攻撃を絶対回避する構えをとった！`, 'text-pink-300 font-bold');
                         this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'heal', `+${healAmtAegu}`);
                         audioSystem.playHeal();
                         break;
+                    }
                     case 'eggplant_burst':
                         this.log(`🐘 ${attacker.charName} の「超ナスちん乱舞」発動！！ 3ターンの間、全味方のクリティカル大幅UP ＆ 敵全体の回避率中DOWN！`, 'text-purple-300 font-bold text-base');
                         if (typeof this.triggerCutin === 'function') {
@@ -5128,7 +5151,9 @@ pasha_dark: {
                     const cd = p1.cooldowns[s.id] || 0;
                     const isCd = cd > 0;
                     const isPashaRollLimit = (s.id === 'pasha_roll' && (p1.pashaRollUsedCount || 0) >= 2);
-                    const disabled = isCd || isPashaRollLimit || (p1.id === 'dopagaking' && (s.id === 'dopa_obey' || s.id === 'dopa_inheritance') && (p1.dopaChargeCount || 0) < 6);
+                    const disabled = isCd || isPashaRollLimit || 
+                                     (p1.id === 'dopagaking' && (s.id === 'dopa_obey' || s.id === 'dopa_inheritance') && (p1.dopaChargeCount || 0) < 6) ||
+                                     (p1.id === 'courtney' && (s.id === 'courtney_feel' || s.id === 'courtney_charge_release') && (p1.courtneyChargeCount || 0) < 1);
                     return `
                         <button onclick="${disabled ? '' : `executeNewBattleAction('${s.id}')`}" class="pixel-box bg-slate-900 border ${disabled ? 'border-slate-700 opacity-60 cursor-not-allowed' : 'border-emerald-400 hover:border-emerald-300 cursor-pointer'} p-3 text-left shadow flex flex-col justify-between w-full transition-all">
                             <div class="flex justify-between items-center w-full mb-1">
