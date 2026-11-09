@@ -2048,13 +2048,13 @@ static drawDopagaking(p, isCharged) {
                 allImage: 'dopagaking/dopagakingALL.webp',
                 dieImage: 'dopagaking/dopagakingDIE.webp',
                 chargedImage: 'dopagaking/dopagakingcharge.webp',
-                desc: 'すべてを運に任せる完全ランダム型の国王。「王に従え」をチャージ後、ランダムで相手チームキャラから1体が選ばれ、クールダウン数を無視して任意のスキルを1つ選び使用可能。',
+                desc: 'すべてを運に任せる完全ランダム型の国王。6回チャージで「王に従え」が解放され、ランダムなキャラの姿に変身して全スキルをCD無視で1つ選択して発動できる。',
                 skills: [
-                    { id: 'dopa_juggler', name: 'ジャグラー', type: 'dopa_juggler_skill', power: 1.0, isNormalAttack: true, cooldown: 0, initialCooldown: 0, targetType: 'single_enemy', desc: '【最初から利用可】敵単体に完全ランダムダメージを与える通常攻撃。（CD: 0）' },
-                    { id: 'dopa_charge', name: 'チャージ', type: 'dopa_charge_skill', cooldown: 0, initialCooldown: 0, targetType: 'self', desc: '【最初から利用可】「王に従え」の解放に必要なチャージを蓄積する。（CD: 0、最大6回蓄積）' },
-                    { id: 'dopa_majesty', name: '王の威厳', type: 'dopa_majesty_skill', cooldown: 2, initialCooldown: 0, targetType: 'self', desc: '【最初から利用可】70%で敵の攻撃を完全回避、30%で自身のHPを回復する補助技。（CD: 2ターン）' },
-                    { id: 'dopa_godluck', name: '神頼み', type: 'dopa_godluck_skill', cooldown: 4, initialCooldown: 0, targetType: 'single_enemy', desc: '【開幕使用可 / 使用後CD: 4T】95%で自傷10ダメージ、5%で敵単体に極大1000ダメージを与える一撃必殺技。' },
-                    { id: 'dopa_obey', name: '王に従え', type: 'dopa_obey_skill', cooldown: 0, initialCooldown: 0, targetType: 'self', desc: '【チャージ6回で解放】相手チームからランダム選ばれたキャラの全スキルをCD無視で1つ選択して発動！' }
+                    { id: 'dopa_juggler', name: 'ジャグラー', type: 'dopa_juggler_skill', power: 1.0, isNormalAttack: true, cooldown: 0, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 0 / 通常攻撃】0〜50の完全ランダムダメージを単体に与える。' },
+                    { id: 'dopa_charge', name: 'チャージ', type: 'dopa_charge_skill', cooldown: 0, initialCooldown: 0, targetType: 'self', desc: '【CD: 0 / 特殊】「王に従え」のチャージを1つ行う。使用した場合、その瞬間に自分の出番は終了する（最大6回）。' },
+                    { id: 'dopa_majesty', name: '王の威厳', type: 'dopa_majesty_skill', cooldown: 2, initialCooldown: 0, targetType: 'self', desc: '【CD: 2T / 補助・防御】70%で敵の攻撃を絶対回避（1T）、30%で自身のHPを60回復する。' },
+                    { id: 'dopa_godluck', name: '神頼み', type: 'dopa_godluck_skill', cooldown: 4, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 4T / 特殊・一撃】95%で自分が50ダメージ、5%で相手に1000ダメージ（HP50%以上ならHP1耐え）。' },
+                    { id: 'dopa_obey', name: '王に従え', type: 'dopa_obey_skill', cooldown: 0, initialCooldown: 0, targetType: 'self', desc: '【CD: 0 / 6回チャージ時のみ】ランダムなキャラに変身し、CD無視で任意のスキルを選び発動！' }
                 ]
             },
 
@@ -3551,15 +3551,15 @@ pasha_dark: {
             break;
 
         case 'dopa_majesty_skill':
-            // 70%で敵の攻撃を完全回避(1T)、30%でHP60回復
+            // 70%で相手のターンで受ける攻撃を絶対回避（1T）、30%で自身のHPを60回復
             if (Math.random() < 0.7) {
                 attacker.tempEvadeNext = true;
-                this.log(`👑 ${attacker.charName} の「王の威厳」！ 次の敵の攻撃を絶対に回避する構えをとった！`, 'text-amber-300 font-bold');
-                this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'buff', '完全回避構え');
+                this.log(`👑 ${attacker.charName} の「王の威厳」！ 70%の確率に当選し、相手のターンで受ける攻撃を絶対回避する構えをとった！（効果継続1ターン）`, 'text-amber-300 font-bold');
+                this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'buff', '絶対回避構え');
                 audioSystem.playBuff();
             } else {
                 attacker.hp = Math.min(attacker.maxHp, attacker.hp + 60);
-                this.log(`👑 ${attacker.charName} の「王の威厳」！ 自身のHPが 60 回復した！`, 'text-emerald-400 font-bold');
+                this.log(`👑 ${attacker.charName} の「王の威厳」！ 30%の確率に当選し、自身のHPが 60 回復した！`, 'text-emerald-400 font-bold');
                 this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'heal', '+60');
                 audioSystem.playHeal();
             }
@@ -3853,10 +3853,16 @@ pasha_dark: {
 
                 if (defender.tempEvadeNext && !isStealth) {
                     defender.tempEvadeNext = false;
-                    this.log(`✨ ${defender.charName} は【ソウルソング】の無効化バリアにより、相手からの攻撃を1回完全に無効化した！`, 'text-emerald-300 font-bold text-base');
+                    if (defender.id === 'dopagaking') {
+                        this.log(`👑✨ ${defender.charName} の「王の威厳」による絶対回避！ 相手のターンでの攻撃を完全に回避した！`, 'text-amber-300 font-bold text-base');
+                        triggerCharacterEffect(defender, 'miss', '絶対回避!');
+                        this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'miss', '絶対回避!');
+                    } else {
+                        this.log(`✨ ${defender.charName} は無効化バリアにより、相手からの攻撃を1回完全に無効化した！`, 'text-emerald-300 font-bold text-base');
+                        triggerCharacterEffect(defender, 'miss', '完全無効化!');
+                        this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'miss', '完全無効化!');
+                    }
                     audioSystem.playEvade();
-                    triggerCharacterEffect(defender, 'miss', '完全無効化!');
-                    this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'miss', '完全無効化!');
                     return;
                 }
 
