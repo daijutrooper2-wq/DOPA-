@@ -3599,18 +3599,26 @@ pasha_dark: {
 
         case 'dopa_obey_skill':
             const livingEnemies = (this.getCharacterTeam(attacker) === 'ally' ? this.enemies : this.allies).filter(e => e.hp > 0);
-            if (livingEnemies.length === 0) break;
+            if (livingEnemies.length === 0) {
+                this.log(`👑 ドパガキングは「王に従え」を試みたが、ターゲットとなる敵がいなかった！`, 'text-slate-400');
+                break;
+            }
             const chosenEnemy = livingEnemies[Math.floor(Math.random() * livingEnemies.length)];
             
             if (attacker === this.p1 && typeof openDopaObeyModal === 'function') {
                 openDopaObeyModal(attacker, chosenEnemy);
+                // AIターンではないのでここでbreak
+                return; 
             } else {
                 // Enemy AI: Pick a random skill from chosen enemy and execute
                 const enemySkills = chosenEnemy.skills || [];
                 if (enemySkills.length > 0) {
                     const pickedSkill = enemySkills[Math.floor(Math.random() * enemySkills.length)];
                     this.log(`👑【王に従え】ドパガキングは【${chosenEnemy.charName}】の技「${pickedSkill.name}」を発動！`, 'text-amber-300 font-bold');
-                    this.applySkillEffect(attacker, defender, pickedSkill);
+                    // applySkillEffect needs proper target. Use chosenEnemy as the target of the copied skill, or the original defender if applicable.
+                    this.applySkillEffect(attacker, chosenEnemy, pickedSkill);
+                } else {
+                    this.log(`👑 ドパガキングは「王に従え」を試みたが、相手に使えるスキルがなかった！`, 'text-slate-400');
                 }
                 attacker.dopaChargeCount = 0;
             }
