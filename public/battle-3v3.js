@@ -363,8 +363,8 @@ class Battle3v3Engine {
             const opponents = this.enemies.filter(e => e.hp > 0);
             if (opponents.length > 0) {
                 let defender = opponents[0];
-                const recordedRec = this.p1.recordedSkill || (this.allies ? this.allies.find(a => a.id === 'asaiomizu' && a.recordedSkill)?.recordedSkill : null);
-                const skill = (ally1Action === 'asaiomizu_copied' && recordedRec) ? { ...recordedRec, targetType: 'single_enemy' } : (this.p1.skills.find(s => s.id === ally1Action) || this.p1.skills[0]);
+                const recordedRec = (this.p1.id === 'asaiomizu' && this.p1.recordedSkill) ? this.p1.recordedSkill : null;
+                const skill = (this.p1.id === 'asaiomizu' && ally1Action === 'asaiomizu_copied' && recordedRec) ? { ...recordedRec, targetType: 'single_enemy' } : (this.p1.skills.find(s => s.id === ally1Action) || this.p1.skills[0]);
                 const targetList = (skill.targetType === 'single_ally') ? this.allies.filter(a => a.hp > 0) : opponents;
                 const targetTeamArr = (skill.targetType === 'single_ally') ? this.allies : this.enemies;
                 if (this.p1TargetChar && this.p1TargetChar.hp > 0 && targetList.includes(this.p1TargetChar)) {
@@ -1243,7 +1243,7 @@ class Battle3v3Engine {
 function selectNewBattleTarget(targetIdx, isAllySide) {
     if (!activeNewBattle) return;
     let skill = null;
-    const recordedRec = (activeNewBattle.p1 && activeNewBattle.p1.recordedSkill) || (activeNewBattle.allies ? activeNewBattle.allies.find(a => a.id === 'asaiomizu' && a.recordedSkill)?.recordedSkill : null);
+    const recordedRec = (activeNewBattle.p1 && activeNewBattle.p1.id === 'asaiomizu' && activeNewBattle.p1.recordedSkill) ? activeNewBattle.p1.recordedSkill : null;
     if (newBattleTargetSelectSkillId === 'asaiomizu_copied' && recordedRec) {
         const rec = recordedRec;
         skill = { ...rec, targetType: 'single_enemy' };
@@ -1645,7 +1645,7 @@ function renderNewBattleScreen() {
         p1.skills.forEach(s => {
             if (!s.isNormalAttack) skills.push(s);
         });
-        const asaiomizuAlly = (p1.id === 'asaiomizu' && p1.recordedSkill) ? p1 : (activeNewBattle && activeNewBattle.allies ? activeNewBattle.allies.find(a => a.id === 'asaiomizu' && a.recordedSkill) : null);
+        const asaiomizuAlly = (p1.id === 'asaiomizu' && p1.recordedSkill) ? p1 : null;
         if (asaiomizuAlly && asaiomizuAlly.recordedSkill) {
             const rec = asaiomizuAlly.recordedSkill;
              skills.unshift({
@@ -1918,7 +1918,7 @@ function executeNewBattleAction(actionType) {
 
     isNewBattleSkillModalOpen = false;
     let skill = null;
-    const recordedRec = (activeNewBattle.p1 && activeNewBattle.p1.recordedSkill) || (activeNewBattle.allies ? activeNewBattle.allies.find(a => a.id === 'asaiomizu' && a.recordedSkill)?.recordedSkill : null);
+    const recordedRec = (activeNewBattle.p1 && activeNewBattle.p1.id === 'asaiomizu' && activeNewBattle.p1.recordedSkill) ? activeNewBattle.p1.recordedSkill : null;
     if (actionType === 'asaiomizu_copied' && recordedRec) {
         const rec = recordedRec;
          skill = {

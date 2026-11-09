@@ -2955,8 +2955,8 @@ pasha_dark: {
 
                         const opponents = this.enemies.filter(e => e.hp > 0);
                         if (opponents.length > 0) {
-                            const recordedRec = this.p1.recordedSkill || (this.allies ? this.allies.find(a => a.id === 'asaiomizu' && a.recordedSkill)?.recordedSkill : null);
-                            const skill = (ally1Action === 'asaiomizu_copied' && recordedRec) ? { targetType: recordedRec.targetType || 'single_enemy', ...recordedRec } : (this.p1.skills.find(s => s.id === ally1Action) || this.p1.skills[0]);
+                            const recordedRec = (this.p1.id === 'asaiomizu') ? this.p1.recordedSkill : null;
+                            const skill = (this.p1.id === 'asaiomizu' && ally1Action === 'asaiomizu_copied' && recordedRec) ? { targetType: recordedRec.targetType || 'single_enemy', ...recordedRec } : (this.p1.skills.find(s => s.id === ally1Action) || this.p1.skills[0]);
                             const targetList = (skill.targetType === 'single_ally') ? this.allies.filter(a => a.hp > 0) : opponents;
                             const targetTeamArr = (skill.targetType === 'single_ally') ? this.allies : this.enemies;
 
@@ -3179,7 +3179,7 @@ pasha_dark: {
                         cooldown: 0,
                         targetType: 'all_enemies'
                     };
-                } else if (skillId === 'asaiomizu_copied' && attacker.recordedSkill) {
+                } else if (skillId === 'asaiomizu_copied' && attacker.id === 'asaiomizu' && attacker.recordedSkill) {
                     const rec = attacker.recordedSkill;
                     skill = {
                         id: 'asaiomizu_copied',
@@ -4658,7 +4658,7 @@ pasha_dark: {
         function selectNewBattleTarget(targetIdx, isAllySide) {
             if (!activeNewBattle) return;
             let skill = null;
-            const recordedRec = (activeNewBattle.p1 && activeNewBattle.p1.recordedSkill) || (activeNewBattle.allies ? activeNewBattle.allies.find(a => a.id === 'asaiomizu' && a.recordedSkill)?.recordedSkill : null);
+            const recordedRec = (activeNewBattle.p1 && activeNewBattle.p1.id === 'asaiomizu' && activeNewBattle.p1.recordedSkill) ? activeNewBattle.p1.recordedSkill : null;
             if (newBattleTargetSelectSkillId === 'asaiomizu_copied' && recordedRec) {
                 const rec = recordedRec;
                 skill = { targetType: rec.targetType || 'single_enemy', ...rec };
@@ -5168,7 +5168,7 @@ pasha_dark: {
                         skills.push(s);
                     }
                 });
-                const asaiomizuAlly = (p1.id === 'asaiomizu' && p1.recordedSkill) ? p1 : (activeNewBattle && activeNewBattle.allies ? activeNewBattle.allies.find(a => a.id === 'asaiomizu' && a.recordedSkill) : null);
+                const asaiomizuAlly = (p1.id === 'asaiomizu' && p1.recordedSkill) ? p1 : null;
                 if (asaiomizuAlly && asaiomizuAlly.recordedSkill) {
                     const rec = asaiomizuAlly.recordedSkill;
                     skills.unshift({
@@ -5624,7 +5624,7 @@ pasha_dark: {
             }
 
             let skill = null;
-            const recordedRec = (activeNewBattle.p1 && activeNewBattle.p1.recordedSkill) || (activeNewBattle.allies ? activeNewBattle.allies.find(a => a.id === 'asaiomizu' && a.recordedSkill)?.recordedSkill : null);
+            const recordedRec = (activeNewBattle.p1 && activeNewBattle.p1.id === 'asaiomizu' && activeNewBattle.p1.recordedSkill) ? activeNewBattle.p1.recordedSkill : null;
             if (actionType === 'asaiomizu_copied' && recordedRec) {
                 const rec = recordedRec;
                 skill = {
