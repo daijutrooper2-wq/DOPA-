@@ -506,7 +506,7 @@ class Battle3v3Engine {
 
         let skill = null;
         if (skillId === 'momo_eggplant_burst') {
-            skill = { id: 'momo_eggplant_burst', name: '🍆 超ナスちん乱舞', type: 'eggplant_burst', power: 1.5, isNormalAttack: false, cooldown: 0 };
+            skill = { id: 'momo_eggplant_burst', name: '🍆 超ナスちん乱舞', type: 'eggplant_burst', power: 1.5, isNormalAttack: false, cooldown: 0, targetType: 'all_enemies' };
         } else if (skillId === 'asaiomizu_copied' && attacker.recordedSkill) {
             const rec = attacker.recordedSkill;
             skill = {
@@ -841,11 +841,11 @@ class Battle3v3Engine {
             return;
         }
 
-        if (skill.targetType === 'all_enemies' || skill.id === 'eggplant_burst') {
+        if (skill.targetType === 'all_enemies' || skill.id === 'eggplant_burst' || skill.id === 'momo_eggplant_burst' || skill.type === 'eggplant_burst') {
             const targetTeam = (this.getCharacterTeam(attacker) === 'ally') ? this.enemies : this.allies;
             targetTeam.forEach(e => {
                 if (e.hp > 0) {
-                    if (skill.type === 'attack' || skill.type === 'special' || (skill.power && skill.power > 0) || skill.id === 'pasha_flash' || skill.id === 'eggplant_burst') {
+                    if (skill.type === 'attack' || skill.type === 'special' || (skill.power && skill.power > 0) || skill.id === 'pasha_flash' || skill.id === 'eggplant_burst' || skill.id === 'momo_eggplant_burst' || skill.type === 'eggplant_burst') {
                         this.applyDamageSkill(attacker, e, skill);
                     } else {
                         e.buffAtk = Math.max(0.2, (e.buffAtk || 1.0) * 0.80);
@@ -857,13 +857,17 @@ class Battle3v3Engine {
                     }
                 }
             });
-            if (skill.id === 'eggplant_burst') {
-                this.log(`🐘 ${attacker.charName} の「超ナスちん乱舞」発動！！ 3ターンの間、全味方のクリティカル大幅UP ＆ 敵全体の回避率中DOWN！`, 'text-purple-300 font-bold');
+            if (skill.id === 'eggplant_burst' || skill.id === 'momo_eggplant_burst' || skill.type === 'eggplant_burst') {
+                this.log(`🐘 ${attacker.charName} の「超ナスちん乱舞」発動！！ 3ターンの間、全味方のクリティカル大幅UP ＆ 敵全体の回避率中DOWN！`, 'text-purple-300 font-bold text-base');
+                if (typeof this.triggerCutin === 'function') {
+                    this.triggerCutin('🍆 超ナスちん乱舞！', '敵全体に大ダメージ ＆ 味方会心大幅UP・敵回避DOWN！');
+                }
                 const alliesList = (this.getCharacterTeam(attacker) === 'ally') ? this.allies : this.enemies;
                 alliesList.forEach(a => {
                     if (a.hp > 0) {
                         a.critRateBonus = (a.critRateBonus || 0) + 0.35;
                         a.critBuffTurns = 3;
+                        this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'buff', '会心大幅UP', a);
                     }
                 });
                 const enemiesList = (this.getCharacterTeam(attacker) === 'ally') ? this.enemies : this.allies;
@@ -871,6 +875,7 @@ class Battle3v3Engine {
                     if (e.hp > 0) {
                         e.evaDebuff = (e.evaDebuff || 0) + 15;
                         e.enemyEvaTurns = 3;
+                        this.triggerEffect(this.getCharacterTeam(e) === 'ally' ? 'Player' : 'Enemy', 'damage', '回避DOWN', e);
                     }
                 });
                 attacker.isMiniZou = false;
@@ -1489,6 +1494,9 @@ function renderNewBattleScreen() {
             if (charData.dieImage) return charData.dieImage;
             if (isA) return 'asaiomizu/asaiomizu3.webp';
             return charData.image || player.image;
+        }
+        if (player.eggplantReady && charData.chargedImage) {
+            return charData.chargedImage;
         }
         if (isA) return 'asaiomizu/asaiomizu2.webp';
         return charData.allImage || charData.image || player.image;

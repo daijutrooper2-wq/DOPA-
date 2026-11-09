@@ -2163,7 +2163,7 @@ pasha_dark: {
                 desc: '圧倒的タフさを誇る要塞。「ナス準備中」で変身し、次ターンに「超ナスちん乱舞」を発動！',
                 skills: [
                     { id: 'momo_attack', name: 'ポカポカ叩く', type: 'attack', power: 1.0, isNormalAttack: true, cooldown: 0, targetType: 'single_enemy', desc: '敵単体に標準ダメージを与える通常攻撃。' },
-                    { id: 'momo_prep', name: 'ナス準備中', type: 'charge', cooldown: 4, targetType: 'self', desc: '1ターン溜めに入り行動終了。次ターンに「超ナスちん乱舞」が発動！' },
+                    { id: 'momo_prep', name: 'ナス準備中', type: 'charge', cooldown: 4, targetType: 'self', desc: '1ターン溜めに入り行動終了。次ターンに「超ナスちん乱舞」が発動（3ターン全味方のクリティカル大幅UP＆敵全体の回避率を3ターンの間ダウン）！' },
                     { id: 'momo_chie', name: 'チエを呼ぶ', type: 'momo_chie_skill', healRate: 0.35, cooldown: 2, targetType: 'self', desc: 'チエを呼び出し自身のHPを小回復＋2ターンの間、自身の回避率を向上させる。' },
                     { id: 'momo_gk', name: 'ゴールキーパー', type: 'defend_buff', initialCooldown: 1, cooldown: 4, targetType: 'all_allies', desc: '1ターンの間、鉄壁の守りで味方全員が受けるすべてのダメージを70%カットする！' }
                 ]
@@ -2259,6 +2259,15 @@ pasha_dark: {
                         if (darknessSkill && (!botChar.darknessPowerTurns || botChar.darknessPowerTurns <= 0)) {
                             if (Math.random() < 0.65) {
                                 return darknessSkill.id;
+                            }
+                        }
+                    }
+
+                    if (botChar.id === 'momo') {
+                        const prepSkill = skills.find(s => s.id === 'momo_prep');
+                        if (prepSkill && !botChar.eggplantReady) {
+                            if (Math.random() < 0.6) {
+                                return prepSkill.id;
                             }
                         }
                     }
@@ -3168,7 +3177,8 @@ pasha_dark: {
                         type: 'eggplant_burst',
                         power: 1.5,
                         isNormalAttack: false,
-                        cooldown: 0
+                        cooldown: 0,
+                        targetType: 'all_enemies'
                     };
                 } else if (skillId === 'asaiomizu_copied' && attacker.recordedSkill) {
                     const rec = attacker.recordedSkill;
@@ -3602,22 +3612,31 @@ case 'dopa_juggler_skill':
                         audioSystem.playHeal();
                         break;
                     case 'eggplant_burst':
-                        this.log(`🐘 ${attacker.charName} の「超ナスちん乱舞」発動！！ 3ターンの間、全味方のクリティカル大幅UP ＆ 敵全体の回避率中DOWN！`, 'text-purple-300 font-bold');
-                        const targetTeamEgg = (this.getCharacterTeam(attacker) === 'ally') ? this.enemies : this.allies;
+                        this.log(`🐘 ${attacker.charName} の「超ナスちん乱舞」発動！！ 3ターンの間、全味方のクリティカル大幅UP ＆ 敵全体の回避率中DOWN！`, 'text-purple-300 font-bold text-base');
+                        if (typeof this.triggerCutin === 'function') {
+                            this.triggerCutin('🍆 超ナスちん乱舞！', '敵全体に大ダメージ ＆ 味方会心大幅UP・敵回避DOWN！');
+                        }
+                        const targetTeamEgg = (this.getCharacterTeam(attacker) === 'ally') ? (this.enemies || [this.p2]) : (this.allies || [this.p1]);
                         targetTeamEgg.forEach(e => {
                             if (e.hp > 0) {
                                 this.applyDamageSkill(attacker, e, skill);
                             }
                         });
-                        const alliesList = attacker.isEnemySide ? (this.enemies || [attacker]) : (this.allies || [attacker]);
-                        alliesList.forEach(a => {
-                            a.critRateBonus = (a.critRateBonus || 0) + 0.35;
-                            a.critBuffTurns = 3;
+                        const alliesListEgg = (this.getCharacterTeam(attacker) === 'ally') ? (this.allies || [this.p1]) : (this.enemies || [this.p2]);
+                        alliesListEgg.forEach(a => {
+                            if (a.hp > 0) {
+                                a.critRateBonus = (a.critRateBonus || 0) + 0.35;
+                                a.critBuffTurns = 3;
+                                this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'buff', '会心大幅UP', a);
+                            }
                         });
-                        const enemiesList = attacker.isEnemySide ? (this.allies || [defender]) : (this.enemies || [defender]);
-                        enemiesList.forEach(e => {
-                            e.evaDebuff = (e.evaDebuff || 0) + 15;
-                            e.enemyEvaTurns = 3;
+                        const enemiesListEgg = (this.getCharacterTeam(attacker) === 'ally') ? (this.enemies || [this.p2]) : (this.allies || [this.p1]);
+                        enemiesListEgg.forEach(e => {
+                            if (e.hp > 0) {
+                                e.evaDebuff = (e.evaDebuff || 0) + 15;
+                                e.enemyEvaTurns = 3;
+                                this.triggerEffect(this.getCharacterTeam(e) === 'ally' ? 'Player' : 'Enemy', 'damage', '回避DOWN', e);
+                            }
                         });
                         attacker.isMiniZou = false;
                         attacker.eggplantReady = false;
@@ -5350,6 +5369,9 @@ case 'dopa_juggler_skill':
             }
             if (p.iwabaBathTurns && p.iwabaBathTurns > 0) {
                 badges += `<span class="bg-amber-950/95 text-amber-300 border border-amber-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md inline-block">岩盤浴[${p.iwabaBathTurns}T]</span>`;
+            }
+            if (p.enemyEvaTurns && p.enemyEvaTurns > 0 && p.evaDebuff && p.evaDebuff > 0) {
+                badges += `<span class="bg-red-950/95 text-red-300 border-2 border-red-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-2 inline-block">回避DOWN [${p.enemyEvaTurns}T]</span>`;
             }
             return badges;
         }
