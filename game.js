@@ -3125,7 +3125,11 @@ pasha_dark: {
 
                     this.log(`⚡ ${attacker.charName} は 「FEEL SO HOT ///」 のチャージを進めた！（現在溜め: ${attacker.courtneyChargeCount}回）`, 'text-pink-400 font-bold');
                     audioSystem.playBuff();
-                    this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'buff', `溜め+1 (${attacker.courtneyChargeCount})`);
+                    
+                    // チャージ加算時のポップアップ表示
+                    this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'buff', `溜め+1 (${attacker.courtneyChargeCount})`, attacker);
+                    
+                    // ターン強制終了は行わない（常時選択可能スキルのため）
                     return;
                 }
 
