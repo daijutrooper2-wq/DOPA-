@@ -3604,8 +3604,8 @@ pasha_dark: {
                 if (enemySkills.length > 0) {
                     const pickedSkill = enemySkills[Math.floor(Math.random() * enemySkills.length)];
                     this.log(`👑【王に従え】ドパガキングは【${chosenEnemy.charName}】の技「${pickedSkill.name}」を発動！`, 'text-amber-300 font-bold');
-                    // applySkillEffect needs proper target. Use chosenEnemy as the target of the copied skill, or the original defender if applicable.
-                    this.applySkillEffect(attacker, chosenEnemy, pickedSkill);
+                    // applySkill needs proper target. Use chosenEnemy as the target of the copied skill, or the original defender if applicable.
+                    this.applySkill(attacker, chosenEnemy, pickedSkill);
                 } else {
                     this.log(`👑 ドパガキングは「王に従え」を試みたが、相手に使えるスキルがなかった！`, 'text-slate-400');
                 }
@@ -4598,7 +4598,19 @@ pasha_dark: {
             activeNewBattle.p1TargetIndex = targetIdx;
             activeNewBattle.p1TargetChar = isAllySide ? activeNewBattle.allies[targetIdx] : activeNewBattle.enemies[targetIdx];
             newBattleViewMode = 'main';
-            activeNewBattle.submitAction(1, newBattleTargetSelectSkillId);
+
+            if (newBattleTargetSelectSkillId === 'dopa_obey_copy') {
+                const copiedSkill = window.newBattleTargetSelectCopiedSkill;
+                if (copiedSkill && activeNewBattle.p1TargetChar) {
+                    activeNewBattle.applySkill(activeNewBattle.p1, activeNewBattle.p1TargetChar, copiedSkill);
+                    activeNewBattle.p1.dopaChargeCount = 0;
+                    window.newBattleTargetSelectCopiedSkill = null;
+                }
+            } else {
+                activeNewBattle.submitAction(1, newBattleTargetSelectSkillId);
+            }
+            newBattleTargetSelectSkillId = null;
+            newBattleTargetSelectType = null;
             renderNewBattleScreen();
         }
 
@@ -5526,7 +5538,7 @@ pasha_dark: {
             } else {
                 skill = activeNewBattle.p1.skills.find(s => s.id === actionType) || (actionType === activeNewBattle.p1.skills.find(s => s.isNormalAttack)?.id ? activeNewBattle.p1.skills.find(s => s.isNormalAttack) : null);
             }
-            if (activeNewBattle.isNewBattle && skill && (skill.targetType === 'single_enemy' || skill.targetType === 'single_ally' || skill.id === 'pasha_flash' || actionType === 'asaiomizu_copied' || (!['self', 'all_enemies', 'all_allies'].includes(skill.targetType) && skill.type !== 'heal' && skill.type !== 'buff'))) {
+            if (activeNewBattle.isNewBattle && skill && (skill.targetType === 'single_enemy' || skill.targetType === 'single_ally' || skill.id === 'pasha_flash' || actionType === 'asaiomizu_copied' || actionType === 'dopa_obey_copy' || (!['self', 'all_enemies', 'all_allies'].includes(skill.targetType) && skill.type !== 'heal' && skill.type !== 'buff'))) {
                 newBattleTargetSelectSkillId = actionType;
                 newBattleTargetSelectType = skill.targetType === 'single_ally' ? 'single_ally' : 'single_enemy';
                 newBattleViewMode = 'target_select';
@@ -5535,7 +5547,18 @@ pasha_dark: {
             }
 
             newBattleViewMode = 'main';
-            activeNewBattle.submitAction(1, actionType);
+            if (actionType === 'dopa_obey_copy') {
+                // コピー技の実行
+                const copiedSkill = window.newBattleTargetSelectCopiedSkill;
+                if (copiedSkill && activeNewBattle.p1TargetIndex !== null) {
+                    const target = (activeNewBattle.allies && activeNewBattle.allies[activeNewBattle.p1TargetIndex]) || (activeNewBattle.enemies && activeNewBattle.enemies[activeNewBattle.p1TargetIndex]);
+                    activeNewBattle.applySkill(activeNewBattle.p1, target, copiedSkill);
+                    activeNewBattle.p1.dopaChargeCount = 0;
+                    window.newBattleTargetSelectCopiedSkill = null;
+                }
+            } else {
+                activeNewBattle.submitAction(1, actionType);
+            }
             renderNewBattleScreen();
         }
 
@@ -6517,8 +6540,22 @@ pasha_dark: {
             if (modal) modal.style.display = 'none';
             if (activeNewBattle && _activeDopaObeyAttacker && _activeDopaObeyTarget) {
                 const skill = _activeDopaObeyTarget.skills.find(s => s.id === skillId) || { id: skillId, name: skillId, type: 'attack', power: 1.0 };
+                
+                // コピー技を一時的に対象キャラクターに紐付けてセット
                 activeNewBattle.log(`👑【王に従え】ドパガキングは【${_activeDopaObeyTarget.charName}】の技「${skill.name}」を発動！`, 'text-amber-300 font-bold font-pixel');
-                activeNewBattle.applySkillEffect(_activeDopaObeyAttacker, _activeDopaObeyTarget, skill);
+                
+                // スキルタイプに応じて対象選択フェーズを導入
+                if (skill.targetType === 'single_enemy' || skill.targetType === 'single_ally') {
+                    // ターゲット選択モードへ
+                    window.newBattleViewMode = 'target_select';
+                    window.newBattleTargetSelectType = skill.targetType;
+                    window.newBattleTargetSelectSkillId = 'dopa_obey_copy';
+                    window.newBattleTargetSelectCopiedSkill = skill;
+                    if (typeof renderNewBattleScreen === 'function') renderNewBattleScreen();
+                    return; // ターゲット選択へ遷移するためここで終了
+                }
+
+                activeNewBattle.applySkill(_activeDopaObeyAttacker, _activeDopaObeyTarget, skill);
                 _activeDopaObeyAttacker.dopaChargeCount = 0;
                 _activeDopaObeyAttacker = null;
                 _activeDopaObeyTarget = null;
