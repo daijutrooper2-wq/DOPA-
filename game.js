@@ -1953,7 +1953,7 @@ static drawDopagaking(p, isCharged) {
                             </div>
                             <div class="w-full bg-amber-950/60 p-3.5 rounded border border-amber-400 space-y-2 text-xs font-mono flex-shrink-0">
                                 <div class="text-amber-300 font-bold mb-1.5 border-b border-amber-600 pb-1">✨ 固有パッシブスキル: 対・半浸闇化特効</div>
-                                <p class="text-amber-200 leading-relaxed font-bold">【パッシブ効果】敵チームに「パシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率がバトル開始時から終了時まで10上昇する。</p>
+                                <p class="text-amber-200 leading-relaxed font-bold">【パッシブ効果】敵チームに「SPパシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率がバトル開始時から終了時まで10上昇する。</p>
                                 <p class="text-slate-200 leading-relaxed">【発動判定】バトル開始時および毎ターン自動判定され、敵チームに対象が存在する場合、パシャ憎のクリティカル率が常時+10%上昇します。</p>
                             </div>
                     `;
@@ -2116,7 +2116,7 @@ static drawDopagaking(p, isCharged) {
                 image: 'pasha/pasha.webp',
                 allImage: 'pasha/pashaALL.webp',
                 dieImage: 'pasha/pashaDIE.webp',
-                desc: 'スマホとカメラを駆使するサポーター・回復特化。\n※パッシブ効果: 敵チームに「パシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率がバトル開始時から終了時まで10上昇する。',
+                desc: 'スマホとカメラを駆使するサポーター・回復特化。\n※パッシブ効果: 敵チームに「SPパシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率がバトル開始時から終了時まで10上昇する。',
                 skills: [
                     { id: 'pasha_attack', name: '睨みつける', type: 'attack', power: 1.0, isNormalAttack: true, cooldown: 0, targetType: 'single_enemy', desc: '敵単体に標準ダメージを与える通常攻撃。' },
                     { id: 'pasha_flash', name: 'カメラフラッシュ', type: 'attack', power: 1.10, isNormalAttack: false, cooldown: 3, initialCooldown: 1, targetType: 'all_enemies', desc: '敵全体に小ダメージ＋選択した敵1体を1ターンの間行動不能にする。（開幕1T待機 / CD: 3T）' },
@@ -2127,7 +2127,7 @@ static drawDopagaking(p, isCharged) {
 
 pasha_dark: {
                 id: 'pasha_dark',
-                name: 'パシャ憎・半浸闇化状態',
+                name: 'SPパシャ憎・半浸闇化状態',
                 title: '闇に染まりかけし黒き僧侶',
                 type: '闇属性 / 超火力・回避特化',
                 hp: 163, atk: 25, def: 17, critRate: 0.07, eva: 25,
