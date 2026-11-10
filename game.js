@@ -2137,7 +2137,7 @@ pasha_dark: {
                 desc: '圧倒的な攻撃力と高回避を誇る超攻撃型。回避するたびに攻撃力が跳ね上がるアビリティを持ち、ハマれば一撃で全てを破壊するロマンと脅威を兼ね備えています。',
                 skills: [
                     { id: 'pasha_dark_attack', name: 'ダークネスフィンガー', type: 'attack', power: 1.0, isNormalAttack: true, cooldown: 0, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 0 / 通常攻撃】カメラのフラッシュで単体攻撃。5%の確率で自身の回避率が3%アップする。' },
-                    { id: 'pasha_dark_stealth', name: 'ステルスオブダーク', type: 'attack', power: 1.25, isNormalAttack: false, cooldown: 2, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 2T / 必中攻撃】敵はこの攻撃を絶対に回避できない＋自身の回避率を2%アップする。' },
+                    { id: 'pasha_dark_stealth', name: 'ステルスオブダーク', type: 'attack', power: 1.25, isNormalAttack: false, cooldown: 2, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 2T / 必中攻撃】敵はこの攻撃を絶対に回避できない。さらに自身の回避率を2%アップする(永続)。' },
                     { id: 'pasha_dark_crime', name: 'パーフェクトクライム', type: 'pasha_crime_skill', cooldown: 3, initialCooldown: 0, targetType: 'self', desc: '【CD: 3T / 回復・デメリット】HPを110回復。だが次の一ターンの間自身の防御力ダウン。' },
                     { id: 'pasha_dark_nightmare', name: 'アブソリュートナイトメア', type: 'pasha_nightmare_skill', cooldown: 4, initialCooldown: 4, targetType: 'single_enemy', desc: '【CD: 4T / 強力攻撃・デバフ】このターンのみ自身の攻撃力1.3倍＋このあとの3ターンは敵の防御力が大幅ダウン。' }
                 ]
@@ -3988,9 +3988,13 @@ pasha_dark: {
                     }
                 } else {
                     if (defender.tempEvadeNext) defender.tempEvadeNext = false;
-                    attacker.eva = Math.min(60, (attacker.eva || 10) + 1);
-                    this.log(`🖤 ${attacker.charName} の「ステルスオブダーク」！ 相手の回避を完全に無視して命中！ 自身の回避率が 1% アップ（現在: ${attacker.eva}%）`, 'text-purple-300 font-bold');
-                    this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'buff', '回避率+1%');
+                    const bonus = 2;
+                    attacker.eva = Math.min(60, (attacker.eva || 10) + bonus);
+                    attacker.pashaDarkEvaBonus = (attacker.pashaDarkEvaBonus || 0) + bonus;
+                    const side = (this.getCharacterTeam && this.getCharacterTeam(attacker) === 'ally') ? 'Player' : 'Enemy';
+                    this.log(`🖤 ${attacker.charName} の「ステルスオブダーク」！ 相手の回避を完全に無視して命中！ 自身の回避率が ${bonus}% アップ（現在: ${attacker.eva}%）`, 'text-purple-300 font-bold');
+                    // ポップアップを自分自身に表示
+                    this.triggerEffect(side, 'buff', `回避率+${bonus}%`, attacker);
                 }
 
                 if (attacker.id === 'pasha_dark' && skill.id === 'pasha_dark_attack') {
@@ -5554,7 +5558,7 @@ pasha_dark: {
                 badges += `<span class="bg-yellow-950/95 text-yellow-300 border border-yellow-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md inline-block">特効[会心+10%]</span>`;
             }
             if (p.pashaDarkEvaBonus && p.pashaDarkEvaBonus > 0) {
-                badges += `<span class="bg-purple-950/95 text-purple-300 border-2 border-purple-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-1 inline-block">指強化 [避+${p.pashaDarkEvaBonus}%]</span>`;
+                badges += `<span class="bg-purple-950/95 text-purple-300 border-2 border-purple-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-1 inline-block">闇の回避強化 [避+${p.pashaDarkEvaBonus}%]</span>`;
             }
             if (p.dopaChargeCount && p.dopaChargeCount > 0) {
                 if (p.dopaChargeCount >= 6) {
