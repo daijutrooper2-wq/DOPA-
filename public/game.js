@@ -441,20 +441,33 @@ static drawDopagaking(p, isCharged) {
                 this.stopBGM();
                 if (!this.bgmEnabled) return;
                 this.init();
+                if (!this.ctx) return;
 
                 const melody = [261.63, 293.66, 329.63, 392.00, 329.63, 392.00, 440.00, 523.25];
                 const bass = [130.81, 130.81, 164.81, 164.81, 174.61, 174.61, 196.00, 196.00];
 
                 this.bgmStep = 0;
+                let nextNoteTime = this.ctx.currentTime + 0.05;
+                const noteDuration = 0.12;
+                const intervalTime = 0.16;
+
                 this.bgmInterval = setInterval(() => {
-                    if (!this.bgmEnabled) return;
-                    const note = melody[this.bgmStep % melody.length];
-                    const bassNote = bass[Math.floor(this.bgmStep / 2) % bass.length];
-                    
-                    this.playTone(note, 0.1, 'square', 0.03);
-                    this.playTone(bassNote, 0.15, 'triangle', 0.05);
-                    this.bgmStep++;
-                }, 160);
+                    if (!this.bgmEnabled || !this.ctx) return;
+                    if (this.ctx.state === 'suspended') return;
+
+                    try {
+                        while (nextNoteTime < this.ctx.currentTime + 0.4) {
+                            const note = melody[this.bgmStep % melody.length];
+                            const bassNote = bass[Math.floor(this.bgmStep / 2) % bass.length];
+                            
+                            this.playScheduledTone(note, noteDuration, 'square', 0.03, nextNoteTime);
+                            this.playScheduledTone(bassNote, 0.15, 'triangle', 0.05, nextNoteTime);
+                            
+                            this.bgmStep++;
+                            nextNoteTime += intervalTime;
+                        }
+                    } catch (e) {}
+                }, 100);
             }
 
             stopBGM() {
@@ -464,22 +477,26 @@ static drawDopagaking(p, isCharged) {
                 }
             }
 
-            playTone(freq, duration, type = 'square', gainValue = 0.08) {
-                if (!this.enabled) return;
-                this.init();
+            playScheduledTone(freq, duration, type = 'square', gainValue = 0.08, startTime) {
+                if (!this.enabled || !this.ctx) return;
                 try {
+                    const startT = startTime !== undefined ? startTime : this.ctx.currentTime;
                     const osc = this.ctx.createOscillator();
                     const gain = this.ctx.createGain();
                     osc.type = type;
-                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    osc.frequency.setValueAtTime(freq, startT);
                     const finalGain = gainValue * (this.volume !== undefined ? this.volume : 0.5);
-                    gain.gain.setValueAtTime(finalGain, this.ctx.currentTime);
-                    gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+                    gain.gain.setValueAtTime(finalGain, startT);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, startT + duration);
                     osc.connect(gain);
                     gain.connect(this.ctx.destination);
-                    osc.start();
-                    osc.stop(this.ctx.currentTime + duration);
+                    osc.start(startT);
+                    osc.stop(startT + duration);
                 } catch(e) {}
+            }
+
+            playTone(freq, duration, type = 'square', gainValue = 0.08) {
+                this.playScheduledTone(freq, duration, type, gainValue, this.ctx ? this.ctx.currentTime : null);
             }
 
             playSelect() { this.playTone(440, 0.08, 'square', 0.08); }
