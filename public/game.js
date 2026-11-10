@@ -3179,6 +3179,18 @@ pasha_dark: {
                         cooldown: 0,
                         targetType: 'all_enemies'
                     };
+                } else if (skillId === 'dopa_obey_copy' && window.newBattleTargetSelectCopiedSkill) {
+                    const rec = window.newBattleTargetSelectCopiedSkill;
+                    skill = {
+                        id: 'dopa_obey_copy',
+                        name: `👑【王に従え】${rec.name}`,
+                        type: rec.type || 'attack',
+                        power: rec.power || 1.0,
+                        isNormalAttack: false,
+                        cooldown: 0,
+                        targetType: rec.targetType || 'single_enemy',
+                        ...rec
+                    };
                 } else if (skillId === 'asaiomizu_copied' && attacker.id === 'asaiomizu' && attacker.recordedSkill) {
                     const rec = attacker.recordedSkill;
                     skill = {
@@ -3197,7 +3209,7 @@ pasha_dark: {
 
                 if (!skill) skill = attacker.skills[0];
 
-                if (skill.cooldown > 0 && skill.id !== 'asaiomizu_copied' && skill.id !== 'momo_eggplant_burst') {
+                if (skill.cooldown > 0 && skill.id !== 'asaiomizu_copied' && skill.id !== 'momo_eggplant_burst' && skill.id !== 'dopa_obey_copy') {
                     attacker.cooldowns[skill.id] = skill.cooldown + 1;
                 }
 
@@ -3205,6 +3217,17 @@ pasha_dark: {
 
                 if (skillId === 'asaiomizu_copied') {
                     attacker.recordedSkill = null;
+                }
+                if (skillId === 'dopa_obey_copy' || skillId === 'dopa_obey') {
+                    attacker.dopaChargeCount = 0;
+                    attacker.selectedInheritChar = null;
+                    attacker.selectedObeyEnemy = null;
+                    window.newBattleTargetSelectCopiedSkill = null;
+                    if (this.p1 && attacker === this.p1) {
+                        this.p1.dopaChargeCount = 0;
+                        this.p1.selectedInheritChar = null;
+                        this.p1.selectedObeyEnemy = null;
+                    }
                 }
             }
 
@@ -4662,29 +4685,20 @@ pasha_dark: {
             if (newBattleTargetSelectSkillId === 'asaiomizu_copied' && recordedRec) {
                 const rec = recordedRec;
                 skill = { targetType: rec.targetType || 'single_enemy', ...rec };
+            } else if (newBattleTargetSelectSkillId === 'dopa_obey_copy' && window.newBattleTargetSelectCopiedSkill) {
+                skill = window.newBattleTargetSelectCopiedSkill;
             } else {
                 skill = activeNewBattle.p1.skills.find(s => s.id === newBattleTargetSelectSkillId) || activeNewBattle.p1.skills.find(s => s.isNormalAttack);
             }
             const tType = skill ? (skill.targetType || 'single_enemy') : 'single_enemy';
             if (tType === 'single_ally' && !isAllySide) return;
-            if ((tType === 'single_enemy' || newBattleTargetSelectSkillId === 'asaiomizu_copied') && isAllySide && tType !== 'single_ally') return;
+            if ((tType === 'single_enemy' || newBattleTargetSelectSkillId === 'asaiomizu_copied' || (newBattleTargetSelectSkillId === 'dopa_obey_copy' && tType === 'single_enemy')) && isAllySide && tType !== 'single_ally') return;
 
             activeNewBattle.p1TargetIndex = targetIdx;
             activeNewBattle.p1TargetChar = isAllySide ? activeNewBattle.allies[targetIdx] : activeNewBattle.enemies[targetIdx];
             newBattleViewMode = 'main';
 
-            if (newBattleTargetSelectSkillId === 'dopa_obey_copy') {
-                const copiedSkill = window.newBattleTargetSelectCopiedSkill;
-                if (copiedSkill && activeNewBattle.p1TargetChar) {
-                    activeNewBattle.applySkill(activeNewBattle.p1, activeNewBattle.p1TargetChar, copiedSkill);
-                    activeNewBattle.p1.dopaChargeCount = 0;
-                    activeNewBattle.p1.selectedInheritChar = null;
-                    activeNewBattle.p1.selectedObeyEnemy = null;
-                    window.newBattleTargetSelectCopiedSkill = null;
-                }
-            } else {
-                activeNewBattle.submitAction(1, newBattleTargetSelectSkillId);
-            }
+            activeNewBattle.submitAction(1, newBattleTargetSelectSkillId);
             newBattleTargetSelectSkillId = null;
             newBattleTargetSelectType = null;
             renderNewBattleScreen();
@@ -5623,6 +5637,23 @@ pasha_dark: {
                 }
             }
 
+            if (actionType === 'dopa_obey' || actionType === 'dopa_obey_skill') {
+                if ((activeNewBattle.p1.dopaChargeCount || 0) < 6) {
+                    showModal("チャージ不足", "「王に従え」は6チャージ時にのみ発動可能です！");
+                    return;
+                }
+                let obeyTarget = activeNewBattle.p1.selectedObeyEnemy;
+                if (!obeyTarget) {
+                    const allOtherIds = Object.keys(CHARACTER_DATA).filter(id => id !== 'dopagaking');
+                    const randomId = allOtherIds[Math.floor(Math.random() * allOtherIds.length)];
+                    obeyTarget = activeNewBattle.createBattlePlayer(randomId, CHARACTER_DATA[randomId].name, 2);
+                    activeNewBattle.p1.selectedObeyEnemy = obeyTarget;
+                    activeNewBattle.p1.selectedInheritChar = obeyTarget.id;
+                }
+                openDopaObeyModal(activeNewBattle.p1, obeyTarget);
+                return;
+            }
+
             let skill = null;
             const recordedRec = (activeNewBattle.p1 && activeNewBattle.p1.id === 'asaiomizu' && activeNewBattle.p1.recordedSkill) ? activeNewBattle.p1.recordedSkill : null;
             if (actionType === 'asaiomizu_copied' && recordedRec) {
@@ -5637,6 +5668,8 @@ pasha_dark: {
                     ...rec,
                     targetType: 'single_enemy'
                 };
+            } else if (actionType === 'dopa_obey_copy' && window.newBattleTargetSelectCopiedSkill) {
+                skill = window.newBattleTargetSelectCopiedSkill;
             } else {
                 skill = activeNewBattle.p1.skills.find(s => s.id === actionType) || (actionType === activeNewBattle.p1.skills.find(s => s.isNormalAttack)?.id ? activeNewBattle.p1.skills.find(s => s.isNormalAttack) : null);
             }
@@ -5649,18 +5682,7 @@ pasha_dark: {
             }
 
             newBattleViewMode = 'main';
-            if (actionType === 'dopa_obey_copy') {
-                // コピー技の実行
-                const copiedSkill = window.newBattleTargetSelectCopiedSkill;
-                if (copiedSkill && activeNewBattle.p1TargetIndex !== null) {
-                    const target = (activeNewBattle.allies && activeNewBattle.allies[activeNewBattle.p1TargetIndex]) || (activeNewBattle.enemies && activeNewBattle.enemies[activeNewBattle.p1TargetIndex]);
-                    activeNewBattle.applySkill(activeNewBattle.p1, target, copiedSkill);
-                    activeNewBattle.p1.dopaChargeCount = 0;
-                    window.newBattleTargetSelectCopiedSkill = null;
-                }
-            } else {
-                activeNewBattle.submitAction(1, actionType);
-            }
+            activeNewBattle.submitAction(1, actionType);
             renderNewBattleScreen();
         }
 
@@ -6641,37 +6663,22 @@ pasha_dark: {
             const modal = document.getElementById('dopa-obey-modal');
             if (modal) modal.style.display = 'none';
             if (activeNewBattle && _activeDopaObeyAttacker && _activeDopaObeyTarget) {
-                const skill = _activeDopaObeyTarget.skills.find(s => s.id === skillId) || { id: skillId, name: skillId, type: 'attack', power: 1.0 };
+                const skill = _activeDopaObeyTarget.skills.find(s => s.id === skillId) || { id: skillId, name: skillId, type: 'attack', power: 1.0, targetType: 'single_enemy' };
                 
-                // コピー技を一時的に対象キャラクターに紐付けてセット
-                activeNewBattle.log(`👑【王に従え】${_activeDopaObeyAttacker.charName} は【${_activeDopaObeyTarget.charName}】の技「${skill.name}」を発動！`, 'text-amber-300 font-bold font-pixel');
-                
-                // チャージ回数をゼロにリセット
-                _activeDopaObeyAttacker.dopaChargeCount = 0;
-                if (activeNewBattle.p1) {
-                    activeNewBattle.p1.dopaChargeCount = 0;
-                }
+                window.newBattleTargetSelectCopiedSkill = skill;
+                _activeDopaObeyAttacker.pendingObeySkill = skill;
 
-                // スキルタイプに応じて対象選択フェーズを導入
+                // スキルタイプに応じて対象選択フェーズかアクション送信へ
                 if (skill.targetType === 'single_enemy' || skill.targetType === 'single_ally') {
-                    // ターゲット選択モードへ
                     window.newBattleViewMode = 'target_select';
-                    window.newBattleTargetSelectType = skill.targetType;
+                    window.newBattleTargetSelectType = skill.targetType === 'single_ally' ? 'single_ally' : 'single_enemy';
                     window.newBattleTargetSelectSkillId = 'dopa_obey_copy';
-                    window.newBattleTargetSelectCopiedSkill = skill;
                     if (typeof renderNewBattleScreen === 'function') renderNewBattleScreen();
-                    return; // ターゲット選択へ遷移するためここで終了
+                    return;
                 }
 
-                activeNewBattle.applySkill(_activeDopaObeyAttacker, _activeDopaObeyTarget, skill);
-                _activeDopaObeyAttacker.dopaChargeCount = 0;
-                _activeDopaObeyAttacker.selectedInheritChar = null;
-                _activeDopaObeyAttacker.selectedObeyEnemy = null;
-                if (activeNewBattle.p1) {
-                    activeNewBattle.p1.dopaChargeCount = 0;
-                    activeNewBattle.p1.selectedInheritChar = null;
-                    activeNewBattle.p1.selectedObeyEnemy = null;
-                }
+                window.newBattleViewMode = 'main';
+                activeNewBattle.submitAction(1, 'dopa_obey_copy');
                 _activeDopaObeyAttacker = null;
                 _activeDopaObeyTarget = null;
                 if (typeof renderNewBattleScreen === 'function') renderNewBattleScreen();
