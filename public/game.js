@@ -3535,11 +3535,11 @@ pasha_dark: {
 
 
 
-                if (defender.id === 'asaiomizu' && defender.digActive && defender.digUsedTurn === this.turn) {
+                if (defender.id === 'asaiomizu' && defender.digActive && defender.digUsedTurn === this.turn && !defender.recordedSkill) {
                     if (skill.type === 'attack' || skill.type === 'special' || skill.type === 'debuff_attack' || skill.type === 'eggplant_burst' || (skill.power && skill.power > 0)) {
                         defender.recordedSkill = { ...skill, targetType: skill.targetType || 'single_enemy' };
                         defender.digActive = false;
-                        this.log(`${defender.charName} は受けていた相手の攻撃技 [${skill.name}] を内部保存した！`, 'text-cyan-300 font-bold');
+                        this.log(`${defender.charName} は受けていた相手の最初の攻撃技 [${skill.name}] を内部保存した！`, 'text-cyan-300 font-bold');
                         this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'buff', 'スキルコピー成功！');
                     }
                 }
@@ -3786,6 +3786,8 @@ pasha_dark: {
                     case 'asaiomizu_dig_skill':
                         const dummyAttack = { name: '髪をかきあげる', type: 'attack', power: 1.15, isNormalAttack: true };
                         const isAllyDig = this.getCharacterTeam(attacker) === 'ally';
+                        attacker.recordedSkill = null;
+                        if (this.p1 && attacker.id === 'asaiomizu') this.p1.recordedSkill = null;
                         if (isAllyDig) {
                             this.applyDamageSkill(attacker, defender, dummyAttack);
                             attacker.digActive = true;
@@ -3925,11 +3927,11 @@ pasha_dark: {
             }
 
             applyDamageSkill(attacker, defender, skill, isCounter = false) {
-                if (defender.id === 'asaiomizu' && defender.digActive && defender.digUsedTurn === this.turn) {
+                if (defender.id === 'asaiomizu' && defender.digActive && defender.digUsedTurn === this.turn && !defender.recordedSkill) {
                     if (skill && (skill.type === 'attack' || skill.type === 'special' || skill.type === 'debuff_attack' || skill.type === 'eggplant_burst' || (skill.power && skill.power > 0))) {
                         defender.recordedSkill = { ...skill, targetType: skill.targetType || 'single_enemy' };
                         defender.digActive = false;
-                        this.log(`${defender.charName} は受けていた相手の攻撃技 [${skill.name}] を内部保存した！`, 'text-cyan-300 font-bold');
+                        this.log(`${defender.charName} は受けていた相手の最初の攻撃技 [${skill.name}] を内部保存した！`, 'text-cyan-300 font-bold');
                         this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'buff', 'スキルコピー成功！');
                     }
                 }

@@ -1010,6 +1010,8 @@ class Battle3v3Engine {
             this.applyDamageSkill(attacker, defender, dummyAttack);
             attacker.digActive = true;
             attacker.digUsedTurn = this.turn;
+            attacker.recordedSkill = null;
+            if (this.p1 && attacker.id === 'asaiomizu') this.p1.recordedSkill = null;
             if (isAllyDig) {
                 this.log(`🕳️ ${attacker.charName} はディグを発動！（通常攻撃に偽装しつつ相手の攻撃を待ち構える）`, 'text-cyan-300 font-bold');
                 this.triggerEffect('Player', 'buff', 'ディグ構え');
@@ -1053,11 +1055,11 @@ class Battle3v3Engine {
     }
 
     applyDamageSkill(attacker, defender, skill, isCounter = false) {
-        if (defender.id === 'asaiomizu' && defender.digActive && defender.digUsedTurn === this.turn) {
+        if (defender.id === 'asaiomizu' && defender.digActive && defender.digUsedTurn === this.turn && !defender.recordedSkill) {
             if (skill.type === 'attack' || skill.type === 'special' || skill.type === 'debuff_attack' || skill.type === 'eggplant_burst' || (skill.power && skill.power > 0)) {
                 defender.recordedSkill = { ...skill, targetType: skill.targetType || 'single_enemy' };
                 defender.digActive = false;
-                this.log(`${defender.charName} は受けていた相手の攻撃技 [${skill.name}] を内部保存した！`, 'text-cyan-300 font-bold');
+                this.log(`${defender.charName} は受けていた相手の最初の攻撃技 [${skill.name}] を内部保存した！`, 'text-cyan-300 font-bold');
                 this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'buff', 'スキルコピー成功！');
             }
         }
