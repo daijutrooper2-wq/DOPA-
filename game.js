@@ -3194,14 +3194,12 @@ pasha_dark: {
                 } else if (skillId === 'asaiomizu_copied' && attacker.id === 'asaiomizu' && attacker.recordedSkill) {
                     const rec = attacker.recordedSkill;
                     skill = {
-                        id: 'asaiomizu_copied',
-                        name: `📋【コピー】${rec.name}`,
-                        type: rec.type || 'attack',
-                        power: rec.power || 1.0,
-                        isNormalAttack: false,
-                        cooldown: 0,
                         ...rec,
-                        targetType: 'single_enemy'
+                        id: 'asaiomizu_copied',
+                        originalId: rec.id,
+                        name: `📋【コピー】${rec.name}`,
+                        isNormalAttack: false,
+                        cooldown: 0
                     };
                 } else {
                     skill = attacker.skills.find(s => s.id === skillId);
@@ -3539,7 +3537,7 @@ pasha_dark: {
 
                 if (defender.id === 'asaiomizu' && defender.digActive && defender.digUsedTurn === this.turn) {
                     if (skill.type === 'attack' || skill.type === 'special' || skill.type === 'debuff_attack' || skill.type === 'eggplant_burst' || (skill.power && skill.power > 0)) {
-                        defender.recordedSkill = { ...skill, targetType: 'single_enemy' };
+                        defender.recordedSkill = { ...skill, targetType: skill.targetType || 'single_enemy' };
                         defender.digActive = false;
                         this.log(`${defender.charName} は受けていた相手の攻撃技 [${skill.name}] を内部保存した！`, 'text-cyan-300 font-bold');
                         this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'buff', 'スキルコピー成功！');
@@ -3929,7 +3927,7 @@ pasha_dark: {
             applyDamageSkill(attacker, defender, skill, isCounter = false) {
                 if (defender.id === 'asaiomizu' && defender.digActive && defender.digUsedTurn === this.turn) {
                     if (skill && (skill.type === 'attack' || skill.type === 'special' || skill.type === 'debuff_attack' || skill.type === 'eggplant_burst' || (skill.power && skill.power > 0))) {
-                        defender.recordedSkill = { ...skill, targetType: 'single_enemy' };
+                        defender.recordedSkill = { ...skill, targetType: skill.targetType || 'single_enemy' };
                         defender.digActive = false;
                         this.log(`${defender.charName} は受けていた相手の攻撃技 [${skill.name}] を内部保存した！`, 'text-cyan-300 font-bold');
                         this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'buff', 'スキルコピー成功！');
@@ -4692,7 +4690,7 @@ pasha_dark: {
             const recordedRec = (activeNewBattle.p1 && activeNewBattle.p1.id === 'asaiomizu' && activeNewBattle.p1.recordedSkill) ? activeNewBattle.p1.recordedSkill : null;
             if (newBattleTargetSelectSkillId === 'asaiomizu_copied' && recordedRec) {
                 const rec = recordedRec;
-                skill = { targetType: rec.targetType || 'single_enemy', ...rec };
+                skill = { ...rec, id: 'asaiomizu_copied', name: `📋【コピー】${rec.name}` };
             } else if (newBattleTargetSelectSkillId === 'dopa_obey_copy' && window.newBattleTargetSelectCopiedSkill) {
                 skill = window.newBattleTargetSelectCopiedSkill;
             } else {
@@ -5194,15 +5192,13 @@ pasha_dark: {
                 if (asaiomizuAlly && asaiomizuAlly.recordedSkill) {
                     const rec = asaiomizuAlly.recordedSkill;
                     skills.unshift({
+                        ...rec,
                         id: 'asaiomizu_copied',
+                        originalId: rec.id,
                         name: `📋【コピー】${rec.name}`,
-                        type: rec.type || 'attack',
-                        power: rec.power || 1.0,
-                        targetType: rec.targetType || 'single_enemy',
                         isNormalAttack: false,
                         cooldown: 0,
-                        desc: `【ディグコピー技】${rec.name}（${rec.desc || '相手からコピーしたスキル'}）`,
-                        ...rec
+                        desc: `【ディグコピー技】${rec.name}（${rec.desc || '相手からコピーしたスキル'}）`
                     });
                 }
                 let skillsHtml = skills.map(s => {
@@ -5667,14 +5663,12 @@ pasha_dark: {
             if (actionType === 'asaiomizu_copied' && recordedRec) {
                 const rec = recordedRec;
                 skill = {
-                    id: 'asaiomizu_copied',
-                    name: `📋【コピー】${rec.name}`,
-                    type: rec.type || 'attack',
-                    power: rec.power || 1.0,
-                    isNormalAttack: false,
-                    cooldown: 0,
                     ...rec,
-                    targetType: 'single_enemy'
+                    id: 'asaiomizu_copied',
+                    originalId: rec.id,
+                    name: `📋【コピー】${rec.name}`,
+                    isNormalAttack: false,
+                    cooldown: 0
                 };
             } else if (actionType === 'dopa_obey_copy' && window.newBattleTargetSelectCopiedSkill) {
                 skill = window.newBattleTargetSelectCopiedSkill;
