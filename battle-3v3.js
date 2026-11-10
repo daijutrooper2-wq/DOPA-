@@ -2072,6 +2072,9 @@ function triggerNewBattleCharacterEffect(targetChar, type, text) {
 if (typeof window.getStatusBadgesHtml === 'undefined') {
     window.getStatusBadgesHtml = function(p, isAlly = true) {
         let badges = '';
+        if (p.pashaDarkEvaBonus && p.pashaDarkEvaBonus > 0) {
+            badges += `<span class="bg-purple-950/95 text-purple-300 border-2 border-purple-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-1 inline-block">指強化 [避+${p.pashaDarkEvaBonus}%]</span>`;
+        }
         if (p.courtneyChargeCount && p.courtneyChargeCount > 0) {
             if (p.courtneyChargeCount >= 8) {
                 badges += `<span class="bg-pink-600 text-white border-2 border-pink-300 px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-pixel font-bold shadow-lg animate-bounce inline-block">🔥 MAXチャージ(8/8)</span>`;
@@ -2247,6 +2250,7 @@ function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
             <div>会率: ${critHtml}</div>
             <div>回避: ${evaHtml}</div>
         </div>
+        ${c.pashaDarkEvaBonus ? `<div class="text-[9px] text-purple-300 font-bold mb-1 animate-pulse">🌙 ダークネスフィンガー強化: +${c.pashaDarkEvaBonus}%</div>` : ''}
         ${badgesHtml ? `<div class="flex flex-wrap gap-1 my-1 border-t border-slate-800 pt-1">${badgesHtml}</div>` : ''}
         <div class="border-t border-slate-700 pt-1">
             <div class="text-[9px] font-bold text-amber-200 mb-1">✨ 所持スキル一覧</div>
