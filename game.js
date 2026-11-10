@@ -2136,10 +2136,10 @@ pasha_dark: {
                 dieImage: 'pasha-dark/pasha-darkDIE.webp',
                 desc: '圧倒的な攻撃力と高回避を誇る超攻撃型。回避するたびに攻撃力が跳ね上がるアビリティを持ち、ハマれば一撃で全てを破壊するロマンと脅威を兼ね備えています。',
                 skills: [
-                    { id: 'pasha_dark_attack', name: '通常攻撃', type: 'attack', power: 1.0, isNormalAttack: true, cooldown: 0, targetType: 'single_enemy', desc: 'カメラのフラッシュで攻撃＋20パーセントの確率で自身の回避率3％アップ' },
-                    { id: 'pasha_dark_stealth', name: 'ステルスオブダーク', type: 'attack', power: 1.25, isNormalAttack: false, cooldown: 2, targetType: 'single_enemy', desc: '敵はこの攻撃を絶対に回避できない＋自身の回避率を2%アップする。' },
-                    { id: 'pasha_dark_crime', name: 'パーフェクトクライム', type: 'pasha_crime_skill', cooldown: 3, targetType: 'self', desc: 'HPを110回復。だが次の一ターンの間自身の防御力ダウン' },
-                    { id: 'pasha_dark_nightmare', name: 'アブソリュートナイトメア', type: 'pasha_nightmare_skill', cooldown: 4, targetType: 'single_enemy', desc: 'このターンのみ自身の攻撃力1.3倍＋このあとの3ターンは敵の防御力が大幅ダウン。使用するとすぐに相手にターンが渡る！' }
+                    { id: 'pasha_dark_attack', name: 'ダークネスフィンガー', type: 'attack', power: 1.0, isNormalAttack: true, cooldown: 0, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 0 / 通常攻撃】カメラのフラッシュで攻撃＋20パーセントの確率で自身の回避率3％アップ' },
+                    { id: 'pasha_dark_stealth', name: 'ステルスオブダーク', type: 'attack', power: 1.25, isNormalAttack: false, cooldown: 2, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 2T / 必中攻撃】敵はこの攻撃を絶対に回避できない＋自身の回避率を2%アップする。' },
+                    { id: 'pasha_dark_crime', name: 'パーフェクトクライム', type: 'pasha_crime_skill', cooldown: 3, initialCooldown: 0, targetType: 'self', desc: '【CD: 3T / 回復・デメリット】HPを110回復。だが次の一ターンの間自身の防御力ダウン。' },
+                    { id: 'pasha_dark_nightmare', name: 'アブソリュートナイトメア', type: 'pasha_nightmare_skill', cooldown: 4, initialCooldown: 4, targetType: 'single_enemy', desc: '【CD: 4T / 強力攻撃・デバフ】このターンのみ自身の攻撃力1.3倍＋このあとの3ターンは敵の防御力が大幅ダウン。' }
                 ]
             },
 
