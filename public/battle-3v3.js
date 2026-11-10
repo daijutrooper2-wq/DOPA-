@@ -367,17 +367,6 @@ class Battle3v3Engine {
                     if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
                     this.checkPashaDarkMode(p);
                 }
-                if (p.darknessPowerTurns && p.darknessPowerTurns > 0) {
-                    if (p.darknessAppliedTurn !== this.turn) {
-                        p.darknessPowerTurns--;
-                        const hAmt = Math.floor(Math.random() * 21) + 10;
-                        p.hp = Math.min(p.maxHp, p.hp + hAmt);
-                        this.log(`🦇 ${p.charName} の暗黒パワーにより、ターン開始時にHPが ${hAmt} 回復した！（残り ${p.darknessPowerTurns}T）`, 'text-purple-300 font-bold');
-                        this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
-                        if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
-                        this.checkPashaDarkMode(p);
-                    }
-                }
             }
         });
 
@@ -489,6 +478,22 @@ class Battle3v3Engine {
 
     executePlayerAction(attacker, defender, skillId) {
         if (attacker.hp <= 0) return;
+
+        if (attacker.darknessPowerTurns && attacker.darknessPowerTurns > 0 && attacker.hp > 0) {
+            if (skillId !== 'pasha_darkness' || attacker.darknessAppliedTurn !== this.turn) {
+                attacker.darknessPowerTurns--;
+                const hAmt = Math.floor(Math.random() * 16) + 15;
+                const prevHp = attacker.hp;
+                attacker.hp = Math.min(attacker.maxHp, attacker.hp + hAmt);
+                const actualHeal = attacker.hp - prevHp;
+                if (actualHeal > 0) {
+                    this.log(`🦇 ${attacker.charName} は暗黒パワーにより、コマンド実行時にHPが ${actualHeal} 回復した！（残り ${attacker.darknessPowerTurns}T）`, 'text-purple-300 font-bold');
+                    this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${actualHeal}`, attacker);
+                    if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
+                    if (typeof this.checkPashaDarkMode === 'function') this.checkPashaDarkMode(attacker);
+                }
+            }
+        }
 
         if (attacker.stunTurns > 0) {
             attacker.stunTurns--;
@@ -774,11 +779,11 @@ class Battle3v3Engine {
             const target = (defender && this.getCharacterTeam(defender) === this.getCharacterTeam(attacker) && defender.hp > 0) ? defender : attacker;
             target.darknessPowerTurns = 3;
             target.darknessAppliedTurn = this.turn;
-            this.log(`🦇 ${attacker.charName} は暗黒封印を解除し、${target.charName} に暗黒パワーを付与した！ 3ターンの間、毎ターン開始・コマンド実行時にHPがランダム回復する！`, 'text-purple-300 font-bold text-base');
+            this.log(`🦇 ${attacker.charName} は暗黒封印を解除し、${target.charName} に暗黒パワーを付与した！ 3ターンの間、コマンド実行時にHPがランダム回復する！`, 'text-purple-300 font-bold text-base');
             if (typeof audioSystem !== 'undefined' && audioSystem.playSpecial) audioSystem.playSpecial();
             this.triggerEffect(this.getCharacterTeam(target) === 'ally' ? 'Player' : 'Enemy', 'buff', '暗黒パワー', target);
             if (typeof this.triggerCutin === 'function') {
-                this.triggerCutin('🦇 暗黒封印解除！', `${target.charName} に暗黒パワー付与＆持続回復！`);
+                this.triggerCutin('🦇 暗黒封印解除！', `${target.charName} に暗黒パワー付与＆コマンド実行時回復！`);
             }
             return;
         }
