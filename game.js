@@ -5236,15 +5236,17 @@ pasha_dark: {
             if (activeNewBattle.isProcessing && activeNewBattle.currentAttacker) {
                 const actor = activeNewBattle.currentAttacker;
                 const isAlly = activeNewBattle.getCharacterTeam(actor) === 'ally';
+                const actorName = (actor.charName || '').replace(/SPパシャ憎・半浸闇化状態|パシャ憎・半浸闇化状態/g, 'パシャ憎・半浸闇化');
                 actorIndicator = `
                     <div class="px-2 py-0.5 rounded border text-[10px] sm:text-xs font-bold font-pixel animate-pulse shadow ${isAlly ? 'bg-emerald-950/90 border-emerald-500 text-emerald-300' : 'bg-red-950/90 border-red-500 text-red-300'}">
-                        ⚡ 現在行動中：${isAlly ? '【味方】' : '【敵】'} ${actor.charName}
+                        ⚡ 現在行動中：${isAlly ? '【味方】' : '【敵】'} ${actorName}
                     </div>
                 `;
             } else if (isMyTurn) {
+                const p1Name = (p1.charName || '').replace(/SPパシャ憎・半浸闇化状態|パシャ憎・半浸闇化状態/g, 'パシャ憎・半浸闇化');
                 actorIndicator = `
                     <div class="px-2 py-0.5 rounded border border-emerald-400 bg-emerald-950/90 text-emerald-300 text-[10px] sm:text-xs font-bold font-pixel animate-pulse shadow">
-                        🟢 自分のターン (${p1.charName})
+                        🟢 自分のターン (${p1Name})
                     </div>
                 `;
             } else {
