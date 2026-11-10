@@ -344,6 +344,16 @@ class Battle3v3Engine {
                 this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
                 if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
             }
+            if (p.hp > 0 && p.darknessPowerTurns && p.darknessPowerTurns > 0) {
+                if (p.darknessAppliedTurn !== this.turn) {
+                    p.darknessPowerTurns--;
+                    const hAmt = Math.floor(Math.random() * 21) + 10;
+                    p.hp = Math.min(p.maxHp, p.hp + hAmt);
+                    this.log(`🦇 ${p.charName} の暗黒パワーにより、ターン開始時にHPが ${hAmt} 回復した！（残り ${p.darknessPowerTurns}T）`, 'text-purple-300 font-bold');
+                    this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
+                    if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
+                }
+            }
         });
 
         this.checkPashaPassive();
@@ -452,28 +462,8 @@ class Battle3v3Engine {
         }
     }
 
-    handleDarknessRecovery(attacker) {
-        if (!attacker || attacker.hp <= 0) return;
-        if (attacker.darknessPowerTurns && attacker.darknessPowerTurns > 0) {
-            if (attacker.darknessAppliedTurn === this.turn) {
-                // 付与された同一ターン内では回復せず、次ターン以降の自分の番・コマンド実行時に回復
-                return;
-            }
-            attacker.darknessPowerTurns--;
-            const hAmt = Math.floor(Math.random() * 21) + 10;
-            attacker.hp = Math.min(attacker.maxHp, attacker.hp + hAmt);
-            this.log(`🦇 ${attacker.charName} の暗黒パワーにより、コマンド実行時にHPが ${hAmt} 回復した！（残り ${attacker.darknessPowerTurns}T）`, 'text-purple-300 font-bold');
-            this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, attacker);
-            if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
-            if (this.onStateChange) this.onStateChange(this);
-        }
-    }
-
     executePlayerAction(attacker, defender, skillId) {
         if (attacker.hp <= 0) return;
-
-        // 暗黒パワーの回復（自分の番になり、コマンド実行時に回復）
-        this.handleDarknessRecovery(attacker);
 
         if (attacker.stunTurns > 0) {
             attacker.stunTurns--;
