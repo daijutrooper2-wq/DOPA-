@@ -1095,22 +1095,33 @@ class Battle3v3Engine {
         } else {
             if (defender.tempEvadeNext) defender.tempEvadeNext = false;
             const bonus = 2;
-            attacker.eva = Math.min(60, (attacker.eva || 10) + bonus);
-            attacker.pashaDarkEvaBonus = (attacker.pashaDarkEvaBonus || 0) + bonus;
-            const side = (this.getCharacterTeam && this.getCharacterTeam(attacker) === 'ally') ? 'Player' : 'Enemy';
-            this.log(`🖤 ${attacker.charName} の「ステルスオブダーク」！ 相手の回避を完全に無視して命中！ 自身の回避率が ${bonus}% アップ（現在: ${attacker.eva}%）`, 'text-purple-300 font-bold');
-            // ポップアップを自分自身に表示
-            this.triggerEffect(side, 'buff', `回避率+${bonus}%`, attacker);
+            const currentBonus = attacker.pashaDarkEvaBonus || 0;
+            const actualBonus = Math.min(bonus, Math.max(0, 50 - currentBonus));
+            
+            if (actualBonus > 0) {
+                attacker.eva = (attacker.eva || 10) + actualBonus;
+                attacker.pashaDarkEvaBonus = currentBonus + actualBonus;
+                const side = (this.getCharacterTeam && this.getCharacterTeam(attacker) === 'ally') ? 'Player' : 'Enemy';
+                this.log(`🖤 ${attacker.charName} の「ステルスオブダーク」！ 相手の回避を完全に無視して命中！ 自身の回避率が ${actualBonus}% アップ（現在: ${attacker.eva}% / 強化計: +${attacker.pashaDarkEvaBonus}%）`, 'text-purple-300 font-bold');
+                this.triggerEffect(side, 'buff', `回避率+${actualBonus}%`, attacker);
+            } else {
+                this.log(`🖤 ${attacker.charName} の「ステルスオブダーク」！ 相手の回避を完全に無視して命中！ (回避率強化は既に最大値+50%に達しています)`, 'text-purple-300');
+            }
         }
 
         if (attacker.id === 'pasha_dark' && skill.id === 'pasha_dark_attack') {
             if (Math.random() < 0.05) {
                 const bonus = 3;
-                attacker.eva = Math.min(60, (attacker.eva || 10) + bonus);
-                attacker.pashaDarkEvaBonus = (attacker.pashaDarkEvaBonus || 0) + bonus;
-                const side = (this.getCharacterTeam && this.getCharacterTeam(attacker) === 'ally') ? 'Player' : 'Enemy';
-                this.log(`📸 ${attacker.charName} の「ダークネスフィンガー」追加効果！ 回避率 +${bonus}% （累計ボーナス: +${attacker.pashaDarkEvaBonus}% / 現在: ${attacker.eva}%）`, 'text-purple-300 font-bold');
-                this.triggerEffect(side, 'buff', `回避率+${bonus}%`, attacker);
+                const currentBonus = attacker.pashaDarkEvaBonus || 0;
+                const actualBonus = Math.min(bonus, Math.max(0, 50 - currentBonus));
+                
+                if (actualBonus > 0) {
+                    attacker.eva = (attacker.eva || 10) + actualBonus;
+                    attacker.pashaDarkEvaBonus = currentBonus + actualBonus;
+                    const side = (this.getCharacterTeam && this.getCharacterTeam(attacker) === 'ally') ? 'Player' : 'Enemy';
+                    this.log(`📸 ${attacker.charName} の「ダークネスフィンガー」追加効果！ 回避率 +${actualBonus}% （累計ボーナス: +${attacker.pashaDarkEvaBonus}% / 現在: ${attacker.eva}%）`, 'text-purple-300 font-bold');
+                    this.triggerEffect(side, 'buff', `回避率+${actualBonus}%`, attacker);
+                }
             }
         }
 
@@ -2089,7 +2100,7 @@ if (typeof window.getStatusBadgesHtml === 'undefined') {
     window.getStatusBadgesHtml = function(p, isAlly = true) {
         let badges = '';
         if (p.pashaDarkEvaBonus && p.pashaDarkEvaBonus > 0) {
-            badges += `<span class="bg-purple-950/95 text-purple-300 border-2 border-purple-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-1 inline-block">闇の回避強化 [避+${p.pashaDarkEvaBonus}%]</span>`;
+            badges += `<span class="bg-purple-950/95 text-purple-300 border-2 border-purple-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-1 inline-block">闇の回避強化 [避+${p.pashaDarkEvaBonus}% / 最大+50%]</span>`;
         }
         if (p.courtneyChargeCount && p.courtneyChargeCount > 0) {
             if (p.courtneyChargeCount >= 8) {
@@ -2266,7 +2277,7 @@ function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
             <div>会率: ${critHtml}</div>
             <div>回避: ${evaHtml}</div>
         </div>
-        ${c.pashaDarkEvaBonus ? `<div class="text-[9px] text-purple-300 font-bold mb-1 animate-pulse">🌙 闇の回避強化: +${c.pashaDarkEvaBonus}%</div>` : ''}
+        ${c.pashaDarkEvaBonus ? `<div class="text-[9px] text-purple-300 font-bold mb-1 animate-pulse">🌙 闇の回避強化: +${c.pashaDarkEvaBonus}% (最大+50%)</div>` : ''}
         ${badgesHtml ? `<div class="flex flex-wrap gap-1 my-1 border-t border-slate-800 pt-1">${badgesHtml}</div>` : ''}
         <div class="border-t border-slate-700 pt-1">
             <div class="text-[9px] font-bold text-amber-200 mb-1">✨ 所持スキル一覧</div>
