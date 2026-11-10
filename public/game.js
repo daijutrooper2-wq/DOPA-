@@ -2076,7 +2076,7 @@ static drawDopagaking(p, isCharged) {
                 chargedImage: 'dopagaking/dopagakingcharge.webp',
                 desc: 'すべてを運に任せる完全ランダム型の国王。6回チャージで「王に従え」が解放され、ランダムなキャラの姿に変身して全スキルをCD無視で1つ選択して発動できる。',
                 skills: [
-                    { id: 'dopa_juggler', name: 'ジャグラー', type: 'dopa_juggler_skill', power: 1.0, isNormalAttack: true, cooldown: 0, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 0 / 通常攻撃】0〜50の完全ランダムダメージを単体に与える。' },
+                    { id: 'dopa_juggler', name: 'ジャグラー', type: 'dopa_juggler_skill', power: 1.0, isNormalAttack: true, cooldown: 0, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 0 / 通常攻撃】0〜40の完全ランダムダメージを単体に与える。' },
                     { id: 'dopa_charge', name: 'チャージ', type: 'dopa_charge_skill', cooldown: 0, initialCooldown: 0, targetType: 'self', desc: '【CD: 0 / 特殊】「王に従え」のチャージを1つ行う（最大6回）。6回チャージ後は使用不可となり、「王に従え」発動後に再度チャージ可能。' },
                     { id: 'dopa_majesty', name: '王の威厳', type: 'dopa_majesty_skill', cooldown: 2, initialCooldown: 0, targetType: 'self', desc: '【CD: 2T / 補助・防御】70%で敵の攻撃を絶対回避（1T）、30%で自身のHPを60回復する。' },
                     { id: 'dopa_godluck', name: '神頼み', type: 'dopa_godluck_skill', cooldown: 4, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 4T / 特殊・一撃】95%で自分が50ダメージ、5%で相手に1000ダメージ（HP50%以上ならHP1耐え）。' },
@@ -3589,8 +3589,8 @@ pasha_dark: {
 
 
         case 'dopa_juggler_skill':
-            // 0～50の完全ランダムダメージ
-            const jugglerDmg = Math.floor(Math.random() * 51);
+            // 0〜40の完全ランダムダメージ
+            const jugglerDmg = Math.floor(Math.random() * 41);
             defender.hp = Math.max(0, defender.hp - jugglerDmg);
             if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
 
