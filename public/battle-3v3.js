@@ -1936,21 +1936,44 @@ function renderNewBattleScreen() {
                 </div>
             </div>
 
-            <div class="w-full grid grid-cols-1 sm:grid-cols-12 gap-1.5 h-20 shrink-0 z-10">
-                <div class="sm:col-span-3 bg-slate-950 border border-slate-700 rounded p-1.5 flex items-center gap-2">
-                    <div class="text-[11px] font-bold text-amber-300 font-pixel">${playerState.playerName || 'ファイター'}</div>
+            <div class="w-full grid grid-cols-1 sm:grid-cols-12 gap-1.5 h-20 sm:h-24 shrink-0 z-10">
+                <div class="sm:col-span-3 bg-slate-900/95 border-2 border-slate-700 rounded-lg p-1.5 flex items-center gap-2 shadow-md h-full overflow-hidden relative backdrop-blur-sm">
+                    <canvas id="new-battle-profile-icon" width="40" height="40" class="pixel-box bg-slate-950 rounded shrink-0 w-9 h-9 sm:w-10 sm:h-10 border border-amber-500/50 shadow-inner object-contain"></canvas>
+                    <div class="flex flex-col justify-between overflow-hidden flex-1 min-w-0 h-full py-0.5">
+                        <div class="text-[11px] sm:text-xs font-bold text-amber-300 font-pixel truncate drop-shadow-sm" title="${playerState.playerName || 'ファイター'}">
+                            ${playerState.playerName || 'ファイター'}
+                        </div>
+                        <div class="flex items-center justify-between gap-1 w-full border-t border-slate-800/80 pt-1 mt-auto">
+                            <div class="text-[9px] sm:text-[10px] text-slate-300 font-mono truncate flex items-center gap-1">
+                                <span class="text-amber-400 font-bold">DOPA</span>
+                                <span class="text-amber-300 font-bold font-pixel">${typeof formatDopa === 'function' ? formatDopa(playerState.dopa) : (playerState.dopa || 0)}</span>
+                            </div>
+                            <div id="battle-battery-status" class="shrink-0 bg-slate-950/80 border border-slate-800 px-1 py-0.5 rounded flex items-center justify-center">
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="sm:col-span-5 bg-slate-950 border border-slate-700 rounded p-1 flex flex-col h-full overflow-hidden">
-                    <div class="w-full flex-1 overflow-y-auto text-[9px] font-mono text-slate-200" id="new-battle-log">
+                <div class="sm:col-span-5 bg-slate-900/95 border-2 border-slate-700 rounded-lg p-1.5 flex flex-col h-full shadow-md overflow-hidden">
+                    <div class="text-[9px] text-amber-400 font-bold font-pixel mb-0.5 shrink-0">📜 BATTLE LOG</div>
+                    <div class="w-full flex-1 bg-slate-950 border border-slate-800 rounded p-1 text-[9px] sm:text-[10px] font-mono text-slate-200 overflow-y-auto shadow-inner" id="new-battle-log">
                         ${(activeNewBattle.battleLogs && activeNewBattle.battleLogs.length > 0) ? activeNewBattle.battleLogs.map(l => `<div class="p-0.5">${l.msg}</div>`).join('') : "3v3バトル開始！"}
                     </div>
                 </div>
-                <div class="sm:col-span-4 bg-slate-900 border border-slate-700 rounded p-1 flex flex-col justify-center h-full">
+                <div class="sm:col-span-4 bg-slate-900/95 border-2 border-slate-700 rounded-lg p-1.5 flex flex-col justify-center h-full shadow-md relative overflow-hidden">
                     ${commandAreaContent}
                 </div>
             </div>
         </div>
     `;
+
+    const profileIconCvs = document.getElementById('new-battle-profile-icon');
+    if (profileIconCvs && typeof CharacterRenderer !== 'undefined' && CharacterRenderer.drawCharacter) {
+        CharacterRenderer.drawCharacter(profileIconCvs, playerState.selectedIcon || 'dopagaking');
+    }
+
+    if (typeof initBatteryManager === 'function') {
+        initBatteryManager();
+    }
 
     const logEl = document.getElementById('new-battle-log');
     if (logEl) logEl.scrollTop = logEl.scrollHeight;

@@ -382,6 +382,70 @@ static drawDopagaking(p, isCharged) {
             }
         }
 
+        window.batteryState = {
+            supported: false,
+            level: 100,
+            charging: false
+        };
+
+        function initBatteryManager() {
+            if (window._batteryManagerInitialized) {
+                updateBatteryDisplay();
+                return;
+            }
+            window._batteryManagerInitialized = true;
+
+            if (typeof navigator !== 'undefined' && typeof navigator.getBattery === 'function') {
+                navigator.getBattery().then(battery => {
+                    window.batteryState.supported = true;
+                    const syncBattery = () => {
+                        window.batteryState.level = Math.round((battery.level || 1) * 100);
+                        window.batteryState.charging = !!battery.charging;
+                        updateBatteryDisplay();
+                    };
+                    syncBattery();
+                    try {
+                        battery.addEventListener('levelchange', syncBattery);
+                        battery.addEventListener('chargingchange', syncBattery);
+                    } catch (e) {}
+                }).catch(() => {
+                    window.batteryState.supported = false;
+                    updateBatteryDisplay();
+                });
+            } else {
+                window.batteryState.supported = false;
+                updateBatteryDisplay();
+            }
+        }
+
+        function updateBatteryDisplay() {
+            const el = document.getElementById('battle-battery-status');
+            if (!el) return;
+
+            const { supported, level, charging } = window.batteryState;
+            if (!supported) {
+                el.innerHTML = `<span class="text-slate-400 font-mono text-[9px] sm:text-[10px] flex items-center gap-0.5" title="バッテリー非対応">🔋 --%</span>`;
+                return;
+            }
+
+            let icon = '🔋';
+            let colorClass = 'text-emerald-400';
+            if (charging) {
+                icon = '⚡🔋';
+                colorClass = 'text-amber-300 animate-pulse';
+            } else if (level <= 20) {
+                icon = '🪫';
+                colorClass = 'text-red-400 font-bold animate-bounce';
+            } else if (level <= 50) {
+                icon = '🔋';
+                colorClass = 'text-amber-300';
+            }
+
+            el.innerHTML = `<span class="${colorClass} font-mono text-[9px] sm:text-[10px] font-bold flex items-center gap-0.5 drop-shadow-sm" title="${charging ? '充電中' : 'バッテリー残量'}">${icon} ${level}%</span>`;
+        }
+        window.initBatteryManager = initBatteryManager;
+        window.updateBatteryDisplay = updateBatteryDisplay;
+
         class SoundSystem {
             constructor() {
                 this.ctx = null;
@@ -5509,11 +5573,20 @@ pasha_dark: {
 
                     <!-- 3. 画面下部エリア：プロフィール・ログ・コマンド操作枠 -->
                     <div class="w-full grid grid-cols-1 sm:grid-cols-12 gap-1.5 h-20 sm:h-24 shrink-0 z-10">
-                        <div class="sm:col-span-3 bg-slate-900/95 border-2 border-slate-700 rounded-lg p-1.5 flex items-center gap-2 shadow-md h-full overflow-hidden">
-                            <canvas id="new-battle-profile-icon" width="36" height="36" class="pixel-box bg-slate-950 rounded shrink-0 w-8 h-8"></canvas>
-                            <div class="flex flex-col justify-center overflow-hidden">
-                                <div class="text-[11px] font-bold text-amber-300 font-pixel truncate">${playerState.playerName || '名無しファイター'}</div>
-                                <div class="text-[9px] text-slate-300 font-mono truncate">DOPA: <span class="text-amber-400 font-bold">${formatDopa(playerState.dopa)}</span></div>
+                        <div class="sm:col-span-3 bg-slate-900/95 border-2 border-slate-700 rounded-lg p-1.5 flex items-center gap-2 shadow-md h-full overflow-hidden relative backdrop-blur-sm">
+                            <canvas id="new-battle-profile-icon" width="40" height="40" class="pixel-box bg-slate-950 rounded shrink-0 w-9 h-9 sm:w-10 sm:h-10 border border-amber-500/50 shadow-inner object-contain"></canvas>
+                            <div class="flex flex-col justify-between overflow-hidden flex-1 min-w-0 h-full py-0.5">
+                                <div class="text-[11px] sm:text-xs font-bold text-amber-300 font-pixel truncate drop-shadow-sm" title="${playerState.playerName || '名無しファイター'}">
+                                    ${playerState.playerName || '名無しファイター'}
+                                </div>
+                                <div class="flex items-center justify-between gap-1 w-full border-t border-slate-800/80 pt-1 mt-auto">
+                                    <div class="text-[9px] sm:text-[10px] text-slate-300 font-mono truncate flex items-center gap-1">
+                                        <span class="text-amber-400 font-bold">DOPA</span>
+                                        <span class="text-amber-300 font-bold font-pixel">${formatDopa(playerState.dopa)}</span>
+                                    </div>
+                                    <div id="battle-battery-status" class="shrink-0 bg-slate-950/80 border border-slate-800 px-1 py-0.5 rounded flex items-center justify-center">
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -5534,6 +5607,10 @@ pasha_dark: {
             const profileIconCvs = document.getElementById('new-battle-profile-icon');
             if (profileIconCvs) {
                 CharacterRenderer.drawCharacter(profileIconCvs, playerState.selectedIcon || 'dopagaking');
+            }
+
+            if (typeof initBatteryManager === 'function') {
+                initBatteryManager();
             }
 
             const logEl = document.getElementById('new-battle-log');
