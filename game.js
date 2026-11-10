@@ -3983,10 +3983,19 @@ pasha_dark: {
                         audioSystem.playBuff();
                         break;
                     case 'defend_buff':
-                        attacker.defendBuffTurns = 2;
-                        this.log(`🛡️ ${attacker.charName} はゴールキーパー姿勢をとった！(2ターンの間ダメージ70%カット)`, 'text-blue-300 font-bold');
-                        this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'buff', '鉄壁ガード!');
-                        audioSystem.playBuff();
+                        const alliesTeam = (this.getCharacterTeam && this.getCharacterTeam(attacker) === 'ally') ? (this.allies || [this.p1]) : (this.enemies || [this.p2]);
+                        const gkSide = (this.getCharacterTeam && this.getCharacterTeam(attacker) === 'ally') || attacker === this.p1 ? 'Player' : 'Enemy';
+                        alliesTeam.forEach(member => {
+                            if (member && member.hp > 0) {
+                                member.defendBuffTurns = 1;
+                                this.triggerEffect(gkSide, 'buff', '鉄壁ガード!', member);
+                            }
+                        });
+                        this.log(`🛡️ ${attacker.charName} は「ゴールキーパー」発動！ 1ターンの間、味方全員が受けるすべてのダメージを70%カット！`, 'text-blue-300 font-bold text-base');
+                        if (typeof this.triggerCutin === 'function') {
+                            this.triggerCutin('🛡️ ゴールキーパー！', '1ターンの間、味方全員の被ダメージ70%カット！');
+                        }
+                        if (typeof audioSystem !== 'undefined' && audioSystem.playBuff) audioSystem.playBuff();
                         break;
                     case 'heal_buff':
                         const hAmt = Math.floor(attacker.maxHp * (skill.healRate || 0.32));

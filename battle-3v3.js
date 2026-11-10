@@ -910,7 +910,24 @@ class Battle3v3Engine {
             } else if (skill.type === 'heal_buff') {
                 attacker.buffDef *= 1.35;
                 attacker.eva = Math.min(60, (attacker.eva || 10) + 15);
-                this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'buff', '回避・防御UP!');
+            }
+            return;
+        }
+
+        if (skill.id === 'momo_gk' || skill.type === 'defend_buff') {
+            const alliesTeam = (this.getCharacterTeam(attacker) === 'ally') ? this.allies : this.enemies;
+            const gkSide = (this.getCharacterTeam(attacker) === 'ally') ? 'Player' : 'Enemy';
+            alliesTeam.forEach(member => {
+                if (member && member.hp > 0) {
+                    member.defendBuffTurns = 1;
+                    this.triggerEffect(gkSide, 'buff', '鉄壁ガード!', member);
+                    triggerNewBattleCharacterEffect(member, 'buff', '鉄壁ガード!');
+                }
+            });
+            this.log(`🛡️ ${attacker.charName} は「ゴールキーパー」発動！ 1ターンの間、味方全員が受けるすべてのダメージを70%カット！`, 'text-blue-300 font-bold text-base');
+            if (typeof audioSystem !== 'undefined' && audioSystem.playBuff) audioSystem.playBuff();
+            if (typeof this.triggerCutin === 'function') {
+                this.triggerCutin('🛡️ ゴールキーパー！', '1ターンの間、味方全員の被ダメージ70%カット！');
             }
             return;
         }
@@ -1158,8 +1175,12 @@ class Battle3v3Engine {
         if (Math.random() < effectiveCritRate) {
             damage = Math.floor(damage * 1.5);
             audioSystem.playCrit();
-            this.log(`🔥✨ クリティカルヒット (${damage})！！`, 'text-yellow-300 font-bold');
             triggerNewBattleCharacterEffect(defender, 'crit', 'クリティカル！');
+        }
+
+        if (defender.defendBuffTurns > 0) {
+            damage = Math.max(1, Math.floor(damage * 0.3));
+            this.log(`🛡️ ${defender.charName} の鉄壁ガード！ 被ダメージを70%カット！`, 'text-blue-300 font-bold');
         }
 
         let extraHitTriggered = false;
