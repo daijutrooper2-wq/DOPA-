@@ -221,7 +221,8 @@ class Battle3v3Engine {
             pashaRollReviveCount: 0,
             iwabaBathTurns: 0,
             iwabaEvaBonus: 0,
-            ndaihyoTacticsTurns: 0
+            ndaihyoTacticsTurns: 0,
+            yoseruZeroDefTurns: 0
         };
     }
 
@@ -660,13 +661,11 @@ class Battle3v3Engine {
         }
 
         if (skill.id === 'courtney_yoseru' || skill.type === 'courtney_yoseru_skill') {
-            let yoseruDmg = Math.max(4, Math.floor(attacker.atk * 0.3));
-            defender.hp = Math.max(0, defender.hp - yoseruDmg);
-            if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
+            this.applyDamageSkill(attacker, defender, skill);
             defender.buffDef = 0.0;
-            this.log(`💋 ${attacker.charName} の「ヨセル」！ ${yoseruDmg} ダメージを与え、1ターンの間 ${defender.charName} の防御力を 0 にした！`, 'text-pink-300 font-bold');
-            this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'damage', `-${yoseruDmg}`, defender);
-            if (typeof audioSystem !== 'undefined' && audioSystem.playHit) audioSystem.playHit();
+            defender.yoseruZeroDefTurns = 1;
+            this.log(`💋 ${attacker.charName} の「ヨセル」！ 1ターンの間 ${defender.charName} の防御力を 0 にした！`, 'text-pink-300 font-bold');
+            this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'buff', '防御0!', defender);
             return;
         }
 
@@ -1274,6 +1273,13 @@ class Battle3v3Engine {
                 p.defendBuffTurns--;
                 if (p.defendBuffTurns === 0) {
                     p.buffDef = 1.0;
+                }
+            }
+            if (p.yoseruZeroDefTurns > 0) {
+                p.yoseruZeroDefTurns--;
+                if (p.yoseruZeroDefTurns === 0) {
+                    p.buffDef = 1.0;
+                    this.log(`📉 ${p.charName} の「ヨセル」による防御力0効果が終了した。`, 'text-slate-400 text-xs');
                 }
             }
             if (p.buffAtkTurns > 0) {
@@ -2155,6 +2161,9 @@ if (typeof window.getStatusBadgesHtml === 'undefined') {
         }
         if (p.pashaDarkEvaBonus && p.pashaDarkEvaBonus > 0) {
             badges += `<span class="bg-purple-950/95 text-purple-300 border-2 border-purple-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-1 inline-block">闇の回避強化 [避+${p.pashaDarkEvaBonus}% / 最大+50%]</span>`;
+        }
+        if (p.yoseruZeroDefTurns && p.yoseruZeroDefTurns > 0) {
+            badges += `<span class="bg-red-950/95 text-red-300 border-2 border-red-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-2 inline-block">防御0 [${p.yoseruZeroDefTurns}T]</span>`;
         }
         if (p.courtneyChargeCount && p.courtneyChargeCount > 0) {
             if (p.courtneyChargeCount >= 8) {

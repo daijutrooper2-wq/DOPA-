@@ -2608,6 +2608,7 @@ pasha_dark: {
                     defendBuffTurns: 0,
                     crimeDefDownTurns: 0,
                     nightmareDefTurns: 0,
+                    yoseruZeroDefTurns: 0,
                     nightmareAtkActive: false,
                     critRateBonus: 0,
                     critBuffTurns: 0,
@@ -3819,14 +3820,11 @@ pasha_dark: {
                         break;
                     }
                     case 'courtney_yoseru_skill': {
-                        let yoseruDmg = Math.max(4, Math.floor(attacker.atk * 0.3));
-                        defender.hp = Math.max(0, defender.hp - yoseruDmg);
-                        if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
+                        this.applyDamageSkill(attacker, defender, skill);
                         defender.buffDef = 0.0;
-        
-                        this.log(`💋 ${attacker.charName} の「ヨセル」！ ${yoseruDmg} ダメージを与え、1ターンの間 ${defender.charName} の防御力を 0 にした！`, 'text-pink-300 font-bold');
-                        this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'damage', `-${yoseruDmg}`);
-                        audioSystem.playHit();
+                        defender.yoseruZeroDefTurns = 1;
+                        this.log(`💋 ${attacker.charName} の「ヨセル」！ 1ターンの間 ${defender.charName} の防御力を 0 にした！`, 'text-pink-300 font-bold');
+                        this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'buff', '防御0!', defender);
                         break;
                     }
                     case 'courtney_aegu_skill': {
@@ -4316,6 +4314,13 @@ pasha_dark: {
                         p.defendBuffTurns--;
                         if (p.defendBuffTurns === 0) {
                             p.buffDef = 1.0;
+                        }
+                    }
+                    if (p.yoseruZeroDefTurns > 0) {
+                        p.yoseruZeroDefTurns--;
+                        if (p.yoseruZeroDefTurns === 0) {
+                            p.buffDef = 1.0;
+                            this.log(`📉 ${p.charName} の「ヨセル」による防御力0効果が終了した。`, 'text-slate-400 text-xs');
                         }
                     }
 
@@ -5640,6 +5645,9 @@ pasha_dark: {
             }
             if (p.defendBuffTurns && p.defendBuffTurns > 0) {
                 badges += `<span class="bg-amber-950/95 text-amber-300 border-2 border-amber-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform -rotate-2 inline-block">鉄壁 [${p.defendBuffTurns}T]</span>`;
+            }
+            if (p.yoseruZeroDefTurns && p.yoseruZeroDefTurns > 0) {
+                badges += `<span class="bg-red-950/95 text-red-300 border-2 border-red-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-2 inline-block">防御0 [${p.yoseruZeroDefTurns}T]</span>`;
             }
             if (p.critBuffTurns && p.critBuffTurns > 0) {
                 badges += `<span class="bg-emerald-950/95 text-emerald-300 border-2 border-emerald-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-3 inline-block">会+ [${p.critBuffTurns}T]</span>`;
