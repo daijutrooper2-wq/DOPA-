@@ -2139,7 +2139,7 @@ pasha_dark: {
                     { id: 'pasha_dark_attack', name: 'ダークネスフィンガー', type: 'attack', power: 1.0, isNormalAttack: true, cooldown: 0, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 0 / 通常攻撃】カメラのフラッシュで単体攻撃。5%の確率で自身の回避率が3%アップする。' },
                     { id: 'pasha_dark_stealth', name: 'ステルスオブダーク', type: 'attack', power: 1.25, isNormalAttack: false, cooldown: 2, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 2T / 必中攻撃】敵はこの攻撃を絶対に回避できない。さらに自身の回避率を2%アップする(永続)。' },
                     { id: 'pasha_dark_crime', name: 'パーフェクトクライム', type: 'pasha_crime_skill', cooldown: 3, initialCooldown: 0, targetType: 'self', desc: '【CD: 3T / 回復・デメリット】HPを110回復。だが次の一ターンの間自身の防御力ダウン。' },
-                    { id: 'pasha_dark_nightmare', name: 'アブソリュートナイトメア', type: 'pasha_nightmare_skill', cooldown: 4, initialCooldown: 4, targetType: 'single_enemy', desc: '【CD: 4T / 強力攻撃・デバフ】このターンのみ自身の攻撃力1.3倍＋このあとの3ターンは敵の防御力が大幅ダウン。' }
+                    { id: 'pasha_dark_nightmare', name: 'アブソリュートナイトメア', type: 'pasha_nightmare_skill', power: 1.3, cooldown: 4, initialCooldown: 4, targetType: 'single_enemy', desc: '【CD: 4T / 強力攻撃・デバフ】通常攻撃の1.3倍のダメージを単体に与え、さらに3ターンの間、対象の敵の防御力を大幅ダウンさせる。' }
                 ]
             },
 
@@ -3916,12 +3916,10 @@ pasha_dark: {
                         audioSystem.playHeal();
                         break;
                     case 'pasha_nightmare_skill':
-                        attacker.buffAtk *= 1.3;
-                        attacker.nightmareAtkActive = true;
                         defender.buffDef *= 0.5;
                         defender.nightmareDefTurns = 3;
-                        this.log(`🖤💥 ${attacker.charName} の「アブソリュートナイトメア」！ このターン攻撃力1.3倍、3ターンの間相手の防御力が大幅ダウン！ (※即座に相手にターンが渡る)`, 'text-purple-400 font-black text-base');
-                        this.triggerCutin('🖤 アブソリュートナイトメア！', '敵の防御大幅ダウン＆即座にターン交代！');
+                        this.log(`🖤💥 ${attacker.charName} の「アブソリュートナイトメア」！ 通常攻撃の1.3倍ダメージを与え、3ターンの間 ${defender.charName} の防御力を大幅ダウンさせた！`, 'text-purple-400 font-black text-base');
+                        this.triggerCutin('🖤 アブソリュートナイトメア！', '強力攻撃 ＆ 敵の防御大幅ダウン！');
                         this.applyDamageSkill(attacker, defender, skill);
                         break;
                 }

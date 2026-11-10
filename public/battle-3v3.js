@@ -903,6 +903,17 @@ class Battle3v3Engine {
             return;
         }
 
+        if (skill.id === 'pasha_dark_nightmare' || skill.type === 'pasha_nightmare_skill') {
+            defender.buffDef *= 0.5;
+            defender.nightmareDefTurns = 3;
+            this.log(`🖤💥 ${attacker.charName} の「アブソリュートナイトメア」！ 通常攻撃の1.3倍ダメージを与え、3ターンの間 ${defender.charName} の防御力を大幅ダウンさせた！`, 'text-purple-400 font-black text-base');
+            if (typeof this.triggerCutin === 'function') {
+                this.triggerCutin('🖤 アブソリュートナイトメア！', '強力攻撃 ＆ 敵の防御大幅ダウン！');
+            }
+            this.applyDamageSkill(attacker, defender, skill);
+            return;
+        }
+
         if (skill.id === 'ndaihyo_tactics') {
             const targetTeam = (this.getCharacterTeam(attacker) === 'ally') ? this.enemies : this.allies;
             let hasPasha = false;
@@ -1267,6 +1278,13 @@ class Battle3v3Engine {
             if (p.enemyEvaTurns > 0) {
                 p.enemyEvaTurns--;
                 if (p.enemyEvaTurns === 0) p.evaDebuff = 0;
+            }
+            if (p.nightmareDefTurns > 0) {
+                p.nightmareDefTurns--;
+                if (p.nightmareDefTurns === 0) {
+                    p.buffDef = Math.max(1.0, p.buffDef);
+                    this.log(`📉 ${p.charName} の「アブソリュートナイトメア」による防御低下効果が終了した。`, 'text-slate-400 text-xs');
+                }
             }
             if (p.momoEvaTurns > 0) {
                 p.momoEvaTurns--;
