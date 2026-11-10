@@ -3992,7 +3992,15 @@ pasha_dark: {
                     this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'buff', '回避率+1%');
                 }
 
-                if (attacker.id === 'pasha_dark' && skill.isNormalAttack) {
+                if (attacker.id === 'pasha_dark' && skill.id === 'pasha_dark_attack') {
+                    if (Math.random() < 0.2) {
+                        attacker.eva = Math.min(60, (attacker.eva || 10) + 3);
+                        this.log(`📸 ${attacker.charName} の「ダークネスフィンガー」追加効果！ 自身の回避率が 3% アップした！（現在: ${attacker.eva}%）`, 'text-purple-300 font-bold');
+                        this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'buff', '回避率+3%');
+                    }
+                }
+
+                if (attacker.id === 'pasha_dark' && skill.isNormalAttack && skill.id !== 'pasha_dark_attack') {
                     if (Math.random() < 0.2) {
                         attacker.eva = Math.min(60, (attacker.eva || 10) + 1);
                         this.log(`📸 ${attacker.charName} のカメラフラッシュ発動！ 自身の回避率が 1% アップした！（現在: ${attacker.eva}%）`, 'text-purple-300 font-bold');
