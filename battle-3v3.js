@@ -562,8 +562,11 @@ class Battle3v3Engine {
 
         this.applySkill(attacker, defender, skill);
 
-        if (skillId === 'asaiomizu_copied') {
+        if (skillId === 'asaiomizu_copied' || (skill && skill.id === 'asaiomizu_copied')) {
             attacker.recordedSkill = null;
+            if (this.p1 && attacker.id === 'asaiomizu') {
+                this.p1.recordedSkill = null;
+            }
         }
         if (skillId === 'dopa_obey_copy' || skillId === 'dopa_obey') {
             attacker.dopaChargeCount = 0;
@@ -581,6 +584,13 @@ class Battle3v3Engine {
     applySkill(attacker, defender, skill) {
         this.log(`💥 ${attacker.charName} の 「${skill.name}」！`, 'text-emerald-300 font-bold');
         audioSystem.playCharacterSound(attacker.id);
+
+        if (skill.id === 'asaiomizu_copied') {
+            attacker.recordedSkill = null;
+            if (this.p1 && attacker.id === 'asaiomizu') {
+                this.p1.recordedSkill = null;
+            }
+        }
 
         if (skill.id === 'courtney_charge' || skill.id === 'courtney_charge_only' || skill.type === 'courtney_charge_only') {
             if ((attacker.courtneyChargeCount || 0) < 8) {
