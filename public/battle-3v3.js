@@ -1832,7 +1832,7 @@ function renderNewBattleScreen() {
                             } else {
                                 posClasses += 'w-[30%] h-[72%] z-25 opacity-95 -translate-y-6';
                             }
-                            const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : 'hover:scale-105 hover:brightness-110';
+                            const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : 'hover:brightness-110';
                             const deadStyle = c.hp <= 0 ? 'opacity-40 grayscale' : '';
                             return `
                                 <div id="new-ally-char-${origIdx}" ${cardClickAttr} 
@@ -1884,7 +1884,7 @@ function renderNewBattleScreen() {
                             } else {
                                 posClasses += 'w-[30%] h-[72%] z-25 opacity-95 -translate-y-6';
                             }
-                            const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : 'hover:scale-105 hover:brightness-110';
+                            const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : 'hover:brightness-110';
                             const deadStyle = c.hp <= 0 ? 'opacity-40 grayscale' : '';
                             return `
                                 <div id="new-enemy-char-${origIdx}" ${cardClickAttr} 

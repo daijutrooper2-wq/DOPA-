@@ -5363,7 +5363,7 @@ pasha_dark: {
                                           posClasses += 'w-[30%] h-[72%] z-25 opacity-95 -translate-y-6';
                                       }
 
-                                     const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : 'hover:scale-105 hover:brightness-110';
+                                     const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : 'hover:brightness-110';
                                      const deadStyle = c.hp <= 0 ? 'opacity-40 grayscale' : '';
                                      const hpBarPosClass = 'absolute -top-6 left-1/2 -translate-x-1/2 w-[95%] min-w-[65px] z-40 flex flex-col items-center bg-black/85 backdrop-blur-md px-1 py-0.5 rounded border border-white/20 shadow-lg';
 
@@ -5432,7 +5432,7 @@ pasha_dark: {
                                           posClasses += 'w-[30%] h-[72%] z-25 opacity-95 -translate-y-6';
                                       }
 
-                                     const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : 'hover:scale-105 hover:brightness-110';
+                                     const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : 'hover:brightness-110';
                                      const deadStyle = c.hp <= 0 ? 'opacity-40 grayscale' : '';
                                      const hpBarPosClass = 'absolute -top-6 left-1/2 -translate-x-1/2 w-[95%] min-w-[65px] z-40 flex flex-col items-center bg-black/85 backdrop-blur-md px-1 py-0.5 rounded border border-white/20 shadow-lg';
 
