@@ -2197,7 +2197,7 @@ static drawDopagaking(p, isCharged) {
                 image: 'pasha/pasha.webp',
                 allImage: 'pasha/pashaALL.webp',
                 dieImage: 'pasha/pashaDIE.webp',
-                desc: 'スマホとカメラを駆使するサポーター・回復特化。\n※パッシブ効果: 敵チームに「SPパシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率がバトル開始時から終了時まで10上昇する。\n※ダークモード: バトル中にHPが50を下回ったとき、半浸闇化状態へチェンジし攻撃力が15%アップする！',
+                desc: 'スマホとカメラを駆使するサポーター・回復特化。\n※パッシブ効果: 敵チームに「SPパシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率がバトル開始時から終了時まで10上昇する。\n※ダークモード: バトル中にHPが50を下回ったとき、見た目のみ半浸闇化状態へチェンジし攻撃力が15%アップ！（スキル・性能はパシャ憎を維持）',
                 skills: [
                     { id: 'pasha_attack', name: '睨みつける', type: 'attack', power: 1.0, isNormalAttack: true, cooldown: 0, targetType: 'single_enemy', desc: '敵単体に標準ダメージを与える通常攻撃。' },
                     { id: 'pasha_flash', name: 'カメラフラッシュ', type: 'attack', power: 1.10, isNormalAttack: false, cooldown: 3, initialCooldown: 1, targetType: 'all_enemies', desc: '敵全体に小ダメージ＋選択した敵1体を1ターンの間行動不能にする。（開幕1T待機 / CD: 3T）' },
@@ -3636,13 +3636,6 @@ pasha_dark: {
                         this.log(`${defender.charName} は受けていた相手の最初の攻撃技 [${skill.name}] を内部保存した！`, 'text-cyan-300 font-bold');
                         this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'buff', 'スキルコピー成功！');
                     }
-                }
-
-                if (attacker.id === 'pasha' && !attacker.isDarkMode && attacker.hp <= attacker.maxHp * 0.5) {
-                    attacker.isDarkMode = true;
-                    attacker.buffAtk *= 1.4;
-                    this.log(`✖ パシャ憎のHPが半減！「ダークモード」発動！（攻撃力大幅UP）`, 'text-purple-400 font-bold');
-                    this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'buff', 'DARK MODE');
                 }
 
                 switch (skill.type) {

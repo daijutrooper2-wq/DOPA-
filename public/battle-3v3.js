@@ -2343,7 +2343,7 @@ function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
             <div>回避: ${evaHtml}</div>
         </div>
         ${c.pashaDarkEvaBonus ? `<div class="text-[9px] text-purple-300 font-bold mb-1 animate-pulse">🌙 闇の回避強化: +${c.pashaDarkEvaBonus}% (最大+50%)</div>` : ''}
-        ${c.id === 'pasha' ? `<div class="text-[9px] text-purple-300 font-bold mb-1">🌙 ダークモード: HP50未満で半浸闇化へチェンジ＆ATK+15%</div>` : ''}
+        ${c.id === 'pasha' ? `<div class="text-[9px] text-purple-300 font-bold mb-1">🌙 ダークモード: HP50未満で見ためのみ半浸闇化へチェンジ＆ATK+15%（スキルはパシャ憎維持）</div>` : ''}
         ${badgesHtml ? `<div class="flex flex-wrap gap-1 my-1 border-t border-slate-800 pt-1">${badgesHtml}</div>` : ''}
         <div class="border-t border-slate-700 pt-1">
             <div class="text-[9px] font-bold text-amber-200 mb-1">✨ 所持スキル一覧</div>
