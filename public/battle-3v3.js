@@ -267,6 +267,25 @@ class Battle3v3Engine {
         }
     }
 
+    checkPashaDarkMode(char) {
+        if (char && char.id === 'pasha' && char.hp > 0 && char.hp < 50 && !char.isDarkMode) {
+            char.isDarkMode = true;
+            char.image = 'pasha/pasha-dark.webp';
+            char.allImage = 'pasha-dark/pasha-darkALL.webp';
+            char.dieImage = 'pasha-dark/pasha-darkDIE.webp';
+            char.atk = Math.round(char.atk * 1.15);
+
+            this.log(`🌙 ${char.charName} はHPが50を下回り、ダークモード（半浸闇化状態）に覚醒した！ 攻撃力が15%アップし、姿が変化した！`, 'text-purple-300 font-bold text-base');
+            if (typeof audioSystem !== 'undefined' && audioSystem.playAwakening) audioSystem.playAwakening();
+            if (typeof this.triggerCutin === 'function') {
+                this.triggerCutin('🌙 ダークモード覚醒！', `${char.charName}が半浸闇化状態へチェンジ＆攻撃力15%アップ！`);
+            }
+            const side = this.getCharacterTeam(char) === 'ally' ? 'Player' : 'Enemy';
+            this.triggerEffect(side, 'buff', 'ダークモード', char);
+            if (this.onStateChange) this.onStateChange(this);
+        }
+    }
+
     startBattle() {
         this.log(`⚔️ 3v3バトル開始！ 味方チーム VS 敵チーム`, 'text-amber-300 font-bold');
         this.checkPashaPassive();
@@ -337,21 +356,26 @@ class Battle3v3Engine {
 
         const allFighters = [...this.allies, ...this.enemies];
         allFighters.forEach(p => {
-            if (p.hp > 0 && p.iwabaBathTurns && p.iwabaBathTurns > 0) {
-                const hAmt = Math.max(15, Math.floor(p.maxHp * 0.10));
-                p.hp = Math.min(p.maxHp, p.hp + hAmt);
-                this.log(`♨️ ${p.charName} は岩盤浴の温まり効果でHPが ${hAmt} 回復した！（持続残り ${p.iwabaBathTurns}T）`, 'text-emerald-300 font-bold');
-                this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
-                if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
-            }
-            if (p.hp > 0 && p.darknessPowerTurns && p.darknessPowerTurns > 0) {
-                if (p.darknessAppliedTurn !== this.turn) {
-                    p.darknessPowerTurns--;
-                    const hAmt = Math.floor(Math.random() * 21) + 10;
+            if (p && p.hp > 0) {
+                this.checkPashaDarkMode(p);
+                if (p.iwabaBathTurns && p.iwabaBathTurns > 0) {
+                    const hAmt = Math.max(15, Math.floor(p.maxHp * 0.10));
                     p.hp = Math.min(p.maxHp, p.hp + hAmt);
-                    this.log(`🦇 ${p.charName} の暗黒パワーにより、ターン開始時にHPが ${hAmt} 回復した！（残り ${p.darknessPowerTurns}T）`, 'text-purple-300 font-bold');
+                    this.log(`♨️ ${p.charName} は岩盤浴の温まり効果でHPが ${hAmt} 回復した！（持続残り ${p.iwabaBathTurns}T）`, 'text-emerald-300 font-bold');
                     this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
                     if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
+                    this.checkPashaDarkMode(p);
+                }
+                if (p.darknessPowerTurns && p.darknessPowerTurns > 0) {
+                    if (p.darknessAppliedTurn !== this.turn) {
+                        p.darknessPowerTurns--;
+                        const hAmt = Math.floor(Math.random() * 21) + 10;
+                        p.hp = Math.min(p.maxHp, p.hp + hAmt);
+                        this.log(`🦇 ${p.charName} の暗黒パワーにより、ターン開始時にHPが ${hAmt} 回復した！（残り ${p.darknessPowerTurns}T）`, 'text-purple-300 font-bold');
+                        this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
+                        if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
+                        this.checkPashaDarkMode(p);
+                    }
                 }
             }
         });
@@ -1178,6 +1202,7 @@ class Battle3v3Engine {
         if (!isCounter && defender.id === 'asaiomizu' && defender.hp > 0 && Math.random() < 0.5) {
             this.executeCounter(defender, attacker);
         }
+        this.checkPashaDarkMode(defender);
     }
 
     executeCounter(defender, attacker) {
@@ -2102,6 +2127,9 @@ function triggerNewBattleCharacterEffect(targetChar, type, text) {
 if (typeof window.getStatusBadgesHtml === 'undefined') {
     window.getStatusBadgesHtml = function(p, isAlly = true) {
         let badges = '';
+        if (p.isDarkMode) {
+            badges += `<span class="bg-purple-950/95 text-purple-300 border-2 border-purple-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-1 inline-block">🌙 ダークモード(ATK+15%)</span>`;
+        }
         if (p.pashaDarkEvaBonus && p.pashaDarkEvaBonus > 0) {
             badges += `<span class="bg-purple-950/95 text-purple-300 border-2 border-purple-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-1 inline-block">闇の回避強化 [避+${p.pashaDarkEvaBonus}% / 最大+50%]</span>`;
         }

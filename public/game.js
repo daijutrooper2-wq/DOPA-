@@ -2606,6 +2606,25 @@ pasha_dark: {
                 });
             }
 
+            checkPashaDarkMode(char) {
+                if (char && char.id === 'pasha' && char.hp > 0 && char.hp < 50 && !char.isDarkMode) {
+                    char.isDarkMode = true;
+                    char.image = 'pasha/pasha-dark.webp';
+                    char.allImage = 'pasha-dark/pasha-darkALL.webp';
+                    char.dieImage = 'pasha-dark/pasha-darkDIE.webp';
+                    char.atk = Math.round(char.atk * 1.15);
+
+                    this.log(`🌙 ${char.charName} はHPが50を下回り、ダークモード（半浸闇化状態）に覚醒した！ 攻撃力が15%アップし、姿が変化した！`, 'text-purple-300 font-bold text-base');
+                    if (typeof audioSystem !== 'undefined' && audioSystem.playAwakening) audioSystem.playAwakening();
+                    if (typeof this.triggerCutin === 'function') {
+                        this.triggerCutin('🌙 ダークモード覚醒！', `${char.charName}が半浸闇化状態へチェンジ＆攻撃力15%アップ！`);
+                    }
+                    const side = (this.allies && this.allies.includes(char)) || char === this.p1 ? 'Player' : 'Enemy';
+                    this.triggerEffect(side, 'buff', 'ダークモード', char);
+                    if (this.onStateChange) this.onStateChange(this);
+                }
+            }
+
             startBattle() {
                 this.log(`⚔️ バトル開始！ 【${this.p1.charName}】 VS 【${this.p2.charName}】`, 'text-amber-300 font-bold');
                 this.checkPashaPassive();
@@ -2956,14 +2975,18 @@ pasha_dark: {
 
                 const allFighters = this.isNewBattle ? [...this.allies, ...this.enemies] : [this.p1, this.p2];
                 allFighters.forEach(p => {
-                    if (p && p.hp > 0 && p.darknessPowerTurns && p.darknessPowerTurns > 0) {
-                        if (p.darknessAppliedTurn !== this.turn) {
-                            p.darknessPowerTurns--;
-                            const hAmt = Math.floor(Math.random() * 21) + 10;
-                            p.hp = Math.min(p.maxHp, p.hp + hAmt);
-                            this.log(`🦇 ${p.charName} の暗黒パワーにより、ターン開始時にHPが ${hAmt} 回復した！（残り ${p.darknessPowerTurns}T）`, 'text-purple-300 font-bold');
-                            this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
-                            if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
+                    if (p && p.hp > 0) {
+                        this.checkPashaDarkMode(p);
+                        if (p.darknessPowerTurns && p.darknessPowerTurns > 0) {
+                            if (p.darknessAppliedTurn !== this.turn) {
+                                p.darknessPowerTurns--;
+                                const hAmt = Math.floor(Math.random() * 21) + 10;
+                                p.hp = Math.min(p.maxHp, p.hp + hAmt);
+                                this.log(`🦇 ${p.charName} の暗黒パワーにより、ターン開始時にHPが ${hAmt} 回復した！（残り ${p.darknessPowerTurns}T）`, 'text-purple-300 font-bold');
+                                this.triggerEffect(this.getCharacterTeam(p) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, p);
+                                if (typeof audioSystem !== 'undefined' && audioSystem.playHeal) audioSystem.playHeal();
+                                this.checkPashaDarkMode(p);
+                            }
                         }
                     }
                 });
@@ -4111,6 +4134,7 @@ pasha_dark: {
                 if (!isCounter && defender.id === 'asaiomizu' && defender.hp > 0 && Math.random() < 0.5) {
                     this.executeCounter(defender, attacker);
                 }
+                this.checkPashaDarkMode(defender);
             }
 
             executeCounter(defender, attacker) {
@@ -5570,6 +5594,9 @@ pasha_dark: {
             }
             if (p.pashaPassiveActive) {
                 badges += `<span class="bg-yellow-950/95 text-yellow-300 border border-yellow-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md inline-block">特効[会心+10%]</span>`;
+            }
+            if (p.isDarkMode) {
+                badges += `<span class="bg-purple-950/95 text-purple-300 border-2 border-purple-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-1 inline-block">🌙 ダークモード(ATK+15%)</span>`;
             }
             if (p.pashaDarkEvaBonus && p.pashaDarkEvaBonus > 0) {
                 badges += `<span class="bg-purple-950/95 text-purple-300 border-2 border-purple-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-1 inline-block">闇の回避強化 [避+${p.pashaDarkEvaBonus}% / 最大+50%]</span>`;
