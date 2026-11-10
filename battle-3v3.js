@@ -1708,7 +1708,7 @@ function renderNewBattleScreen() {
         }
         const isCharged = (isC && (player.courtneyChargeCount || 0) > 0) ||
                           (isD && (player.dopaChargeCount || 0) > 0) ||
-                          player.eggplantReady;
+                          (player.id === 'momopin' && player.eggplantReady);
         if (isCharged && charData.chargedImage) {
             return charData.chargedImage;
         }

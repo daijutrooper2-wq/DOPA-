@@ -2251,7 +2251,7 @@ pasha_dark: {
                 image: 'momopin/momopin.webp',
                 allImage: 'momopin/momopinALL.webp',
                 dieImage: 'momopin/momopinDIE.webp',
-                chargedImage: 'momopin/chargenasu.webp',
+                chargedImage: 'momopin/momopinNASU.webp',
                 desc: '圧倒的タフさを誇る要塞。「ナス準備中」で変身し、次ターンに「超ナスちん乱舞」を発動！',
                 skills: [
                     { id: 'momo_attack', name: 'ポカポカ叩く', type: 'attack', power: 1.0, isNormalAttack: true, cooldown: 0, targetType: 'single_enemy', desc: '敵単体に標準ダメージを与える通常攻撃。' },
@@ -5220,7 +5220,8 @@ pasha_dark: {
                 }
 
                 const isCharged = (isC && (player.courtneyChargeCount || 0) > 0) ||
-                                  (isD && (player.dopaChargeCount || 0) > 0);
+                                  (isD && (player.dopaChargeCount || 0) > 0) ||
+                                  (player.id === 'momopin' && player.eggplantReady);
 
                 if (isCharged && charData.chargedImage) {
                     return charData.chargedImage;
