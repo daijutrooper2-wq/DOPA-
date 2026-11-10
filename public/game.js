@@ -3345,12 +3345,7 @@ pasha_dark: {
                     return;
                 }
                 if (skill.id === 'pasha_roll') {
-                    if ((this.battleData?.pashaRollUsedCount || 0) >= 2) {
-                        this.log(`⚠️ カメラロールは1試合に最大2回までしか使用できません！`, 'text-amber-300 font-bold');
-                        return;
-                    }
                     this.battleData = this.battleData || { pashaRollUsedCount: 0, pashaRollReviveCount: 0 };
-                    this.battleData.pashaRollUsedCount = (this.battleData.pashaRollUsedCount || 0) + 1;
 
                     const hAmt = skill.healAmount || 60;
                     const teamList = (this.getCharacterTeam(attacker) === 'ally') ? this.allies : this.enemies;
@@ -5223,10 +5218,9 @@ pasha_dark: {
                 let skillsHtml = skills.map(s => {
                     const cd = p1.cooldowns[s.id] || 0;
                     const isCd = cd > 0;
-                    const isPashaRollLimit = (s.id === 'pasha_roll' && (p1.pashaRollUsedCount || 0) >= 2);
                     const isDopaChargeFull = (p1.id === 'dopagaking' && (s.id === 'dopa_charge' || s.id === 'dopa_charge_skill' || s.type === 'dopa_charge_skill') && (p1.dopaChargeCount || 0) >= 6);
                     const isDopaObeyLocked = (p1.id === 'dopagaking' && (s.id === 'dopa_obey' || s.id === 'dopa_inheritance') && (p1.dopaChargeCount || 0) < 6);
-                    const disabled = isCd || isPashaRollLimit || isDopaChargeFull || isDopaObeyLocked ||
+                    const disabled = isCd || isDopaChargeFull || isDopaObeyLocked ||
                                      (p1.id === 'courtney' && (s.id === 'courtney_feel' || s.id === 'courtney_charge_release') && (p1.courtneyChargeCount || 0) < 1);
                     return `
                         <button onclick="${disabled ? '' : `executeNewBattleAction('${s.id}')`}" class="pixel-box bg-slate-900 border ${disabled ? 'border-slate-700 opacity-60 cursor-not-allowed' : 'border-emerald-400 hover:border-emerald-300 cursor-pointer'} p-3 text-left shadow flex flex-col justify-between w-full transition-all">
@@ -5235,7 +5229,7 @@ pasha_dark: {
                                     <span>✨</span>
                                     <span>${s.name}</span>
                                     ${isCd ? `<span class="text-amber-400 text-xs font-mono">(CT:${cd})</span>` : ''}
-                                    ${s.id === 'pasha_roll' ? `<span class="text-sky-400 text-xs font-mono">(残り使用: ${2 - (p1.pashaRollUsedCount || 0)}回)</span>` : ''}
+                                    ${s.id === 'pasha_roll' ? `<span class="text-sky-400 text-xs font-mono">(復活残り: ${2 - (activeNewBattle.battleData?.pashaRollReviveCount || 0)}回)</span>` : ''}
                                     ${isDopaChargeFull ? `<span class="text-amber-400 text-xs font-mono font-bold">(MAX 6/6)</span>` : ''}
                                     ${isDopaObeyLocked ? `<span class="text-slate-400 text-xs font-mono">(要6チャージ: ${p1.dopaChargeCount || 0}/6)</span>` : ''}
                                 </span>

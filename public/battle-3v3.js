@@ -715,12 +715,6 @@ class Battle3v3Engine {
         }
 
         if (skill.id === 'pasha_roll') {
-            if ((attacker.pashaRollUsedCount || 0) >= 2) {
-                this.log(`⚠️ ${attacker.charName} の カメラロール は1試合に最大2回までしか使用できません！`, 'text-amber-300 font-bold');
-                return;
-            }
-            attacker.pashaRollUsedCount = (attacker.pashaRollUsedCount || 0) + 1;
-
             const hAmt = skill.healAmount || 60;
             const teamList = (this.getCharacterTeam(attacker) === 'ally') ? this.allies : this.enemies;
             teamList.forEach(a => {
@@ -1740,15 +1734,14 @@ function renderNewBattleScreen() {
         }
         let skillsHtml = skills.map(s => {
             const cd = p1.cooldowns[s.id] || 0;
-            const isPashaRollLimit = (s.id === 'pasha_roll' && (p1.pashaRollUsedCount || 0) >= 2);
             const isDopaChargeFull = (p1.id === 'dopagaking' && (s.id === 'dopa_charge' || s.id === 'dopa_charge_skill' || s.type === 'dopa_charge_skill') && (p1.dopaChargeCount || 0) >= 6);
             const isDopaObeyLocked = (p1.id === 'dopagaking' && (s.id === 'dopa_obey' || s.id === 'dopa_inheritance') && (p1.dopaChargeCount || 0) < 6);
             const isCourtneyLocked = (p1.id === 'courtney' && (s.id === 'courtney_feel' || s.id === 'courtney_charge_release') && (p1.courtneyChargeCount || 0) < 1);
-            const disabled = cd > 0 || isPashaRollLimit || isDopaChargeFull || isDopaObeyLocked || isCourtneyLocked;
+            const disabled = cd > 0 || isDopaChargeFull || isDopaObeyLocked || isCourtneyLocked;
             return `
                 <button onclick="${disabled ? '' : `executeNewBattleAction('${s.id}')`}" class="pixel-box bg-slate-900 border ${disabled ? 'border-slate-700 opacity-60 cursor-not-allowed' : 'border-emerald-400 hover:border-emerald-300 cursor-pointer'} p-3 text-left shadow flex flex-col justify-between w-full">
                     <div class="flex justify-between items-center w-full mb-1">
-                        <span class="font-pixel text-xs text-emerald-300 font-bold">${s.name} ${cd > 0 ? `(CT:${cd})` : ''} ${s.id === 'pasha_roll' ? `(残り使用: ${2 - (p1.pashaRollUsedCount || 0)}回)` : ''} ${isDopaChargeFull ? '(MAX 6/6)' : ''}</span>
+                        <span class="font-pixel text-xs text-emerald-300 font-bold">${s.name} ${cd > 0 ? `(CT:${cd})` : ''} ${s.id === 'pasha_roll' ? `(復活残り: ${2 - (p1.pashaRollReviveCount || 0)}回)` : ''} ${isDopaChargeFull ? '(MAX 6/6)' : ''}</span>
                     </div>
                     <div class="text-[11px] text-slate-200 font-mono">${s.desc}</div>
                 </button>
@@ -1838,6 +1831,8 @@ function renderNewBattleScreen() {
                             if (!c) return '';
                             const pct = Math.max(0, Math.min(100, Math.round((c.hp / c.maxHp) * 100)));
                             const img = getCharImg(c, true);
+                            const isTargetSelecting = (newBattleViewMode === 'target_select');
+                            const isSelectable = isTargetSelecting && newBattleTargetSelectType === 'single_ally' && c.hp > 0;
                             const cardClickAttr = isSelectable 
                                 ? `onclick="selectNewBattleTarget(${origIdx}, true)" style="cursor: pointer;"` 
                                 : `onclick="if(typeof toggleBattleCharTooltip === 'function') toggleBattleCharTooltip('ally', ${origIdx}, event)" style="cursor: pointer;"`;
