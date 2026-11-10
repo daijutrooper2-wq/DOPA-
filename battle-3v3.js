@@ -1098,6 +1098,17 @@ class Battle3v3Engine {
             this.log(`🖤 ${attacker.charName} の「ステルスオブダーク」！ 相手の回避を完全に無視して命中！ 自身の回避率が 1% アップ（現在: ${attacker.eva}%）`, 'text-purple-300 font-bold');
         }
 
+        if (attacker.id === 'pasha_dark' && skill.id === 'pasha_dark_attack') {
+            if (Math.random() < 0.05) {
+                const bonus = 3;
+                attacker.eva = Math.min(60, (attacker.eva || 10) + bonus);
+                attacker.pashaDarkEvaBonus = (attacker.pashaDarkEvaBonus || 0) + bonus;
+                const side = (this.getCharacterTeam && this.getCharacterTeam(attacker) === 'ally') ? 'Player' : 'Enemy';
+                this.log(`📸 ${attacker.charName} の「ダークネスフィンガー」追加効果！ 回避率 +${bonus}% （累計ボーナス: +${attacker.pashaDarkEvaBonus}% / 現在: ${attacker.eva}%）`, 'text-purple-300 font-bold');
+                this.triggerEffect(side, 'buff', `回避率+${bonus}%`, attacker);
+            }
+        }
+
         let baseDmg = (attacker.atk * (skill.power || 1.0) * attacker.buffAtk) - (defender.def * 0.4 * defender.buffDef);
         let damage = Math.max(8, Math.floor(baseDmg + (Math.random() * 4 - 2)));
 

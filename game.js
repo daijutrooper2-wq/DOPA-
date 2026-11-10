@@ -2136,7 +2136,7 @@ pasha_dark: {
                 dieImage: 'pasha-dark/pasha-darkDIE.webp',
                 desc: '圧倒的な攻撃力と高回避を誇る超攻撃型。回避するたびに攻撃力が跳ね上がるアビリティを持ち、ハマれば一撃で全てを破壊するロマンと脅威を兼ね備えています。',
                 skills: [
-                    { id: 'pasha_dark_attack', name: 'ダークネスフィンガー', type: 'pasha_dark_attack_skill', cooldown: 2, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 2T / 通常攻撃】カメラのフラッシュで単体攻撃(固定15ダメ)。20%の確率で自身の回避率を2%アップする。' },
+                    { id: 'pasha_dark_attack', name: 'ダークネスフィンガー', type: 'attack', power: 1.0, isNormalAttack: true, cooldown: 0, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 0 / 通常攻撃】カメラのフラッシュで単体攻撃。5%の確率で自身の回避率が3%アップする。' },
                     { id: 'pasha_dark_stealth', name: 'ステルスオブダーク', type: 'attack', power: 1.25, isNormalAttack: false, cooldown: 2, initialCooldown: 0, targetType: 'single_enemy', desc: '【CD: 2T / 必中攻撃】敵はこの攻撃を絶対に回避できない＋自身の回避率を2%アップする。' },
                     { id: 'pasha_dark_crime', name: 'パーフェクトクライム', type: 'pasha_crime_skill', cooldown: 3, initialCooldown: 0, targetType: 'self', desc: '【CD: 3T / 回復・デメリット】HPを110回復。だが次の一ターンの間自身の防御力ダウン。' },
                     { id: 'pasha_dark_nightmare', name: 'アブソリュートナイトメア', type: 'pasha_nightmare_skill', cooldown: 4, initialCooldown: 4, targetType: 'single_enemy', desc: '【CD: 4T / 強力攻撃・デバフ】このターンのみ自身の攻撃力1.3倍＋このあとの3ターンは敵の防御力が大幅ダウン。' }
@@ -3556,27 +3556,7 @@ pasha_dark: {
                     case 'special':
                         this.applyDamageSkill(attacker, defender, skill);
                         break;
-                    case 'pasha_dark_attack_skill': {
-                        // 固定15ダメージ
-                        const pashaDmg = 15;
-                        defender.hp = Math.max(0, defender.hp - pashaDmg);
-                        if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
-                        this.log(`📸 ${attacker.charName} の 「${skill.name}」！ ${defender.charName} に ${pashaDmg} のダメージ！`, 'text-emerald-300 font-bold');
-                        this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'damage', `-${pashaDmg}`, defender);
-                        audioSystem.playHit();
 
-                        // 20%の確率で回避率2%アップ
-                        if (Math.random() < 0.2) {
-                            const bonus = 2;
-                            attacker.eva = Math.min(60, (attacker.eva || 10) + bonus);
-                            attacker.pashaDarkEvaBonus = (attacker.pashaDarkEvaBonus || 0) + bonus;
-                            const side = (this.getCharacterTeam && this.getCharacterTeam(attacker) === 'ally') ? 'Player' : 'Enemy';
-                            this.log(`✨ ${attacker.charName} の回避能力がさらに向上！ 回避率 +${bonus}% （累計ボーナス: +${attacker.pashaDarkEvaBonus}% / 現在: ${attacker.eva}%）`, 'text-purple-300 font-bold');
-                            // ポップアップを自分自身に表示
-                            this.triggerEffect(side, 'buff', `回避率+${bonus}%`, attacker);
-                        }
-                        break;
-                    }
 
 
         case 'dopa_juggler_skill':
@@ -4011,6 +3991,17 @@ pasha_dark: {
                     attacker.eva = Math.min(60, (attacker.eva || 10) + 1);
                     this.log(`🖤 ${attacker.charName} の「ステルスオブダーク」！ 相手の回避を完全に無視して命中！ 自身の回避率が 1% アップ（現在: ${attacker.eva}%）`, 'text-purple-300 font-bold');
                     this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'buff', '回避率+1%');
+                }
+
+                if (attacker.id === 'pasha_dark' && skill.id === 'pasha_dark_attack') {
+                    if (Math.random() < 0.05) {
+                        const bonus = 3;
+                        attacker.eva = Math.min(60, (attacker.eva || 10) + bonus);
+                        attacker.pashaDarkEvaBonus = (attacker.pashaDarkEvaBonus || 0) + bonus;
+                        const side = (this.getCharacterTeam && this.getCharacterTeam(attacker) === 'ally') ? 'Player' : 'Enemy';
+                        this.log(`📸 ${attacker.charName} の「ダークネスフィンガー」追加効果！ 回避率 +${bonus}% （累計ボーナス: +${attacker.pashaDarkEvaBonus}% / 現在: ${attacker.eva}%）`, 'text-purple-300 font-bold');
+                        this.triggerEffect(side, 'buff', `回避率+${bonus}%`, attacker);
+                    }
                 }
 
                 let baseDmg = (attacker.atk * (skill.power || 1.0) * attacker.buffAtk) - (defender.def * 0.4 * defender.buffDef);
