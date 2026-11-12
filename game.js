@@ -2342,9 +2342,7 @@ pasha_dark: {
             }
         };
 
-        if (!CHARACTER_DATA.momopin && CHARACTER_DATA.momo) {
-            CHARACTER_DATA.momopin = CHARACTER_DATA.momo;
-        }
+        // Removed duplicate momopin definition
         window.CHARACTER_DATA = CHARACTER_DATA;
 
         const BOT_ACTION_DELAY = 1700; // 1.5秒〜2秒程度の行動ディレイ（倍速調整対応用定数）
