@@ -102,11 +102,15 @@
                             } else if (id === 'opp-profile-cvs') {
                                 CharacterRenderer.drawCharacter(cvs, window.lastOppIcon || 'pasha');
                             } else if (id === 'p1-canvas' && typeof activeBattle !== 'undefined' && activeBattle && activeBattle.p1) {
-                                const isCharged = (activeBattle.p1.id === 'courtney' && (activeBattle.p1.courtneyChargeCount || 0) > 0) || (activeBattle.p1.id === 'dopagaking' && (activeBattle.p1.dopaChargeCount || 0) > 0 && (activeBattle.p1.dopaChargeCount || 0) < 6);
+                                const isCharged = (activeBattle.p1.id === 'courtney' && (activeBattle.p1.courtneyChargeCount || 0) > 0) || 
+                                                  (activeBattle.p1.id === 'dopagaking' && (activeBattle.p1.dopaChargeCount || 0) > 0 && (activeBattle.p1.dopaChargeCount || 0) < 6) ||
+                                                  (activeBattle.p1.id === 'momopin' && (activeBattle.p1.eggplantReady || activeBattle.p1.isMiniZou || activeBattle.p1Action === 'momo_prep'));
                                 const renderId = (activeBattle.p1.id === 'dopagaking' && (activeBattle.p1.dopaChargeCount || 0) >= 6 && activeBattle.p1.selectedInheritChar) ? activeBattle.p1.selectedInheritChar : ((activeBattle.p1.id === 'pasha' && activeBattle.p1.isDarkMode) ? 'pasha_dark' : activeBattle.p1.id);
                                 CharacterRenderer.drawCharacter(cvs, renderId, activeBattle.p1.isMiniZou, isCharged, activeBattle.p1.hp <= 0);
                             } else if (id === 'p2-canvas' && typeof activeBattle !== 'undefined' && activeBattle && activeBattle.p2) {
-                                const isCharged = (activeBattle.p2.id === 'courtney' && (activeBattle.p2.courtneyChargeCount || 0) > 0) || (activeBattle.p2.id === 'dopagaking' && (activeBattle.p2.dopaChargeCount || 0) > 0 && (activeBattle.p2.dopaChargeCount || 0) < 6);
+                                const isCharged = (activeBattle.p2.id === 'courtney' && (activeBattle.p2.courtneyChargeCount || 0) > 0) || 
+                                                  (activeBattle.p2.id === 'dopagaking' && (activeBattle.p2.dopaChargeCount || 0) > 0 && (activeBattle.p2.dopaChargeCount || 0) < 6) ||
+                                                  (activeBattle.p2.id === 'momopin' && (activeBattle.p2.eggplantReady || activeBattle.p2.isMiniZou || activeBattle.p2Action === 'momo_prep'));
                                 const renderId = (activeBattle.p2.id === 'dopagaking' && (activeBattle.p2.dopaChargeCount || 0) >= 6 && activeBattle.p2.selectedInheritChar) ? activeBattle.p2.selectedInheritChar : ((activeBattle.p2.id === 'pasha' && activeBattle.p2.isDarkMode) ? 'pasha_dark' : activeBattle.p2.id);
                                 CharacterRenderer.drawCharacter(cvs, renderId, activeBattle.p2.isMiniZou, isCharged, activeBattle.p2.hp <= 0);
                             }
@@ -135,22 +139,26 @@
 
                 // 7. 特殊状態（王冠、チャージ、ミニぞう等）に応じた画像パスの判定
                 let targetCharId = charId;
-                if (isMiniZou && !(CHARACTER_DATA[charId] && CHARACTER_DATA[charId].chargedImage)) targetCharId = 'minizou';
+                if (charId === 'momopin' && isCharged) {
+                    targetCharId = 'momopin';
+                } else if (isMiniZou && !(CHARACTER_DATA[charId] && CHARACTER_DATA[charId].chargedImage)) {
+                    targetCharId = 'minizou';
+                }
 
                 const charData = CHARACTER_DATA[targetCharId] || CHARACTER_DATA[charId] || EXTRA_ICONS[targetCharId] || EXTRA_ICONS[charId];
                 let imagePath = null;
                 if (charData) {
                     if (isBattleCanvas) {
-                        if (isCharged && charData.chargedImage) {
-                            imagePath = charData.chargedImage;
+                        if (isCharged && (charData.chargedImage || (charId === 'momopin' && 'momopin/momopinNASU.webp'))) {
+                            imagePath = charData.chargedImage || 'momopin/momopinNASU.webp';
                         } else if (isDead && charData.dieImage) {
                             imagePath = charData.dieImage;
                         } else {
                             imagePath = charData.image;
                         }
                     } else {
-                        if (isCharged && charData.chargedImage) {
-                            imagePath = charData.chargedImage;
+                        if (isCharged && (charData.chargedImage || (charId === 'momopin' && 'momopin/momopinNASU.webp'))) {
+                            imagePath = charData.chargedImage || 'momopin/momopinNASU.webp';
                         } else {
                             imagePath = charData.image || charData.allImage;
                         }
@@ -5219,9 +5227,15 @@ pasha_dark: {
                     if (targetData) return targetData.image || targetData.allImage || player.image;
                 }
 
+                const isMomo = player.id === 'momopin';
+                const isMomoCharging = isMomo && (player.eggplantReady || player.isMiniZou || (activeNewBattle && ((activeNewBattle.p1 === player && activeNewBattle.p1Action === 'momo_prep') || (activeNewBattle.currentAttacker === player && activeNewBattle.p1Action === 'momo_prep'))));
+
+                if (isMomoCharging) {
+                    return charData.chargedImage || 'momopin/momopinNASU.webp';
+                }
+
                 const isCharged = (isC && (player.courtneyChargeCount || 0) > 0) ||
-                                  (isD && (player.dopaChargeCount || 0) > 0) ||
-                                  (player.id === 'momopin' && player.eggplantReady);
+                                  (isD && (player.dopaChargeCount || 0) > 0);
 
                 if (isCharged && charData.chargedImage) {
                     return charData.chargedImage;
@@ -5678,7 +5692,7 @@ pasha_dark: {
                 badges += `<span class="bg-red-950/95 text-red-300 border-2 border-red-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform -rotate-2 inline-block">行動不能 [${p.stunTurns}T]</span>`;
             }
             if (p.eggplantReady) {
-                badges += `<span class="bg-purple-950/95 text-purple-300 border-2 border-purple-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform -rotate-3 inline-block">ゾウ変身</span>`;
+                badges += `<span class="bg-purple-950/95 text-purple-300 border-2 border-purple-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform -rotate-3 inline-block animate-pulse">🍆 ナス準備中</span>`;
             }
             if (p.courtneyChargeCount && p.courtneyChargeCount > 0) {
                 if (p.courtneyChargeCount >= 8) {
@@ -5833,6 +5847,9 @@ pasha_dark: {
             }
 
             newBattleViewMode = 'main';
+            if (actionType === 'momo_prep' && activeNewBattle.p1 && activeNewBattle.p1.id === 'momopin') {
+                activeNewBattle.p1.eggplantReady = true;
+            }
             activeNewBattle.submitAction(1, actionType);
             renderNewBattleScreen();
         }

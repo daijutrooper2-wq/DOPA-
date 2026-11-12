@@ -1706,9 +1706,15 @@ function renderNewBattleScreen() {
             const targetData = CHARACTER_DATA[player.selectedInheritChar];
             if (targetData) return targetData.image || targetData.allImage || player.image;
         }
+        const isMomo = player.id === 'momopin';
+        const isMomoCharging = isMomo && (player.eggplantReady || player.isMiniZou || (activeNewBattle && ((activeNewBattle.p1 === player && activeNewBattle.p1Action === 'momo_prep') || (activeNewBattle.currentAttacker === player && activeNewBattle.p1Action === 'momo_prep'))));
+
+        if (isMomoCharging) {
+            return charData.chargedImage || 'momopin/momopinNASU.webp';
+        }
+
         const isCharged = (isC && (player.courtneyChargeCount || 0) > 0) ||
-                          (isD && (player.dopaChargeCount || 0) > 0) ||
-                          (player.id === 'momopin' && player.eggplantReady);
+                          (isD && (player.dopaChargeCount || 0) > 0);
         if (isCharged && charData.chargedImage) {
             return charData.chargedImage;
         }
@@ -1879,6 +1885,7 @@ function renderNewBattleScreen() {
                         return visualOrder.map(({ c, origIdx, posType }) => {
                             if (!c) return '';
                             const pct = Math.max(0, Math.min(100, Math.round((c.hp / c.maxHp) * 100)));
+                            const charData = CHARACTER_DATA[c.id] || {};
                             const img = getCharImg(c, true);
                             const isTargetSelecting = (newBattleViewMode === 'target_select');
                             const isSelectable = isTargetSelecting && newBattleTargetSelectType === 'single_ally' && c.hp > 0;
@@ -1906,7 +1913,7 @@ function renderNewBattleScreen() {
                                         <div class="w-full bg-slate-900 h-1 rounded overflow-hidden mt-0.5"><div class="bg-emerald-400 h-full" style="width: ${pct}%;"></div></div>
                                     </div>
                                      <div id="new-ally-img-${origIdx}" class="w-full flex-1 flex items-center justify-center relative ${c.isShaking ? 'char-shake' : ''}">
-                                         <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none" onerror="const fb='${charData.image || 'asaiomizu/asaiomizu.webp'}'; if(this.src!==fb) this.src=fb;">
+                                         <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none" onerror="const fb='${charData.allImage || charData.image || 'momopin/momopin.webp'}'; if(this.src!==fb) this.src=fb;">
                                          <div class="absolute bottom-0 left-0 z-30 flex flex-col gap-0.5 items-start pointer-events-none">
                                              ${typeof getStatusBadgesHtml === 'function' ? getStatusBadgesHtml(c, true) : ''}
                                          </div>
@@ -2106,6 +2113,9 @@ function executeNewBattleAction(actionType) {
     }
 
     newBattleViewMode = 'main';
+    if (actionType === 'momo_prep' && activeNewBattle.p1 && activeNewBattle.p1.id === 'momopin') {
+        activeNewBattle.p1.eggplantReady = true;
+    }
     activeNewBattle.submitAction(1, actionType);
     renderNewBattleScreen();
 }
