@@ -388,9 +388,17 @@ class Battle3v3Engine {
             if (opponents.length > 0) {
                 let defender = opponents[0];
                 const recordedRec = (this.p1.id === 'asaiomizu' && this.p1.recordedSkill) ? this.p1.recordedSkill : null;
-                const skill = (this.p1.id === 'asaiomizu' && ally1Action === 'asaiomizu_copied' && recordedRec) ? { ...recordedRec, targetType: 'single_enemy' } : (this.p1.skills.find(s => s.id === ally1Action) || this.p1.skills[0]);
-                const targetList = (skill.targetType === 'single_ally') ? this.allies.filter(a => a.hp > 0) : opponents;
-                const targetTeamArr = (skill.targetType === 'single_ally') ? this.allies : this.enemies;
+                const copiedObeySkill = window.newBattleTargetSelectCopiedSkill;
+                let skill = null;
+                if (ally1Action === 'dopa_obey_copy' && copiedObeySkill) {
+                    skill = { ...copiedObeySkill, id: 'dopa_obey_copy' };
+                } else if (this.p1.id === 'asaiomizu' && ally1Action === 'asaiomizu_copied' && recordedRec) {
+                    skill = { ...recordedRec, targetType: recordedRec.targetType || 'single_enemy' };
+                } else {
+                    skill = this.p1.skills.find(s => s.id === ally1Action) || this.p1.skills[0];
+                }
+                const targetList = (skill && skill.targetType === 'single_ally') ? this.allies.filter(a => a.hp > 0) : opponents;
+                const targetTeamArr = (skill && skill.targetType === 'single_ally') ? this.allies : this.enemies;
                 if (this.p1TargetChar && this.p1TargetChar.hp > 0 && targetList.includes(this.p1TargetChar)) {
                     defender = this.p1TargetChar;
                 } else if (this.p1TargetIndex !== null && targetTeamArr[this.p1TargetIndex] && targetTeamArr[this.p1TargetIndex].hp > 0 && targetList.includes(targetTeamArr[this.p1TargetIndex])) {
@@ -536,15 +544,22 @@ class Battle3v3Engine {
         } else if (skillId === 'dopa_obey_copy' && window.newBattleTargetSelectCopiedSkill) {
             const rec = window.newBattleTargetSelectCopiedSkill;
             skill = {
+                ...rec,
                 id: 'dopa_obey_copy',
+                originalId: rec.id,
                 name: `👑【王に従え】${rec.name}`,
-                type: rec.type || 'attack',
-                power: rec.power || 1.0,
                 isNormalAttack: false,
                 cooldown: 0,
-                targetType: rec.targetType || 'single_enemy',
-                ...rec
+                targetType: rec.targetType || 'single_enemy'
             };
+            if (rec.id === 'courtney_charge_release') {
+                skill.power = 2.5;
+                skill.type = 'attack';
+            } else if (rec.id === 'courtney_feel' || rec.id === 'courtney_charge_only') {
+                skill.type = 'buff';
+                skill.buffType = 'atk';
+                skill.amount = 1.5;
+            }
         } else if (skillId === 'asaiomizu_copied' && attacker.recordedSkill) {
             const rec = attacker.recordedSkill;
             skill = {
@@ -1943,7 +1958,7 @@ function renderNewBattleScreen() {
                             const pct = Math.max(0, Math.min(100, Math.round((c.hp / c.maxHp) * 100)));
                             const img = getCharImg(c, false);
                             const charData = CHARACTER_DATA[c.id] || {};
-                            const isSelectable = newBattleViewMode === 'target_select' && (newBattleTargetSelectType === 'single_enemy' || newBattleTargetSelectSkillId === 'pasha_flash' || newBattleTargetSelectSkillId === 'asaiomizu_copied') && c.hp > 0;
+                            const isSelectable = newBattleViewMode === 'target_select' && (newBattleTargetSelectType === 'single_enemy' || newBattleTargetSelectSkillId === 'pasha_flash' || newBattleTargetSelectSkillId === 'asaiomizu_copied' || newBattleTargetSelectSkillId === 'dopa_obey_copy') && c.hp > 0;
                             const cardClickAttr = isSelectable 
                                 ? `onclick="selectNewBattleTarget(${origIdx}, false)" style="cursor: pointer;"` 
                                 : `onclick="if(typeof toggleBattleCharTooltip === 'function') toggleBattleCharTooltip('enemy', ${origIdx}, event)" style="cursor: pointer;"`;
