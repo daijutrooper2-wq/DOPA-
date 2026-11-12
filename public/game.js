@@ -2725,7 +2725,7 @@ pasha_dark: {
             checkPashaDarkMode(char) {
                 if (char && char.id === 'pasha' && char.hp > 0 && char.hp < 50 && !char.isDarkMode) {
                     char.isDarkMode = true;
-                    char.image = 'pasha/pasha-dark.webp';
+                    char.image = 'pasha-dark/pasha-dark.webp';
                     char.allImage = 'pasha-dark/pasha-darkALL.webp';
                     char.dieImage = 'pasha-dark/pasha-darkDIE.webp';
                     char.atk = Math.round(char.atk * 1.15);
@@ -2738,6 +2738,9 @@ pasha_dark: {
                     const side = (this.allies && this.allies.includes(char)) || char === this.p1 ? 'Player' : 'Enemy';
                     this.triggerEffect(side, 'buff', 'ダークモード', char);
                     if (this.onStateChange) this.onStateChange(this);
+                    if (typeof renderNewBattleScreen === 'function') {
+                        renderNewBattleScreen();
+                    }
                 }
             }
 
@@ -4244,7 +4247,6 @@ pasha_dark: {
                     this.log(`🔥✨【クリティカルヒット発動！！】 1.5倍の会心ダメージ (${damage})！！`, 'text-yellow-300 font-black text-base');
                     this.triggerCutin('🔥 クリティカルヒット！！', '会心の一撃！ 1.5倍ダメージ炸裂！');
                     triggerCharacterEffect(defender, 'crit', 'クリティカル！');
-                    this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'crit', 'クリティカル！');
 
                     const defCvsId = defender === this.p1 ? 'p1-canvas' : 'p2-canvas';
                     const defCvs = document.getElementById(defCvsId);
@@ -5328,9 +5330,15 @@ pasha_dark: {
                 const charData = CHARACTER_DATA[player.id] || {};
 
                 if (player.hp <= 0) {
+                    if (player.isDarkMode || player.id === 'pasha_dark') return player.dieImage || 'pasha-dark/pasha-darkDIE.webp';
+                    if (player.dieImage) return player.dieImage;
                     if (charData.dieImage) return charData.dieImage;
                     if (isA) return 'asaiomizu/asaiomizu3.webp';
-                    return charData.image || player.image;
+                    return player.image || charData.image;
+                }
+
+                if (player.isDarkMode || player.id === 'pasha_dark') {
+                    return player.allImage || player.image || 'pasha-dark/pasha-darkALL.webp';
                 }
 
                 if (isD && (player.dopaChargeCount || 0) >= 6 && player.selectedInheritChar) {
@@ -5354,7 +5362,7 @@ pasha_dark: {
 
                 if (isA) return 'asaiomizu/asaiomizu2.webp';
 
-                return charData.allImage || charData.image || player.image;
+                return player.allImage || player.image || charData.allImage || charData.image;
             };
 
             const pImg = getCharImg(p1, true);

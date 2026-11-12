@@ -271,7 +271,7 @@ class Battle3v3Engine {
     checkPashaDarkMode(char) {
         if (char && char.id === 'pasha' && char.hp > 0 && char.hp < 50 && !char.isDarkMode) {
             char.isDarkMode = true;
-            char.image = 'pasha/pasha-dark.webp';
+            char.image = 'pasha-dark/pasha-dark.webp';
             char.allImage = 'pasha-dark/pasha-darkALL.webp';
             char.dieImage = 'pasha-dark/pasha-darkDIE.webp';
             char.atk = Math.round(char.atk * 1.15);
@@ -284,6 +284,9 @@ class Battle3v3Engine {
             const side = this.getCharacterTeam(char) === 'ally' ? 'Player' : 'Enemy';
             this.triggerEffect(side, 'buff', 'ダークモード', char);
             if (this.onStateChange) this.onStateChange(this);
+            if (typeof renderNewBattleScreen === 'function') {
+                renderNewBattleScreen();
+            }
         }
     }
 
@@ -1767,9 +1770,14 @@ function renderNewBattleScreen() {
         const isD = player.id === 'dopagaking';
         const charData = CHARACTER_DATA[player.id] || {};
         if (player.hp <= 0) {
+            if (player.isDarkMode || player.id === 'pasha_dark') return player.dieImage || 'pasha-dark/pasha-darkDIE.webp';
+            if (player.dieImage) return player.dieImage;
             if (charData.dieImage) return charData.dieImage;
             if (isA) return 'asaiomizu/asaiomizu3.webp';
-            return charData.image || player.image;
+            return player.image || charData.image;
+        }
+        if (player.isDarkMode || player.id === 'pasha_dark') {
+            return player.allImage || player.image || 'pasha-dark/pasha-darkALL.webp';
         }
         if (isD && (player.dopaChargeCount || 0) >= 6 && player.selectedInheritChar) {
             const targetData = CHARACTER_DATA[player.selectedInheritChar];
@@ -1788,7 +1796,7 @@ function renderNewBattleScreen() {
             return charData.chargedImage;
         }
         if (isA) return 'asaiomizu/asaiomizu2.webp';
-        return charData.allImage || charData.image || player.image;
+        return player.allImage || player.image || charData.allImage || charData.image;
     };
 
     const isMyTurn = !activeNewBattle.battleEnded && !activeNewBattle.isProcessing && activeNewBattle.p1Action === null && !activeNewBattle.waitingForOpponent && !p1.isResting;
@@ -2478,25 +2486,46 @@ function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
     const clientX = event && (event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientX : null)));
     const clientY = event && (event.clientY || (event.touches && event.touches[0] ? event.touches[0].clientY : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientY : null)));
 
-    let left = (clientX !== null && clientX !== undefined) ? clientX + 15 : window.innerWidth / 2 - 140;
-    let top = (clientY !== null && clientY !== undefined) ? clientY - 40 : window.innerHeight / 2 - 100;
+    let left = window.innerWidth / 2 - 130;
+    let top = window.innerHeight / 2 - 100;
+
+    const elId = isAlly ? `ally-char-${posIdxOrIsAlly}` : `enemy-char-${posIdxOrIsAlly}`;
+    const cardEl = document.getElementById(elId);
+    if (cardEl) {
+        const hpBarEl = cardEl.querySelector('.absolute.-top-6') || cardEl.querySelector('[class*="-top-6"]');
+        if (hpBarEl) {
+            const rect = hpBarEl.getBoundingClientRect();
+            top = rect.top - 230; // Name bar height position reference
+            left = rect.left + rect.width / 2 - 130;
+        } else {
+            const rect = cardEl.getBoundingClientRect();
+            top = rect.top - 220;
+            left = rect.left + rect.width / 2 - 130;
+        }
+    } else if (event) {
+        const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientX : null));
+        const clientY = event.clientY || (event.touches && event.touches[0] ? event.touches[0].clientY : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientY : null));
+        if (clientX !== null && clientY !== null) {
+            left = clientX - 130;
+            top = clientY - 240;
+        }
+    }
 
     if (left + 260 > window.innerWidth) {
-        left = Math.max(10, (clientX || window.innerWidth / 2) - 275);
+        left = Math.max(10, window.innerWidth - 270);
     }
-    if (top + 220 > window.innerHeight) {
-        top = Math.max(10, window.innerHeight - 230);
-    }
+    if (left < 10) left = 10;
     if (top < 10) top = 10;
+    if (top + 230 > window.innerHeight) {
+        top = Math.max(10, window.innerHeight - 240);
+    }
 
-    tooltip.style.left = `${Math.max(10, left)}px`;
-    tooltip.style.top = `${Math.max(10, top)}px`;
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
 }
 
 function toggleBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
-    if (event) {
-        if (typeof event.stopPropagation === 'function') event.stopPropagation();
-    }
+    if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
     let targetChar = null;
     let isAlly = true;
 
@@ -2547,35 +2576,22 @@ window.hideBattleCharTooltip = hideBattleCharTooltip;
 if (typeof window._battleTooltipInitialized === 'undefined') {
     window._battleTooltipInitialized = true;
 
-    document.addEventListener('mouseover', (e) => {
+    document.addEventListener('click', (e) => {
         if (!activeNewBattle || activeNewBattle.battleEnded) return;
         if (typeof newBattleViewMode !== 'undefined' && newBattleViewMode === 'target_select') return;
-        const charCard = e.target.closest('[data-char-team]');
-        if (charCard) {
+        const hpBarArea = e.target.closest('[class*="-top-6"]') || e.target.closest('.absolute.-top-6') || e.target.closest('[data-char-team]');
+        const tooltip = document.getElementById('battle-char-tooltip');
+
+        if (hpBarArea) {
+            const charCard = hpBarArea.closest('[data-char-team]') || hpBarArea;
             const team = charCard.getAttribute('data-char-team');
             const idx = parseInt(charCard.getAttribute('data-char-idx'), 10);
-            const c = team === 'ally' ? (activeNewBattle.allies && activeNewBattle.allies[idx]) : (activeNewBattle.enemies && activeNewBattle.enemies[idx]);
-            if (c) {
-                showBattleCharTooltip(c, team === 'ally', e);
+            if (!isNaN(idx) && team) {
+                toggleBattleCharTooltip(team, idx, e);
             }
-        }
-    });
-
-    document.addEventListener('mouseout', (e) => {
-        const charCard = e.target.closest('[data-char-team]');
-        if (charCard) {
-            const tooltip = document.getElementById('battle-char-tooltip');
-            if (tooltip && e.relatedTarget && tooltip.contains(e.relatedTarget)) {
-                return;
-            }
-            hideBattleCharTooltip();
-        }
-    });
-
-    document.addEventListener('click', (e) => {
-        const charCard = e.target.closest('[data-char-team]');
-        const tooltip = document.getElementById('battle-char-tooltip');
-        if (!charCard && (!tooltip || !tooltip.contains(e.target))) {
+        } else if (tooltip && tooltip.contains(e.target)) {
+            // Clicking inside tooltip keeps it open
+        } else {
             hideBattleCharTooltip();
         }
     });
@@ -2583,26 +2599,18 @@ if (typeof window._battleTooltipInitialized === 'undefined') {
     document.addEventListener('touchstart', (e) => {
         if (!activeNewBattle || activeNewBattle.battleEnded) return;
         if (typeof newBattleViewMode !== 'undefined' && newBattleViewMode === 'target_select') return;
-        const charCard = e.target.closest('[data-char-team]');
+        const hpBarArea = e.target.closest('[class*="-top-6"]') || e.target.closest('.absolute.-top-6') || e.target.closest('[data-char-team]');
         const tooltip = document.getElementById('battle-char-tooltip');
 
-        if (charCard) {
+        if (hpBarArea) {
+            const charCard = hpBarArea.closest('[data-char-team]') || hpBarArea;
             const team = charCard.getAttribute('data-char-team');
             const idx = parseInt(charCard.getAttribute('data-char-idx'), 10);
-            const c = team === 'ally' ? (activeNewBattle.allies && activeNewBattle.allies[idx]) : (activeNewBattle.enemies && activeNewBattle.enemies[idx]);
-            if (c) {
-                showBattleCharTooltip(c, team === 'ally', e);
-                battleTooltipTimer = setTimeout(() => {
-                    hideBattleCharTooltip();
-                }, 3000);
+            if (!isNaN(idx) && team) {
+                toggleBattleCharTooltip(team, idx, e);
             }
         } else if (tooltip && tooltip.contains(e.target)) {
-            if (battleTooltipTimer) {
-                clearTimeout(battleTooltipTimer);
-                battleTooltipTimer = setTimeout(() => {
-                    hideBattleCharTooltip();
-                }, 3000);
-            }
+            // Touching inside tooltip keeps it open
         } else {
             hideBattleCharTooltip();
         }
