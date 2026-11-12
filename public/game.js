@@ -1255,6 +1255,44 @@ static drawDopagaking(p, isCharged) {
             document.body.classList.remove('modal-open');
         }
 
+        function resetBattleUIAndModals() {
+            if (typeof isNewBattleSkillModalOpen !== 'undefined') window.isNewBattleSkillModalOpen = false;
+            if (typeof newBattleViewMode !== 'undefined') window.newBattleViewMode = 'main';
+            if (typeof newBattleTargetSelectSkillId !== 'undefined') window.newBattleTargetSelectSkillId = null;
+            if (typeof newBattleTargetSelectType !== 'undefined') window.newBattleTargetSelectType = null;
+
+            const obeyModal = document.getElementById('dopa-obey-modal');
+            if (obeyModal) {
+                obeyModal.style.display = 'none';
+                obeyModal.remove();
+            }
+            if (typeof _activeDopaObeyAttacker !== 'undefined') window._activeDopaObeyAttacker = null;
+            if (typeof _activeDopaObeyTarget !== 'undefined') window._activeDopaObeyTarget = null;
+
+            if (typeof hideBattleCharTooltip === 'function') {
+                hideBattleCharTooltip();
+            } else {
+                const tooltip = document.getElementById('battle-char-tooltip');
+                if (tooltip) tooltip.remove();
+            }
+
+            if (typeof closeSettingsPanel === 'function') {
+                closeSettingsPanel();
+            } else {
+                const backdrop = document.getElementById('settings-backdrop');
+                const panel = document.getElementById('settings-slide-panel');
+                if (backdrop) backdrop.style.display = 'none';
+                if (panel) panel.style.display = 'none';
+            }
+
+            closeModal();
+
+            if (typeof renderNewBattleScreen === 'function') {
+                renderNewBattleScreen();
+            }
+        }
+        window.resetBattleUIAndModals = resetBattleUIAndModals;
+
         function confirmRetireBattle() {
             audioSystem.playSelect();
             showConfirmModal("バトル中断", "本当にバトルを中断して降参しますか？\n（ホーム画面に戻ります）", () => {
@@ -2961,12 +2999,16 @@ pasha_dark: {
                 }
             }
 
+            resetBattleUIAndModals() {
+                if (typeof window.resetBattleUIAndModals === 'function') {
+                    window.resetBattleUIAndModals();
+                }
+            }
+
             handleTimeOut() {
                 if (this.battleEnded) return;
+                this.resetBattleUIAndModals();
                 this.log('⏰ 制限時間切れ！自動選択します。', 'text-amber-400 font-bold');
-
-                if (typeof newBattleViewMode !== 'undefined') window.newBattleViewMode = 'main';
-                if (typeof isNewBattleSkillModalOpen !== 'undefined') window.isNewBattleSkillModalOpen = false;
 
                 // ランダムな生きている敵を選択
                 const aliveEnemies = (this.enemies || [this.p2]).filter(e => e && e.hp > 0);

@@ -329,10 +329,13 @@ class Battle3v3Engine {
 
     handleTimeOut() {
         if (this.battleEnded) return;
+        if (typeof resetBattleUIAndModals === 'function') {
+            resetBattleUIAndModals();
+        } else {
+            if (typeof newBattleViewMode !== 'undefined') window.newBattleViewMode = 'main';
+            if (typeof isNewBattleSkillModalOpen !== 'undefined') window.isNewBattleSkillModalOpen = false;
+        }
         this.log('⏰ 制限時間切れ！自動選択します。', 'text-amber-400 font-bold');
-
-        if (typeof newBattleViewMode !== 'undefined') window.newBattleViewMode = 'main';
-        if (typeof isNewBattleSkillModalOpen !== 'undefined') window.isNewBattleSkillModalOpen = false;
 
         // ランダムな生きている敵を選択
         const aliveEnemies = (this.enemies || [this.p2]).filter(e => e && e.hp > 0);
