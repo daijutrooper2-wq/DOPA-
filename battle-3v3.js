@@ -330,9 +330,35 @@ class Battle3v3Engine {
     handleTimeOut() {
         if (this.battleEnded) return;
         this.log('⏰ 制限時間切れ！自動選択します。', 'text-amber-400 font-bold');
-        const p1Default = this.p1.isResting ? 'rest' : (this.p1.eggplantReady ? 'momo_eggplant_burst' : this.p1.skills[0].id);
+
+        if (typeof newBattleViewMode !== 'undefined') window.newBattleViewMode = 'main';
+        if (typeof isNewBattleSkillModalOpen !== 'undefined') window.isNewBattleSkillModalOpen = false;
+
+        // ランダムな生きている敵を選択
+        const aliveEnemies = (this.enemies || [this.p2]).filter(e => e && e.hp > 0);
+        if (aliveEnemies.length > 0) {
+            const randomEnemy = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+            this.p1TargetChar = randomEnemy;
+            this.p1TargetIndex = (this.enemies || [this.p2]).indexOf(randomEnemy);
+        }
+
+        // 行動決定（休み等の状態異常には従う）
+        let p1Default = null;
+        if (this.p1.isResting) {
+            p1Default = 'rest';
+        } else if (this.p1.eggplantReady) {
+            p1Default = 'momo_eggplant_burst';
+        } else {
+            const normalSkill = (this.p1.skills && this.p1.skills.find(s => s.isNormalAttack)) || (this.p1.skills && this.p1.skills[0]);
+            p1Default = normalSkill ? normalSkill.id : (this.p1.skills && this.p1.skills[0] ? this.p1.skills[0].id : 'momo_attack');
+        }
+
         if (!this.p1Action) {
             this.submitAction(1, p1Default);
+        }
+
+        if (typeof renderNewBattleScreen === 'function') {
+            renderNewBattleScreen();
         }
     }
 
