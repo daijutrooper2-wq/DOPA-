@@ -1967,7 +1967,7 @@ function renderNewBattleScreen() {
                             const isSelectable = isTargetSelecting && newBattleTargetSelectType === 'single_ally' && c.hp > 0;
                             const cardClickAttr = isSelectable 
                                 ? `onclick="selectNewBattleTarget(${origIdx}, true)" style="cursor: pointer;"` 
-                                : `onclick="if(typeof toggleBattleCharTooltip === 'function') toggleBattleCharTooltip('ally', ${origIdx}, event)" style="cursor: pointer;"`;
+                                : '';
                             let posClasses = 'flex flex-col items-center justify-end relative transition-all duration-300 ';
                             if (posType === 'center') {
                                 posClasses += 'w-[36%] h-[82%] z-30 scale-105 translate-y-3';
@@ -1980,8 +1980,8 @@ function renderNewBattleScreen() {
                                 <div id="new-ally-char-${origIdx}" ${cardClickAttr} 
                                      data-char-team="ally" data-char-idx="${origIdx}"
                                      class="${posClasses} ${interactiveStyle} ${deadStyle}"
-                                     title="タップして詳細を表示">
-                                    <div class="absolute -top-5 left-1/2 -translate-x-1/2 w-[95%] min-w-[65px] z-40 bg-black/85 px-1 py-0.5 rounded border border-white/20 text-[8px] text-emerald-300 flex flex-col items-center">
+                                     >
+                                    <div data-char-bar="true" data-bar-team="ally" data-bar-idx="${origIdx}" onclick="event.stopPropagation(); if(typeof toggleBattleCharTooltip === 'function') toggleBattleCharTooltip('ally', ${origIdx}, event);" class="battle-char-status-bar absolute -top-5 left-1/2 -translate-x-1/2 w-[95%] min-w-[65px] z-40 bg-black/85 px-1 py-0.5 rounded border border-white/20 text-[8px] text-emerald-300 flex flex-col items-center cursor-pointer hover:border-amber-400 hover:brightness-110 active:scale-95 transition-all shadow-md select-none" title="タップして詳細を表示">
                                         <div class="flex justify-between items-center w-full">
                                             <span class="truncate">${c.charName}</span>
                                             <span class="font-mono">${c.hp}/${c.maxHp}</span>
@@ -2019,7 +2019,7 @@ function renderNewBattleScreen() {
                             const isSelectable = newBattleViewMode === 'target_select' && (newBattleTargetSelectType === 'single_enemy' || newBattleTargetSelectSkillId === 'pasha_flash' || newBattleTargetSelectSkillId === 'asaiomizu_copied' || newBattleTargetSelectSkillId === 'dopa_obey_copy') && c.hp > 0;
                             const cardClickAttr = isSelectable 
                                 ? `onclick="selectNewBattleTarget(${origIdx}, false)" style="cursor: pointer;"` 
-                                : `onclick="if(typeof toggleBattleCharTooltip === 'function') toggleBattleCharTooltip('enemy', ${origIdx}, event)" style="cursor: pointer;"`;
+                                : '';
                             let posClasses = 'flex flex-col items-center justify-end relative transition-all duration-300 ';
                             if (posType === 'center') {
                                 posClasses += 'w-[36%] h-[82%] z-30 scale-105 translate-y-3';
@@ -2032,8 +2032,8 @@ function renderNewBattleScreen() {
                                 <div id="new-enemy-char-${origIdx}" ${cardClickAttr} 
                                      data-char-team="enemy" data-char-idx="${origIdx}"
                                      class="${posClasses} ${interactiveStyle} ${deadStyle}"
-                                     title="タップして詳細を表示">
-                                    <div class="absolute -top-5 left-1/2 -translate-x-1/2 w-[95%] min-w-[65px] z-40 bg-black/85 px-1 py-0.5 rounded border border-white/20 text-[8px] text-red-300 flex flex-col items-center">
+                                     >
+                                    <div data-char-bar="true" data-bar-team="enemy" data-bar-idx="${origIdx}" onclick="event.stopPropagation(); if(typeof toggleBattleCharTooltip === 'function') toggleBattleCharTooltip('enemy', ${origIdx}, event);" class="battle-char-status-bar absolute -top-5 left-1/2 -translate-x-1/2 w-[95%] min-w-[65px] z-40 bg-black/85 px-1 py-0.5 rounded border border-white/20 text-[8px] text-red-300 flex flex-col items-center cursor-pointer hover:border-amber-400 hover:brightness-110 active:scale-95 transition-all shadow-md select-none" title="タップして詳細を表示">
                                         <div class="flex justify-between items-center w-full">
                                             <span class="truncate">${c.charName}</span>
                                             <span class="font-mono">${c.hp}/${c.maxHp}</span>
@@ -2488,25 +2488,45 @@ function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
     let left = window.innerWidth / 2 - 130;
     let top = window.innerHeight / 2 - 100;
 
-    const elId = isAlly ? `ally-char-${posIdxOrIsAlly}` : `enemy-char-${posIdxOrIsAlly}`;
-    const cardEl = document.getElementById(elId);
-    if (cardEl) {
-        const hpBarEl = cardEl.querySelector('.absolute.-top-6') || cardEl.querySelector('[class*="-top-6"]');
-        if (hpBarEl) {
-            const rect = hpBarEl.getBoundingClientRect();
-            top = rect.top - 230; // Name bar height position reference
-            left = rect.left + rect.width / 2 - 130;
-        } else {
-            const rect = cardEl.getBoundingClientRect();
-            top = rect.top - 220;
-            left = rect.left + rect.width / 2 - 130;
+    const team = isAlly ? 'ally' : 'enemy';
+    const barEl = document.querySelector(`[data-char-bar="true"][data-bar-team="${team}"][data-bar-idx="${posIdxOrIsAlly}"]`) ||
+                  document.querySelector(`#${team}-char-${posIdxOrIsAlly} [data-char-bar="true"]`) ||
+                  document.querySelector(`#new-${team}-char-${posIdxOrIsAlly} [data-char-bar="true"]`);
+    
+    if (barEl) {
+        const rect = barEl.getBoundingClientRect();
+        left = rect.left + rect.width / 2 - 130;
+        // Position directly below the name bar
+        top = rect.bottom + 4;
+        // If bottom overflows screen, show above the bar
+        if (top + 230 > window.innerHeight && rect.top - 235 > 10) {
+            top = rect.top - 235;
         }
-    } else if (event) {
-        const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientX : null));
-        const clientY = event.clientY || (event.touches && event.touches[0] ? event.touches[0].clientY : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientY : null));
-        if (clientX !== null && clientY !== null) {
-            left = clientX - 130;
-            top = clientY - 240;
+    } else {
+        const elId = isAlly ? `ally-char-${posIdxOrIsAlly}` : `enemy-char-${posIdxOrIsAlly}`;
+        const altId = isAlly ? `new-ally-char-${posIdxOrIsAlly}` : `new-enemy-char-${posIdxOrIsAlly}`;
+        const cardEl = document.getElementById(elId) || document.getElementById(altId);
+        if (cardEl) {
+            const hpBarEl = cardEl.querySelector('[data-char-bar="true"]') || cardEl.querySelector('.battle-char-status-bar') || cardEl.querySelector('[class*="-top-"]');
+            if (hpBarEl) {
+                const rect = hpBarEl.getBoundingClientRect();
+                left = rect.left + rect.width / 2 - 130;
+                top = rect.bottom + 4;
+                if (top + 230 > window.innerHeight && rect.top - 235 > 10) {
+                    top = rect.top - 235;
+                }
+            } else {
+                const rect = cardEl.getBoundingClientRect();
+                left = rect.left + rect.width / 2 - 130;
+                top = rect.top + 10;
+            }
+        } else if (event) {
+            const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientX : null));
+            const clientY = event.clientY || (event.touches && event.touches[0] ? event.touches[0].clientY : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientY : null));
+            if (clientX !== null && clientY !== null) {
+                left = clientX - 130;
+                top = clientY + 10;
+            }
         }
     }
 
@@ -2578,19 +2598,23 @@ if (typeof window._battleTooltipInitialized === 'undefined') {
     document.addEventListener('click', (e) => {
         if (!activeNewBattle || activeNewBattle.battleEnded) return;
         if (typeof newBattleViewMode !== 'undefined' && newBattleViewMode === 'target_select') return;
-        const hpBarArea = e.target.closest('[class*="-top-6"]') || e.target.closest('.absolute.-top-6') || e.target.closest('[data-char-team]');
         const tooltip = document.getElementById('battle-char-tooltip');
 
+        // If touching/clicking inside the tooltip, keep it open!
+        if (tooltip && tooltip.contains(e.target)) {
+            return;
+        }
+
+        // Only open/toggle tooltip when tapping the character name/HP status bar!
+        const hpBarArea = e.target.closest('[data-char-bar="true"]') || e.target.closest('.battle-char-status-bar');
         if (hpBarArea) {
-            const charCard = hpBarArea.closest('[data-char-team]') || hpBarArea;
-            const team = charCard.getAttribute('data-char-team');
-            const idx = parseInt(charCard.getAttribute('data-char-idx'), 10);
+            const team = hpBarArea.getAttribute('data-bar-team') || (hpBarArea.closest('[data-char-team]') ? hpBarArea.closest('[data-char-team]').getAttribute('data-char-team') : null);
+            const idx = parseInt(hpBarArea.getAttribute('data-bar-idx') || (hpBarArea.closest('[data-char-team]') ? hpBarArea.closest('[data-char-team]').getAttribute('data-char-idx') : ''), 10);
             if (!isNaN(idx) && team) {
                 toggleBattleCharTooltip(team, idx, e);
             }
-        } else if (tooltip && tooltip.contains(e.target)) {
-            // Clicking inside tooltip keeps it open
         } else {
+            // Tapping character image or elsewhere closes the tooltip
             hideBattleCharTooltip();
         }
     });
@@ -2598,19 +2622,23 @@ if (typeof window._battleTooltipInitialized === 'undefined') {
     document.addEventListener('touchstart', (e) => {
         if (!activeNewBattle || activeNewBattle.battleEnded) return;
         if (typeof newBattleViewMode !== 'undefined' && newBattleViewMode === 'target_select') return;
-        const hpBarArea = e.target.closest('[class*="-top-6"]') || e.target.closest('.absolute.-top-6') || e.target.closest('[data-char-team]');
         const tooltip = document.getElementById('battle-char-tooltip');
 
+        // Touching inside tooltip keeps it open!
+        if (tooltip && tooltip.contains(e.target)) {
+            return;
+        }
+
+        // Only open/toggle tooltip when tapping the character name/HP status bar!
+        const hpBarArea = e.target.closest('[data-char-bar="true"]') || e.target.closest('.battle-char-status-bar');
         if (hpBarArea) {
-            const charCard = hpBarArea.closest('[data-char-team]') || hpBarArea;
-            const team = charCard.getAttribute('data-char-team');
-            const idx = parseInt(charCard.getAttribute('data-char-idx'), 10);
+            const team = hpBarArea.getAttribute('data-bar-team') || (hpBarArea.closest('[data-char-team]') ? hpBarArea.closest('[data-char-team]').getAttribute('data-char-team') : null);
+            const idx = parseInt(hpBarArea.getAttribute('data-bar-idx') || (hpBarArea.closest('[data-char-team]') ? hpBarArea.closest('[data-char-team]').getAttribute('data-char-idx') : ''), 10);
             if (!isNaN(idx) && team) {
                 toggleBattleCharTooltip(team, idx, e);
             }
-        } else if (tooltip && tooltip.contains(e.target)) {
-            // Touching inside tooltip keeps it open
         } else {
+            // Touching character image or background closes the tooltip
             hideBattleCharTooltip();
         }
     }, { passive: true });
