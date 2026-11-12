@@ -1256,10 +1256,23 @@ static drawDopagaking(p, isCharged) {
         }
 
         function resetBattleUIAndModals() {
-            if (typeof isNewBattleSkillModalOpen !== 'undefined') window.isNewBattleSkillModalOpen = false;
-            if (typeof newBattleViewMode !== 'undefined') window.newBattleViewMode = 'main';
-            if (typeof newBattleTargetSelectSkillId !== 'undefined') window.newBattleTargetSelectSkillId = null;
-            if (typeof newBattleTargetSelectType !== 'undefined') window.newBattleTargetSelectType = null;
+            if (typeof isNewBattleSkillModalOpen !== 'undefined') {
+                isNewBattleSkillModalOpen = false;
+            }
+            if (typeof newBattleViewMode !== 'undefined') {
+                newBattleViewMode = 'main';
+            }
+            if (typeof newBattleTargetSelectSkillId !== 'undefined') {
+                newBattleTargetSelectSkillId = null;
+            }
+            if (typeof newBattleTargetSelectType !== 'undefined') {
+                newBattleTargetSelectType = null;
+            }
+
+            try { window.isNewBattleSkillModalOpen = false; } catch(e) {}
+            try { window.newBattleViewMode = 'main'; } catch(e) {}
+            try { window.newBattleTargetSelectSkillId = null; } catch(e) {}
+            try { window.newBattleTargetSelectType = null; } catch(e) {}
 
             const obeyModal = document.getElementById('dopa-obey-modal');
             if (obeyModal) {
@@ -2970,6 +2983,15 @@ pasha_dark: {
 
             startTimer() {
                 this.stopTimer();
+                if (typeof isNewBattleSkillModalOpen !== 'undefined') isNewBattleSkillModalOpen = false;
+                if (typeof newBattleViewMode !== 'undefined') newBattleViewMode = 'main';
+                if (typeof newBattleTargetSelectSkillId !== 'undefined') newBattleTargetSelectSkillId = null;
+                if (typeof newBattleTargetSelectType !== 'undefined') newBattleTargetSelectType = null;
+                try { window.isNewBattleSkillModalOpen = false; } catch(e) {}
+                try { window.newBattleViewMode = 'main'; } catch(e) {}
+                try { window.newBattleTargetSelectSkillId = null; } catch(e) {}
+                try { window.newBattleTargetSelectType = null; } catch(e) {}
+
                 if (this.p1.hp > 0 && this.p1.eggplantReady && !this.p1Action && !this.battleEnded) {
                     setTimeout(() => {
                         if (this.p1.eggplantReady && !this.p1Action) {

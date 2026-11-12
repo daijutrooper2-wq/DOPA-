@@ -298,6 +298,15 @@ class Battle3v3Engine {
 
     startTimer() {
         this.stopTimer();
+        isNewBattleSkillModalOpen = false;
+        newBattleViewMode = 'main';
+        newBattleTargetSelectSkillId = null;
+        newBattleTargetSelectType = null;
+        try { window.isNewBattleSkillModalOpen = false; } catch(e) {}
+        try { window.newBattleViewMode = 'main'; } catch(e) {}
+        try { window.newBattleTargetSelectSkillId = null; } catch(e) {}
+        try { window.newBattleTargetSelectType = null; } catch(e) {}
+
         if (this.p1.hp > 0 && this.p1.eggplantReady && !this.p1Action && !this.waitingForOpponent && !this.battleEnded) {
             setTimeout(() => {
                 if (this.p1.eggplantReady && !this.p1Action) {
@@ -329,11 +338,14 @@ class Battle3v3Engine {
 
     handleTimeOut() {
         if (this.battleEnded) return;
+        isNewBattleSkillModalOpen = false;
+        newBattleViewMode = 'main';
+        newBattleTargetSelectSkillId = null;
+        newBattleTargetSelectType = null;
         if (typeof resetBattleUIAndModals === 'function') {
             resetBattleUIAndModals();
-        } else {
-            if (typeof newBattleViewMode !== 'undefined') window.newBattleViewMode = 'main';
-            if (typeof isNewBattleSkillModalOpen !== 'undefined') window.isNewBattleSkillModalOpen = false;
+        } else if (typeof window.resetBattleUIAndModals === 'function') {
+            window.resetBattleUIAndModals();
         }
         this.log('⏰ 制限時間切れ！自動選択します。', 'text-amber-400 font-bold');
 
@@ -359,6 +371,11 @@ class Battle3v3Engine {
         if (!this.p1Action) {
             this.submitAction(1, p1Default);
         }
+
+        isNewBattleSkillModalOpen = false;
+        newBattleViewMode = 'main';
+        newBattleTargetSelectSkillId = null;
+        newBattleTargetSelectType = null;
 
         if (typeof renderNewBattleScreen === 'function') {
             renderNewBattleScreen();
