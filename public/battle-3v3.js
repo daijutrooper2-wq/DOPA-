@@ -1409,7 +1409,7 @@ function renderNewBattleCharSelectScreen(sortOrder = 'default', sortDir = 'desc'
     if (!container) return;
     container.scrollTop = 0;
 
-    const selected = window.selectedNewBattleChar || 'asaiomizu';
+    const selected = (typeof getLastSelectedChar === 'function' ? getLastSelectedChar() : (window.selectedNewBattleChar || 'asaiomizu'));
     let chars = Object.values(CHARACTER_DATA);
 
     if (onlyOwned) {
@@ -1549,6 +1549,11 @@ function formatElapsedTime(totalSeconds) {
 
 function startNewBattleMode(playerCharId = 'asaiomizu', enemyCharId = 'asaiomizu') {
     audioSystem.playSelect();
+    if (typeof saveLastSelectedChar === 'function') {
+        saveLastSelectedChar(playerCharId);
+    } else {
+        window.selectedNewBattleChar = playerCharId;
+    }
     newBattleViewMode = 'main';
     isNewBattleSkillModalOpen = false;
 

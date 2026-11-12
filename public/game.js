@@ -1165,8 +1165,52 @@ static drawDopagaking(p, isCharged) {
             }
             const el = document.getElementById('dopa-count') || document.getElementById('home-dopa-count');
             if (el) el.innerText = formatDopa(playerState.dopa);
+            const lastChar = getLastSelectedChar();
+            if (lastChar) {
+                window.selectedNewBattleChar = lastChar;
+            }
             updateHeaderProfile();
         }
+
+        function saveLastSelectedChar(charId) {
+            if (!charId) return;
+            window.selectedNewBattleChar = charId;
+            playerState.selectedPlayerChar = charId;
+            playerState.lastSelectedChar = charId;
+            try {
+                localStorage.setItem('dopa_last_selected_char', charId);
+            } catch(e){}
+            if (typeof savePlayerState === 'function') {
+                savePlayerState();
+            }
+        }
+
+        function getLastSelectedChar() {
+            if (window.selectedNewBattleChar && (typeof CHARACTER_DATA === 'undefined' || CHARACTER_DATA[window.selectedNewBattleChar])) {
+                return window.selectedNewBattleChar;
+            }
+            let stored = null;
+            try {
+                stored = localStorage.getItem('dopa_last_selected_char');
+            } catch(e){}
+            if (stored && typeof CHARACTER_DATA !== 'undefined' && CHARACTER_DATA[stored]) {
+                window.selectedNewBattleChar = stored;
+                return stored;
+            }
+            if (playerState.lastSelectedChar && typeof CHARACTER_DATA !== 'undefined' && CHARACTER_DATA[playerState.lastSelectedChar]) {
+                window.selectedNewBattleChar = playerState.lastSelectedChar;
+                return playerState.lastSelectedChar;
+            }
+            if (playerState.selectedPlayerChar && typeof CHARACTER_DATA !== 'undefined' && CHARACTER_DATA[playerState.selectedPlayerChar]) {
+                window.selectedNewBattleChar = playerState.selectedPlayerChar;
+                return playerState.selectedPlayerChar;
+            }
+            window.selectedNewBattleChar = 'asaiomizu';
+            return 'asaiomizu';
+        }
+
+        window.saveLastSelectedChar = saveLastSelectedChar;
+        window.getLastSelectedChar = getLastSelectedChar;
 
         function getMyProfileSnapshot() {
             const winRate = playerState.totalBattles > 0 ? ((playerState.wins / playerState.totalBattles) * 100).toFixed(1) : 0;
@@ -1893,7 +1937,8 @@ static drawDopagaking(p, isCharged) {
                                 } else if (total > 240) {
                                     showModal('ポイント超過', 'ステータスポイントの合計が240ポイントを超えています（現在: ' + total + 'Pt）。240ポイント以下に調整してください！');
                                 } else {
-                                    window.selectedNewBattleChar = '${c.id}';
+                                    if (typeof saveLastSelectedChar === 'function') saveLastSelectedChar('${c.id}');
+                                    else window.selectedNewBattleChar = '${c.id}';
                                     renderNewBattleCharSelectScreen('${sortOrder}', '${sortDir}', ${onlyOwned});
                                 }
                             " class="pixel-btn ${isSelected ? 'pixel-btn-success' : 'pixel-btn-primary'} w-full py-2.5 font-bold text-xs sm:text-sm shadow-lg mt-auto">
@@ -1902,7 +1947,7 @@ static drawDopagaking(p, isCharged) {
                         `;
                     } else {
                         html += `
-                            <button onclick="window.selectedNewBattleChar = '${c.id}'; renderNewBattleCharSelectScreen('${sortOrder}', '${sortDir}', ${onlyOwned});" class="pixel-btn ${isSelected ? 'pixel-btn-success' : 'pixel-btn-primary'} w-full py-2.5 font-bold text-xs sm:text-sm shadow-lg mt-auto">
+                            <button onclick="if(typeof saveLastSelectedChar==='function') saveLastSelectedChar('${c.id}'); else window.selectedNewBattleChar = '${c.id}'; renderNewBattleCharSelectScreen('${sortOrder}', '${sortDir}', ${onlyOwned});" class="pixel-btn ${isSelected ? 'pixel-btn-success' : 'pixel-btn-primary'} w-full py-2.5 font-bold text-xs sm:text-sm shadow-lg mt-auto">
                                 ${isSelected ? '✨ 選択中 (戻る)' : '⚔ このキャラで出陣'}
                             </button>
                         `;
@@ -4875,7 +4920,7 @@ pasha_dark: {
             if (!container) return;
             container.scrollTop = 0;
 
-            const selected = window.selectedNewBattleChar || 'asaiomizu';
+            const selected = (typeof getLastSelectedChar === 'function' ? getLastSelectedChar() : (window.selectedNewBattleChar || 'asaiomizu'));
             let chars = Object.values(CHARACTER_DATA);
 
             if (onlyOwned) {
@@ -5052,6 +5097,11 @@ pasha_dark: {
 
         function startNewBattleMode(playerCharId = 'asaiomizu', enemyCharId = 'asaiomizu') {
             audioSystem.playSelect();
+            if (typeof saveLastSelectedChar === 'function') {
+                saveLastSelectedChar(playerCharId);
+            } else {
+                window.selectedNewBattleChar = playerCharId;
+            }
             newBattleViewMode = 'main';
             isNewBattleSkillModalOpen = false;
 
