@@ -2038,8 +2038,6 @@ function renderNewBattleScreen() {
                                 <span class="text-amber-400 font-bold">DOPA</span>
                                 <span class="text-amber-300 font-bold font-pixel">${typeof formatDopa === 'function' ? formatDopa(playerState.dopa) : (playerState.dopa || 0)}</span>
                             </div>
-                            <div id="battle-battery-status" class="shrink-0 bg-slate-950/80 border border-slate-800 px-1 py-0.5 rounded flex items-center justify-center">
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -2059,10 +2057,6 @@ function renderNewBattleScreen() {
     const profileIconCvs = document.getElementById('new-battle-profile-icon');
     if (profileIconCvs && typeof CharacterRenderer !== 'undefined' && CharacterRenderer.drawCharacter) {
         CharacterRenderer.drawCharacter(profileIconCvs, playerState.selectedIcon || 'dopagaking');
-    }
-
-    if (typeof initBatteryManager === 'function') {
-        initBatteryManager();
     }
 
     const logEl = document.getElementById('new-battle-log');

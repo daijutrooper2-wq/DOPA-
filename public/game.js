@@ -391,67 +391,8 @@ static drawDopagaking(p, isCharged) {
             }
         }
 
-        window.batteryState = {
-            supported: false,
-            level: 100,
-            charging: false
-        };
-
-        function initBatteryManager() {
-            if (window._batteryManagerInitialized) {
-                updateBatteryDisplay();
-                return;
-            }
-            window._batteryManagerInitialized = true;
-
-            if (typeof navigator !== 'undefined' && typeof navigator.getBattery === 'function') {
-                navigator.getBattery().then(battery => {
-                    window.batteryState.supported = true;
-                    const syncBattery = () => {
-                        window.batteryState.level = Math.round((battery.level || 1) * 100);
-                        window.batteryState.charging = !!battery.charging;
-                        updateBatteryDisplay();
-                    };
-                    syncBattery();
-                    try {
-                        battery.addEventListener('levelchange', syncBattery);
-                        battery.addEventListener('chargingchange', syncBattery);
-                    } catch (e) {}
-                }).catch(() => {
-                    window.batteryState.supported = false;
-                    updateBatteryDisplay();
-                });
-            } else {
-                window.batteryState.supported = false;
-                updateBatteryDisplay();
-            }
-        }
-
-        function updateBatteryDisplay() {
-            const el = document.getElementById('battle-battery-status');
-            if (!el) return;
-
-            const { supported, level, charging } = window.batteryState;
-            if (!supported) {
-                el.innerHTML = `<span class="text-slate-400 font-mono text-[9px] sm:text-[10px] flex items-center gap-0.5" title="バッテリー非対応">🔋 --%</span>`;
-                return;
-            }
-
-            let icon = '🔋';
-            let colorClass = 'text-emerald-400';
-            if (charging) {
-                icon = '⚡🔋';
-                colorClass = 'text-amber-300 animate-pulse';
-            } else if (level <= 20) {
-                icon = '🪫';
-                colorClass = 'text-red-400 font-bold animate-bounce';
-            } else if (level <= 50) {
-                icon = '🔋';
-                colorClass = 'text-amber-300';
-            }
-
-            el.innerHTML = `<span class="${colorClass} font-mono text-[9px] sm:text-[10px] font-bold flex items-center gap-0.5 drop-shadow-sm" title="${charging ? '充電中' : 'バッテリー残量'}">${icon} ${level}%</span>`;
-        }
+        function initBatteryManager() {}
+        function updateBatteryDisplay() {}
         window.initBatteryManager = initBatteryManager;
         window.updateBatteryDisplay = updateBatteryDisplay;
 
@@ -5719,8 +5660,6 @@ pasha_dark: {
                                         <span class="text-amber-400 font-bold">DOPA</span>
                                         <span class="text-amber-300 font-bold font-pixel">${formatDopa(playerState.dopa)}</span>
                                     </div>
-                                    <div id="battle-battery-status" class="shrink-0 bg-slate-950/80 border border-slate-800 px-1 py-0.5 rounded flex items-center justify-center">
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -5742,10 +5681,6 @@ pasha_dark: {
             const profileIconCvs = document.getElementById('new-battle-profile-icon');
             if (profileIconCvs) {
                 CharacterRenderer.drawCharacter(profileIconCvs, playerState.selectedIcon || 'dopagaking');
-            }
-
-            if (typeof initBatteryManager === 'function') {
-                initBatteryManager();
             }
 
             const logEl = document.getElementById('new-battle-log');
