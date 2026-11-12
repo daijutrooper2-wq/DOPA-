@@ -1124,7 +1124,6 @@ class Battle3v3Engine {
                 this.triggerEffect('Player', 'buff', 'ディグ構え');
             } else {
                 this.log(`${attacker.charName} の 「髪をかきあげる」！`, 'text-slate-200 font-bold');
-                this.triggerEffect('Enemy', 'damage', 'ヒット');
             }
             return;
         }

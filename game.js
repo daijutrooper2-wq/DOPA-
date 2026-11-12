@@ -4005,7 +4005,6 @@ pasha_dark: {
                             attacker.digActive = true;
                             attacker.digUsedTurn = this.turn;
                             this.logTeam(attacker, `の 「髪をかきあげる」！`, 'text-slate-200 font-bold');
-                            this.triggerEffect(attacker === this.p1 ? 'Player' : 'Enemy', 'damage', 'ヒット');
                         }
                         break;
                     case 'asaiomizu_club_skill':
