@@ -2377,7 +2377,7 @@ function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
     if (!tooltip) {
         tooltip = document.createElement('div');
         tooltip.id = 'battle-char-tooltip';
-        tooltip.className = 'fixed pixel-box bg-slate-900 border-amber-400 p-2 text-xs text-slate-100 shadow-2xl z-[99999]';
+        tooltip.className = 'fixed pixel-box bg-slate-900/95 border-amber-400 p-2 text-xs text-slate-100 shadow-2xl z-[99999] max-h-[85vh] overflow-y-auto backdrop-blur-md transition-all duration-150';
         document.body.appendChild(tooltip);
 
         tooltip.addEventListener('mouseenter', () => {
@@ -2486,7 +2486,7 @@ function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
     const clientY = event && (event.clientY || (event.touches && event.touches[0] ? event.touches[0].clientY : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientY : null)));
 
     let left = window.innerWidth / 2 - 130;
-    let top = window.innerHeight / 2 - 100;
+    let top = 44;
 
     const team = isAlly ? 'ally' : 'enemy';
     const barEl = document.querySelector(`[data-char-bar="true"][data-bar-team="${team}"][data-bar-idx="${posIdxOrIsAlly}"]`) ||
@@ -2496,12 +2496,8 @@ function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
     if (barEl) {
         const rect = barEl.getBoundingClientRect();
         left = rect.left + rect.width / 2 - 130;
-        // Position directly below the name bar
-        top = rect.bottom + 4;
-        // If bottom overflows screen, show above the bar
-        if (top + 230 > window.innerHeight && rect.top - 235 > 10) {
-            top = rect.top - 235;
-        }
+        // Position higher up on the screen, starting just below the header top-bar (or top of the bar)
+        top = Math.max(42, Math.min(rect.top - 10, 60));
     } else {
         const elId = isAlly ? `ally-char-${posIdxOrIsAlly}` : `enemy-char-${posIdxOrIsAlly}`;
         const altId = isAlly ? `new-ally-char-${posIdxOrIsAlly}` : `new-enemy-char-${posIdxOrIsAlly}`;
@@ -2511,32 +2507,30 @@ function showBattleCharTooltip(teamOrChar, posIdxOrIsAlly, event) {
             if (hpBarEl) {
                 const rect = hpBarEl.getBoundingClientRect();
                 left = rect.left + rect.width / 2 - 130;
-                top = rect.bottom + 4;
-                if (top + 230 > window.innerHeight && rect.top - 235 > 10) {
-                    top = rect.top - 235;
-                }
+                top = Math.max(42, Math.min(rect.top - 10, 60));
             } else {
                 const rect = cardEl.getBoundingClientRect();
                 left = rect.left + rect.width / 2 - 130;
-                top = rect.top + 10;
+                top = 46;
             }
         } else if (event) {
             const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientX : null));
-            const clientY = event.clientY || (event.touches && event.touches[0] ? event.touches[0].clientY : (event.changedTouches && event.changedTouches[0] ? event.changedTouches[0].clientY : null));
-            if (clientX !== null && clientY !== null) {
+            if (clientX !== null) {
                 left = clientX - 130;
-                top = clientY + 10;
             }
+            top = 46;
         }
     }
 
     if (left + 260 > window.innerWidth) {
-        left = Math.max(10, window.innerWidth - 270);
+        left = Math.max(8, window.innerWidth - 268);
     }
-    if (left < 10) left = 10;
-    if (top < 10) top = 10;
-    if (top + 230 > window.innerHeight) {
-        top = Math.max(10, window.innerHeight - 240);
+    if (left < 8) left = 8;
+    if (top < 38) top = 38;
+
+    const tooltipHeight = tooltip.offsetHeight || 220;
+    if (top + tooltipHeight > window.innerHeight) {
+        top = Math.max(38, window.innerHeight - tooltipHeight - 8);
     }
 
     tooltip.style.left = `${left}px`;
