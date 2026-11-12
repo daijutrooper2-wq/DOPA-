@@ -503,7 +503,7 @@ class Battle3v3Engine {
             return;
         }
 
-        if (attacker.eggplantReady) {
+        if (attacker.eggplantReady && skillId !== 'momo_prep') {
             skillId = 'momo_eggplant_burst';
         }
 
@@ -564,9 +564,12 @@ class Battle3v3Engine {
         if (skill.id === 'momo_prep' || skill.type === 'charge') {
             attacker.isMiniZou = true;
             attacker.eggplantReady = true;
-            this.log(`🐘 ${attacker.charName} は「ミニぞうさん」に変身し、大量のナスを蓄積した！`, 'text-purple-300 font-bold');
+            this.log(`🍆 ${attacker.charName} はナスを構えて「ナス準備中」に入った！（チャージ完了）`, 'text-purple-300 font-bold');
             this.log(`✨ 次ターン、自動的に「超ナスちん乱舞」が発動する！`, 'text-amber-300 font-bold');
-            this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'buff', 'ゾウ変身！');
+            this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'buff', 'ナス準備中！');
+            if (typeof this.triggerCutin === 'function') {
+                this.triggerCutin('🍆 ナス準備完了！', '次ターン「超ナスちん乱舞」発動！');
+            }
             audioSystem.playBuff();
             if (skill.cooldown > 0) {
                 attacker.cooldowns[skill.id] = skill.cooldown + 1;
@@ -1004,7 +1007,7 @@ class Battle3v3Engine {
                 }
             });
             if (skill.id === 'eggplant_burst' || skill.id === 'momo_eggplant_burst' || skill.type === 'eggplant_burst') {
-                this.log(`🐘 ${attacker.charName} の「超ナスちん乱舞」発動！！ 3ターンの間、全味方のクリティカル大幅UP ＆ 敵全体の回避率中DOWN！`, 'text-purple-300 font-bold text-base');
+                this.log(`🍆 ${attacker.charName} の「超ナスちん乱舞」発動！！ 3ターンの間、全味方のクリティカル大幅UP ＆ 敵全体の回避率中DOWN！`, 'text-purple-300 font-bold text-base');
                 if (typeof this.triggerCutin === 'function') {
                     this.triggerCutin('🍆 超ナスちん乱舞！', '敵全体に大ダメージ ＆ 味方会心大幅UP・敵回避DOWN！');
                 }
@@ -1706,9 +1709,15 @@ function renderNewBattleScreen() {
             const targetData = CHARACTER_DATA[player.selectedInheritChar];
             if (targetData) return targetData.image || targetData.allImage || player.image;
         }
+        const isMomo = player.id === 'momo' || player.id === 'momopin' || player.charName === '桃ピン';
+        const isMomoCharging = isMomo && (player.eggplantReady || player.isMiniZou || (activeNewBattle && ((activeNewBattle.p1 === player && activeNewBattle.p1Action === 'momo_prep') || (activeNewBattle.currentAttacker === player && activeNewBattle.p1Action === 'momo_prep'))));
+
+        if (isMomoCharging) {
+            return charData.chargedImage || 'momopin/momopinNASU.webp';
+        }
+
         const isCharged = (isC && (player.courtneyChargeCount || 0) > 0) ||
-                          (isD && (player.dopaChargeCount || 0) > 0) ||
-                          (player.id === 'momopin' && player.eggplantReady);
+                          (isD && (player.dopaChargeCount || 0) > 0);
         if (isCharged && charData.chargedImage) {
             return charData.chargedImage;
         }
@@ -1879,6 +1888,7 @@ function renderNewBattleScreen() {
                         return visualOrder.map(({ c, origIdx, posType }) => {
                             if (!c) return '';
                             const pct = Math.max(0, Math.min(100, Math.round((c.hp / c.maxHp) * 100)));
+                            const charData = CHARACTER_DATA[c.id] || {};
                             const img = getCharImg(c, true);
                             const isTargetSelecting = (newBattleViewMode === 'target_select');
                             const isSelectable = isTargetSelecting && newBattleTargetSelectType === 'single_ally' && c.hp > 0;
@@ -1906,7 +1916,7 @@ function renderNewBattleScreen() {
                                         <div class="w-full bg-slate-900 h-1 rounded overflow-hidden mt-0.5"><div class="bg-emerald-400 h-full" style="width: ${pct}%;"></div></div>
                                     </div>
                                      <div id="new-ally-img-${origIdx}" class="w-full flex-1 flex items-center justify-center relative ${c.isShaking ? 'char-shake' : ''}">
-                                         <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none" onerror="const fb='${charData.image || 'asaiomizu/asaiomizu.webp'}'; if(this.src!==fb) this.src=fb;">
+                                         <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none" onerror="const fb='${charData.allImage || charData.image || 'momopin/momopin.webp'}'; if(this.src!==fb) this.src=fb;">
                                          <div class="absolute bottom-0 left-0 z-30 flex flex-col gap-0.5 items-start pointer-events-none">
                                              ${typeof getStatusBadgesHtml === 'function' ? getStatusBadgesHtml(c, true) : ''}
                                          </div>
@@ -2106,6 +2116,9 @@ function executeNewBattleAction(actionType) {
     }
 
     newBattleViewMode = 'main';
+    if (actionType === 'momo_prep' && activeNewBattle.p1 && (activeNewBattle.p1.id === 'momo' || activeNewBattle.p1.id === 'momopin')) {
+        activeNewBattle.p1.isMiniZou = true;
+    }
     activeNewBattle.submitAction(1, actionType);
     renderNewBattleScreen();
 }
@@ -2192,6 +2205,9 @@ if (typeof window.getStatusBadgesHtml === 'undefined') {
         }
         if (p.yoseruZeroDefTurns && p.yoseruZeroDefTurns > 0) {
             badges += `<span class="bg-red-950/95 text-red-300 border-2 border-red-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform rotate-2 inline-block">防御0 [${p.yoseruZeroDefTurns}T]</span>`;
+        }
+        if (p.eggplantReady || ((p.id === 'momo' || p.id === 'momopin') && p.isMiniZou)) {
+            badges += `<span class="bg-purple-950/95 text-purple-300 border-2 border-purple-400 px-1 py-0.5 rounded text-[8px] font-mono font-bold shadow-md transform -rotate-3 inline-block animate-pulse">🍆 ナス準備中</span>`;
         }
         if (p.courtneyChargeCount && p.courtneyChargeCount > 0) {
             if (p.courtneyChargeCount >= 8) {
