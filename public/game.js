@@ -3450,6 +3450,14 @@ pasha_dark: {
             }
 
            applySkill(attacker, defender, skill) {
+        if (skill && skill.id === 'dopa_obey_copy') {
+            this.log(`👑【王に従え】${attacker.charName} は ${skill.name} を発動！`, 'text-amber-300 font-bold text-base');
+            if (typeof audioSystem !== 'undefined' && audioSystem.playSpecial) audioSystem.playSpecial();
+            if (skill.originalId) {
+                skill.id = skill.originalId;
+            }
+        }
+    
                 this.log(`💥 ${attacker.charName} の 「${skill.name}」！`, 'text-emerald-300 font-bold');
                 audioSystem.playCharacterSound(attacker.id);
 
@@ -5926,15 +5934,15 @@ pasha_dark: {
                     showModal("チャージ不足", "「王に従え」は6チャージ時にのみ発動可能です！");
                     return;
                 }
-                let obeyTarget = activeNewBattle.p1.selectedObeyEnemy;
-                if (!obeyTarget) {
-                    const allOtherIds = Object.keys(CHARACTER_DATA).filter(id => id !== 'dopagaking');
-                    const randomId = allOtherIds[Math.floor(Math.random() * allOtherIds.length)];
-                    obeyTarget = activeNewBattle.createBattlePlayer(randomId, CHARACTER_DATA[randomId].name, 2);
-                    activeNewBattle.p1.selectedObeyEnemy = obeyTarget;
-                    activeNewBattle.p1.selectedInheritChar = obeyTarget.id;
+                const opponents = activeNewBattle.enemies.filter(e => e.hp > 0);
+                if (opponents.length === 0) {
+                    showModal("エラー", "対象となる相手がいません！");
+                    return;
                 }
-                openDopaObeyModal(activeNewBattle.p1, obeyTarget);
+                const randomOpponent = opponents[Math.floor(Math.random() * opponents.length)];
+                activeNewBattle.p1.selectedObeyEnemy = randomOpponent;
+                activeNewBattle.p1.selectedInheritChar = randomOpponent.id;
+                openDopaObeyModal(activeNewBattle.p1, randomOpponent);
                 return;
             }
 
@@ -6970,7 +6978,70 @@ pasha_dark: {
             }
         }
 
+        
+        let _activeDopaCharSelectAttacker = null;
+
+        function openDopaCharSelectModal(attacker) {
+            _activeDopaCharSelectAttacker = attacker;
+            let modal = document.getElementById('dopa-obey-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'dopa-obey-modal';
+                document.body.appendChild(modal);
+            }
+
+            const charEntries = Object.values(CHARACTER_DATA).filter(c => c.id !== 'dopagaking');
+            let charCardsHtml = charEntries.map(c => {
+                const img = c.image || c.allImage || 'momopin/momopin.webp';
+                return `
+                    <button onclick="executeDopaSelectChar('${c.id}')" class="pixel-box bg-slate-900 border border-amber-500 hover:border-amber-300 p-2 text-center shadow flex flex-col items-center justify-between transition-all cursor-pointer rounded-lg group">
+                        <div class="w-12 h-12 flex items-center justify-center bg-slate-950 rounded mb-1 overflow-hidden">
+                            <img src="${img}" alt="${c.name}" class="w-full h-full object-contain pointer-events-none group-hover:scale-110 transition-transform">
+                        </div>
+                        <div class="font-pixel text-[10px] text-amber-300 font-bold truncate w-full">${c.name}</div>
+                        <div class="text-[8px] text-slate-300 truncate w-full">${c.title || c.type || ''}</div>
+                    </button>
+                `;
+            }).join('');
+
+            modal.className = "fixed inset-0 bg-black/85 z-[100] flex items-center justify-center p-4 animate-fadeIn";
+            modal.innerHTML = `
+                <div class="pixel-box bg-slate-900 border-2 border-amber-400 max-w-lg w-full p-4 text-center relative shadow-2xl flex flex-col max-h-[85vh]">
+                    <div class="text-amber-400 font-pixel text-sm sm:text-base font-bold mb-1">👑【王に従え】キャラクター選択</div>
+                    <div class="text-xs text-slate-300 font-mono mb-3">変身してスキルを借りたいキャラクターを1人選択してください！</div>
+                    <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 overflow-y-auto flex-1 pr-1">
+                        ${charCardsHtml}
+                    </div>
+                    <div class="mt-3">
+                        <button onclick="const m=document.getElementById('dopa-obey-modal'); if(m) m.style.display='none';" class="pixel-btn pixel-btn-danger px-4 py-1.5 text-xs font-bold">✕ キャンセル</button>
+                    </div>
+                </div>
+            `;
+            modal.style.display = 'flex';
+        }
+
+        function executeDopaSelectChar(charId) {
+            const modal = document.getElementById('dopa-obey-modal');
+            if (modal) modal.style.display = 'none';
+            const attacker = _activeDopaCharSelectAttacker || (activeNewBattle ? activeNewBattle.p1 : null);
+            if (attacker && CHARACTER_DATA[charId]) {
+                const charDef = CHARACTER_DATA[charId];
+                const team = (activeNewBattle && activeNewBattle.getCharacterTeam ? activeNewBattle.getCharacterTeam(attacker) : 'ally');
+                const targetTeamNum = team === 'ally' ? 2 : 1;
+                const obeyTarget = activeNewBattle ? activeNewBattle.createBattlePlayer(charId, charDef.name, targetTeamNum) : null;
+                if (obeyTarget) {
+                    attacker.selectedObeyEnemy = obeyTarget;
+                    attacker.selectedInheritChar = charId;
+                    openDopaObeyModal(attacker, obeyTarget);
+                }
+            }
+        }
+
+        window.openDopaCharSelectModal = openDopaCharSelectModal;
+        window.executeDopaSelectChar = executeDopaSelectChar;
         window.openDopaObeyModal = openDopaObeyModal;
+        window.executeDopaObeySkill = executeDopaObeySkill;
+    
         window.executeDopaObeySkill = executeDopaObeySkill;
 
         // HTML の onclick 属性から参照される関数をグローバル公開

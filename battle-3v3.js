@@ -667,6 +667,14 @@ class Battle3v3Engine {
     }
 
     applySkill(attacker, defender, skill) {
+        if (skill && skill.id === 'dopa_obey_copy') {
+            this.log(`👑【王に従え】${attacker.charName} は ${skill.name} を発動！`, 'text-amber-300 font-bold text-base');
+            if (typeof audioSystem !== 'undefined' && audioSystem.playSpecial) audioSystem.playSpecial();
+            if (skill.originalId) {
+                skill.id = skill.originalId;
+            }
+        }
+    
         this.log(`💥 ${attacker.charName} の 「${skill.name}」！`, 'text-emerald-300 font-bold');
         audioSystem.playCharacterSound(attacker.id);
 
@@ -2148,15 +2156,15 @@ function executeNewBattleAction(actionType) {
             showModal("チャージ不足", "「王に従え」は6チャージ時にのみ発動可能です！");
             return;
         }
-        let obeyTarget = activeNewBattle.p1.selectedObeyEnemy;
-        if (!obeyTarget) {
-            const allOtherIds = Object.keys(CHARACTER_DATA).filter(id => id !== 'dopagaking');
-            const randomId = allOtherIds[Math.floor(Math.random() * allOtherIds.length)];
-            obeyTarget = activeNewBattle.createBattlePlayer(randomId, CHARACTER_DATA[randomId].name, 2);
-            activeNewBattle.p1.selectedObeyEnemy = obeyTarget;
-            activeNewBattle.p1.selectedInheritChar = obeyTarget.id;
+        const opponents = activeNewBattle.enemies.filter(e => e.hp > 0);
+        if (opponents.length === 0) {
+            showModal("エラー", "対象となる相手がいません！");
+            return;
         }
-        openDopaObeyModal(activeNewBattle.p1, obeyTarget);
+        const randomOpponent = opponents[Math.floor(Math.random() * opponents.length)];
+        activeNewBattle.p1.selectedObeyEnemy = randomOpponent;
+        activeNewBattle.p1.selectedInheritChar = randomOpponent.id;
+        openDopaObeyModal(activeNewBattle.p1, randomOpponent);
         return;
     }
 
