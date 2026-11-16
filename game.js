@@ -4967,8 +4967,10 @@ pasha_dark: {
             renderNewBattleScreen();
         }
 
-        function renderNewBattleCharSelectScreen(sortOrder = 'default', sortDir = 'desc', onlyOwned = false) {
+        function renderNewBattleCharSelectScreen(sortOrder = 'default', sortDir = 'desc', onlyOwned = false, isOnline = false) {
             audioSystem.playSelect();
+            if (isOnline) window.isOnlineBattleMode = true;
+            else window.isOnlineBattleMode = false;
             const existingOverlay = document.getElementById('battle-result-overlay');
             if (existingOverlay) existingOverlay.remove();
 
@@ -5018,23 +5020,23 @@ pasha_dark: {
 
             let html = `
                 <div class="w-full h-full flex flex-col items-center justify-between max-w-4xl mx-auto py-1 px-2 overflow-hidden select-none bg-slate-950 text-white">
-                    <div class="pixel-box-gold p-1.5 sm:p-2 bg-amber-950/90 w-full text-center space-y-0.5 border-amber-400 mb-1.5 flex-shrink-0">
+                    <div class="pixel-box-gold p-1.5 sm:p-2 bg-amber-950/90 w-full text-center space-y-0.5 ${isOnline ? 'border-emerald-500' : 'border-amber-400'} mb-1.5 flex-shrink-0">
                         <div class="flex items-center justify-between">
-                            <button onclick="renderBotModesScreen()" class="pixel-btn pixel-btn-danger px-2.5 py-0.5 text-xs font-bold">
+                            <button onclick="${isOnline ? 'renderOnlineModesScreen()' : 'renderBotModesScreen()'}" class="pixel-btn pixel-btn-danger px-2.5 py-0.5 text-xs font-bold">
                                 ◀ モード選択
                             </button>
-                            <h2 class="text-xs sm:text-base font-bold text-amber-300 font-pixel">
-                                 ✨ 3v3バトルモード - キャラ選択
+                            <h2 class="text-xs sm:text-base font-bold ${isOnline ? 'text-emerald-300' : 'text-amber-300'} font-pixel">
+                                 ${isOnline ? '🌐 オンライン対戦 - キャラ選択' : '✨ 3v3バトルモード - キャラ選択'}
                             </h2>
                             <div class="w-16"></div>
                         </div>
-                        <p class="text-[9px] sm:text-[11px] text-amber-200 font-mono">アイコンをタップして詳細確認・出陣ファイターを選択せよ！</p>
+                        <p class="text-[9px] sm:text-[11px] ${isOnline ? 'text-emerald-200' : 'text-amber-200'} font-mono">アイコンをタップして詳細確認・出陣ファイターを選択せよ！</p>
                     </div>
 
                     <div class="flex items-center justify-between w-full mb-1.5 px-1 gap-2 flex-wrap flex-shrink-0">
                         <div class="flex items-center gap-1.5 text-xs">
                             <span class="text-slate-400 font-bold">並び替え:</span>
-                            <select id="new-char-select-sort-order" onchange="onNewCharSelectSortChange('${sortDir}', ${onlyOwned})" class="pixel-box bg-slate-900 text-amber-300 px-2 py-1 text-xs outline-none border-amber-600">
+                            <select id="new-char-select-sort-order" onchange="onNewCharSelectSortChange('${sortDir}', ${onlyOwned}, ${isOnline})" class="pixel-box bg-slate-900 text-amber-300 px-2 py-1 text-xs outline-none border-amber-600">
                                 <option value="default" ${sortOrder === 'default' ? 'selected' : ''}>登録順</option>
                                 <option value="hp" ${sortOrder === 'hp' ? 'selected' : ''}>HPが高い順</option>
                                 <option value="atk" ${sortOrder === 'atk' ? 'selected' : ''}>攻撃力が高い順</option>
@@ -5042,10 +5044,10 @@ pasha_dark: {
                                 <option value="critRate" ${sortOrder === 'critRate' ? 'selected' : ''}>クリティカル率が高い順</option>
                                 <option value="eva" ${sortOrder === 'eva' ? 'selected' : ''}>回避率が高い順</option>
                             </select>
-                            <button onclick="toggleNewCharSelectSortDir('${sortOrder}', '${sortDir}', ${onlyOwned})" class="pixel-btn px-2 py-1 text-xs font-bold bg-slate-800 border-slate-600">
+                            <button onclick="toggleNewCharSelectSortDir('${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline})" class="pixel-btn px-2 py-1 text-xs font-bold bg-slate-800 border-slate-600">
                                 ${sortDir === 'desc' ? '🔽 降順(高)' : '🔼 昇順(低)'}
                             </button>
-                            <button onclick="toggleNewCharSelectOwnedFilter('${sortOrder}', '${sortDir}', ${onlyOwned})" class="pixel-btn px-2 py-1 text-xs font-bold ${onlyOwned ? 'pixel-btn-success border-emerald-400 text-emerald-200' : 'bg-slate-800 border-slate-600 text-slate-300'}">
+                            <button onclick="toggleNewCharSelectOwnedFilter('${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline})" class="pixel-btn px-2 py-1 text-xs font-bold ${onlyOwned ? 'pixel-btn-success border-emerald-400 text-emerald-200' : 'bg-slate-800 border-slate-600 text-slate-300'}">
                                 ${onlyOwned ? '✨ 入手済みのみ: ON' : '📦 入手済みのみ: OFF'}
                             </button>
                         </div>
@@ -5095,8 +5097,8 @@ pasha_dark: {
                             const pChar = window.selectedNewBattleChar || 'asaiomizu';
                             const otherIds = Object.keys(CHARACTER_DATA).filter(id => id !== pChar);
                             const eChar = otherIds[Math.floor(Math.random() * otherIds.length)] || 'pasha';
-                            startNewBattleMode(pChar, eChar);
-                        " class="pixel-btn pixel-btn-primary px-8 py-2.5 sm:py-3 text-xs sm:text-sm font-bold font-pixel shadow-lg">
+                            ${isOnline ? 'startOnlineBattleMode(pChar, eChar)' : 'startNewBattleMode(pChar, eChar)'};
+                        " class="pixel-btn ${isOnline ? 'pixel-btn-success' : 'pixel-btn-primary'} px-8 py-2.5 sm:py-3 text-xs sm:text-sm font-bold font-pixel shadow-lg">
                             このキャラクターで出陣！ ▶
                         </button>
                     </div>
@@ -5113,21 +5115,80 @@ pasha_dark: {
             }, 50);
         }
 
-        function onNewCharSelectSortChange(currentDir, onlyOwned) {
+        function onNewCharSelectSortChange(currentDir, onlyOwned, isOnline = false) {
             const select = document.getElementById('new-char-select-sort-order');
             if (select) {
-                renderNewBattleCharSelectScreen(select.value, currentDir, onlyOwned);
+                renderNewBattleCharSelectScreen(select.value, currentDir, onlyOwned, isOnline);
             }
         }
 
-        function toggleNewCharSelectSortDir(currentOrder, currentDir, onlyOwned) {
+        function toggleNewCharSelectSortDir(currentOrder, currentDir, onlyOwned, isOnline = false) {
             const newDir = currentDir === 'desc' ? 'asc' : 'desc';
-            renderNewBattleCharSelectScreen(currentOrder, newDir, onlyOwned);
+            renderNewBattleCharSelectScreen(currentOrder, newDir, onlyOwned, isOnline);
         }
 
-        function toggleNewCharSelectOwnedFilter(currentOrder, currentDir, onlyOwned) {
-            renderNewBattleCharSelectScreen(currentOrder, currentDir, !onlyOwned);
+        function toggleNewCharSelectOwnedFilter(currentOrder, currentDir, onlyOwned, isOnline = false) {
+            renderNewBattleCharSelectScreen(currentOrder, currentDir, !onlyOwned, isOnline);
         }
+
+        function renderOnlineModesScreen() {
+            audioSystem.playSelect();
+            window.isOnlineBattleMode = true;
+            const container = document.getElementById('screen-container');
+            if (!container) return;
+            container.innerHTML = `
+                <div class="relative w-full h-full flex flex-col justify-between p-4 sm:p-6 select-none overflow-hidden bg-slate-950">
+                    <div class="absolute inset-0 overflow-hidden pointer-events-none z-0 opacity-20">
+                        <div class="absolute inset-y-0 left-0 flex animate-endless-scroll h-full w-[200%]">
+                            <img src="images/screen.webp" alt="screen" class="w-1/2 h-full object-cover">
+                            <img src="images/screen.webp" alt="screen" class="w-1/2 h-full object-cover">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between relative z-10 w-full mb-3">
+                        <button onclick="renderDopagaKingdomScreen()" class="pixel-btn pixel-btn-danger px-3 py-1.5 text-xs font-bold">
+                            ◀ 王国に戻る
+                        </button>
+                        <h2 class="text-emerald-400 font-pixel text-base sm:text-xl font-bold tracking-wider drop-shadow-md">🌐 オンライン対戦モード選択</h2>
+                        <div class="w-20"></div>
+                    </div>
+
+                    <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10 my-auto items-center justify-center max-w-2xl mx-auto w-full">
+                        <button onclick="renderOnlineBattleCharSelectScreen()" class="pixel-box bg-slate-900 border-emerald-400 hover:border-emerald-300 p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transform hover:scale-105 transition-all shadow-xl h-36 sm:h-44 group">
+                            <span class="text-3xl sm:text-4xl">🌐</span>
+                            <span class="text-emerald-300 font-pixel font-bold text-sm sm:text-base text-center">オンライン3対3バトル</span>
+                            <span class="text-[10px] text-slate-400 text-center">全国のファイターと3対3のチームオンライン対戦！</span>
+                        </button>
+
+                        <button onclick="showModal('準備中', 'このモードは現在準備中です。')" class="pixel-box bg-slate-900 border-slate-700 hover:border-amber-400 p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transform hover:scale-105 transition-all shadow-xl h-36 sm:h-44 group opacity-80">
+                            <span class="text-3xl sm:text-4xl">🏆</span>
+                            <span class="text-slate-300 font-pixel font-bold text-sm sm:text-base text-center">オンラインランクマッチ</span>
+                            <span class="text-[10px] text-slate-400 text-center">段位をかけてトップを目指せ</span>
+                        </button>
+                    </div>
+
+                    <div class="text-center relative z-10 pb-2">
+                        <p class="text-xs text-slate-400 font-pixel">プレイしたいオンラインモードを選んでください</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderOnlineBattleCharSelectScreen(sortOrder = 'default', sortDir = 'desc', onlyOwned = false) {
+            renderNewBattleCharSelectScreen(sortOrder, sortDir, onlyOwned, true);
+        }
+
+        function startOnlineBattleMode(playerCharId = 'asaiomizu', enemyCharId = 'asaiomizu') {
+            window.isOnlineBattleMode = true;
+            startNewBattleMode(playerCharId, enemyCharId);
+            if (activeNewBattle) {
+                activeNewBattle.isOnlineBattleMode = true;
+            }
+        }
+
+        window.renderOnlineModesScreen = renderOnlineModesScreen;
+        window.renderOnlineBattleCharSelectScreen = renderOnlineBattleCharSelectScreen;
+        window.startOnlineBattleMode = startOnlineBattleMode;
 
         window.renderNewCharSelectScreen = renderNewBattleCharSelectScreen;
         window.onNewCharSelectSortChange = onNewCharSelectSortChange;
@@ -5210,6 +5271,8 @@ pasha_dark: {
             if (!activeNewBattle) return;
             const p1 = activeNewBattle.p1;
             const p2 = activeNewBattle.p2;
+            const isOnline = (window.isOnlineBattleMode || (activeNewBattle && activeNewBattle.isOnlineBattleMode));
+            const returnFn = isOnline ? 'renderOnlineBattleCharSelectScreen()' : 'renderNewBattleCharSelectScreen()';
 
             setTimeout(() => {
                 const existing = document.getElementById('battle-result-overlay');
@@ -5222,7 +5285,7 @@ pasha_dark: {
                             <div class="pixel-box-dark p-6 sm:p-8 bg-slate-950/95 border-red-500 shadow-2xl max-w-md w-full flex flex-col items-center">
                                 <div class="text-4xl sm:text-6xl font-pixel font-black text-red-500 mb-3 animate-pulse">LOSE</div>
                                 <p class="text-xs sm:text-sm text-slate-300 font-mono mb-6">力尽きてしまいました……次こそは勝利を掴ろう！</p>
-                                <button onclick="renderNewBattleCharSelectScreen()" class="pixel-btn pixel-btn-primary px-8 py-3 text-sm font-bold font-pixel shadow-xl">
+                                <button onclick="${returnFn}" class="pixel-btn pixel-btn-primary px-8 py-3 text-sm font-bold font-pixel shadow-xl">
                                     バトル選択画面へ戻る ▶
                                 </button>
                             </div>
@@ -5241,7 +5304,7 @@ pasha_dark: {
                             <div class="pixel-box-gold p-6 sm:p-8 bg-amber-950/95 border-amber-400 shadow-2xl max-w-md w-full flex flex-col items-center">
                                 <div class="text-4xl sm:text-6xl font-pixel font-black text-amber-300 mb-2 animate-bounce">WIN</div>
                                 <p class="text-xs sm:text-sm text-amber-200 font-mono mb-4">お見事！見事に勝利を収めました！<br><b class="text-amber-400">+150 DOPA</b> を獲得！</p>
-                                <button onclick="renderNewBattleCharSelectScreen()" class="pixel-btn pixel-btn-primary px-8 py-3 text-sm font-bold font-pixel shadow-xl">
+                                <button onclick="${returnFn}" class="pixel-btn pixel-btn-primary px-8 py-3 text-sm font-bold font-pixel shadow-xl">
                                     バトル選択画面へ戻る ▶
                                 </button>
                             </div>
@@ -5254,7 +5317,7 @@ pasha_dark: {
                             <div class="pixel-box p-6 sm:p-8 bg-slate-900 border-yellow-400 shadow-2xl max-w-md w-full flex flex-col items-center">
                                 <div class="text-2xl sm:text-4xl font-pixel font-black text-yellow-300 mb-2">DRAW</div>
                                 <p class="text-xs sm:text-sm text-slate-300 font-mono mb-4">相討ちとなりました！</p>
-                                <button onclick="renderNewBattleCharSelectScreen()" class="pixel-btn pixel-btn-primary px-8 py-3 text-sm font-bold font-pixel shadow-xl">
+                                <button onclick="${returnFn}" class="pixel-btn pixel-btn-primary px-8 py-3 text-sm font-bold font-pixel shadow-xl">
                                     バトル選択画面へ戻る ▶
                                 </button>
                             </div>
@@ -5574,11 +5637,16 @@ pasha_dark: {
                     <div class="absolute inset-0 overflow-hidden pointer-events-none z-0">
                         <img src="images/backnormal.webp" alt="backnormal" class="w-full h-full object-cover opacity-80">
                     </div>
-                    <!-- 1. 上部エリア（タイトル・行動状態・ターン・制限時間） -->
+                    <!-- 1. 상部エリア（タイトル・行動状態・ターン・制限時間） -->
+                    ${(() => {
+                        const isOnline = (window.isOnlineBattleMode || (activeNewBattle && activeNewBattle.isOnlineBattleMode));
+                        return `
                     <div class="w-full flex items-center justify-between gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-slate-900/95 rounded-lg border border-slate-700 shadow-md z-20 shrink-0">
-                        <div class="flex items-center gap-1 text-[10px] sm:text-xs font-pixel text-amber-300 shrink-0">
-                            <span>⚔️ 3v3</span>
+                        <div class="flex items-center gap-1 text-[10px] sm:text-xs font-pixel ${isOnline ? 'text-emerald-300' : 'text-amber-300'} shrink-0">
+                            <span>${isOnline ? '🌐 オンライン戦' : '⚔️ 3v3'}</span>
                         </div>
+                        `;
+                    })()}
                         <div class="flex items-center justify-center flex-1 px-1">
                             ${actorIndicator}
                         </div>
@@ -6049,7 +6117,7 @@ pasha_dark: {
 
         function handleOnlineBattleClick() {
             audioSystem.playSelect();
-            showModal("🌐 オンラインで戦う", "オンライン対戦モードは現在準備中です。\n今後のアップデートをお楽しみに！");
+            renderOnlineModesScreen();
         }
 
         function openStoreModal() {
