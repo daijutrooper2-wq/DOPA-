@@ -54,6 +54,8 @@ class Battle3v3Engine {
         this.p2Action = null;
         this.p1TargetIndex = null;
         this.p1TargetChar = null;
+        this.allyActions = new Array(this.allies.length).fill(null);
+        this.currentControllingAllyIndex = 0;
 
         this.botAdapter = new BotInputAdapter();
 
@@ -391,7 +393,38 @@ class Battle3v3Engine {
 
         if (pNum === 1) {
             this.p1Action = skillId;
+            this.allyActions[this.currentControllingAllyIndex] = skillId;
             this.stopTimer();
+
+            // Find next living ally who has not submitted an action yet
+            let nextIdx = -1;
+            for (let i = this.currentControllingAllyIndex + 1; i < this.allies.length; i++) {
+                if (this.allies[i] && this.allies[i].hp > 0 && this.allyActions[i] === null) {
+                    nextIdx = i;
+                    break;
+                }
+            }
+            if (nextIdx === -1) {
+                for (let i = 0; i <= this.currentControllingAllyIndex; i++) {
+                    if (this.allies[i] && this.allies[i].hp > 0 && this.allyActions[i] === null) {
+                        nextIdx = i;
+                        break;
+                    }
+                }
+            }
+
+            if (nextIdx !== -1) {
+                this.currentControllingAllyIndex = nextIdx;
+                this.activeAllyIndex = nextIdx;
+                this.p1 = this.allies[nextIdx];
+                this.p1Action = null;
+                this.startTimer();
+                this.isProcessing = false;
+                if (this.onStateChange) this.onStateChange(this);
+                this.log(`👉 続いて ${this.p1.charName} の行動を選択してください！`, 'text-amber-300 font-bold');
+                return;
+            }
+
             this.isProcessing = true;
             this.turnJustStarted = false;
             if (this.onStateChange) this.onStateChange(this);
@@ -427,46 +460,54 @@ class Battle3v3Engine {
             this.log(`--- [ ターン ${this.turn} ] ---`, 'text-slate-400 font-bold text-center');
         }
 
-        const ally1Action = this.p1Action || (this.p1.isResting ? 'rest' : this.p1.skills[0].id);
+        const executeAlliesTurn = async () => {
+            for (let i = 0; i < this.allies.length; i++) {
+                const attacker = this.allies[i];
+                if (!attacker || attacker.hp <= 0) continue;
 
-        if (this.p1.hp > 0) {
-            this.currentAttacker = this.p1;
-            if (this.onStateChange) this.onStateChange(this);
-
-            const opponents = this.enemies.filter(e => e.hp > 0);
-            if (opponents.length > 0) {
-                let defender = opponents[0];
-                const recordedRec = (this.p1.id === 'asaiomizu' && this.p1.recordedSkill) ? this.p1.recordedSkill : null;
-                const copiedObeySkill = window.newBattleTargetSelectCopiedSkill;
-                let skill = null;
-                if (ally1Action === 'dopa_obey_copy' && copiedObeySkill) {
-                    skill = { ...copiedObeySkill, id: 'dopa_obey_copy' };
-                } else if (this.p1.id === 'asaiomizu' && ally1Action === 'asaiomizu_copied' && recordedRec) {
-                    skill = { ...recordedRec, targetType: recordedRec.targetType || 'single_enemy' };
-                } else {
-                    skill = this.p1.skills.find(s => s.id === ally1Action) || this.p1.skills[0];
-                }
-                const targetList = (skill && skill.targetType === 'single_ally') ? this.allies.filter(a => a.hp > 0) : opponents;
-                const targetTeamArr = (skill && skill.targetType === 'single_ally') ? this.allies : this.enemies;
-                if (this.p1TargetChar && this.p1TargetChar.hp > 0 && targetList.includes(this.p1TargetChar)) {
-                    defender = this.p1TargetChar;
-                } else if (this.p1TargetIndex !== null && targetTeamArr[this.p1TargetIndex] && targetTeamArr[this.p1TargetIndex].hp > 0 && targetList.includes(targetTeamArr[this.p1TargetIndex])) {
-                    defender = targetTeamArr[this.p1TargetIndex];
-                } else if (targetList.length > 0) {
-                    defender = targetList[0];
-                }
-
-                this.executePlayerAction(this.p1, defender, ally1Action);
+                const allyAction = this.allyActions[i] || (attacker.isResting ? 'rest' : attacker.skills[0].id);
+                this.currentAttacker = attacker;
                 if (this.onStateChange) this.onStateChange(this);
 
-                if (await this.checkWinner()) return;
+                await new Promise(resolve => setTimeout(resolve, BOT_ACTION_DELAY));
+
+                const opponents = this.enemies.filter(e => e.hp > 0);
+                if (opponents.length > 0) {
+                    let defender = opponents[0];
+                    const recordedRec = (attacker.id === 'asaiomizu' && attacker.recordedSkill) ? attacker.recordedSkill : null;
+                    const copiedObeySkill = window.newBattleTargetSelectCopiedSkill;
+                    let skill = null;
+                    if (allyAction === 'dopa_obey_copy' && copiedObeySkill) {
+                        skill = { ...copiedObeySkill, id: 'dopa_obey_copy' };
+                    } else if (attacker.id === 'asaiomizu' && allyAction === 'asaiomizu_copied' && recordedRec) {
+                        skill = { ...recordedRec, targetType: recordedRec.targetType || 'single_enemy' };
+                    } else {
+                        skill = attacker.skills.find(s => s.id === allyAction) || attacker.skills[0];
+                    }
+                    const targetList = (skill && skill.targetType === 'single_ally') ? this.allies.filter(a => a.hp > 0) : opponents;
+                    const targetTeamArr = (skill && skill.targetType === 'single_ally') ? this.allies : this.enemies;
+                    
+                    if (this.p1TargetChar && this.p1TargetChar.hp > 0 && targetList.includes(this.p1TargetChar)) {
+                        defender = this.p1TargetChar;
+                    } else if (this.p1TargetIndex !== null && targetTeamArr[this.p1TargetIndex] && targetTeamArr[this.p1TargetIndex].hp > 0 && targetList.includes(targetTeamArr[this.p1TargetIndex])) {
+                        defender = targetTeamArr[this.p1TargetIndex];
+                    } else if (targetList.length > 0) {
+                        defender = targetList[0];
+                    }
+
+                    this.executePlayerAction(attacker, defender, allyAction);
+                    if (this.onStateChange) this.onStateChange(this);
+
+                    if (await this.checkWinner()) return true;
+                }
             }
-        }
+            return false;
+        };
 
         const executeTeamRest = async (teamList, isAllyTeam) => {
             for (let i = 0; i < teamList.length; i++) {
                 const attacker = teamList[i];
-                if (isAllyTeam && attacker === this.p1) continue;
+                if (isAllyTeam) continue;
                 if (attacker.hp <= 0) continue;
 
                 this.currentAttacker = attacker;
@@ -479,20 +520,14 @@ class Battle3v3Engine {
                 const skillId = this.botAdapter.getDecision(attacker, defaultOpponent);
 
                 const skill = attacker.skills.find(s => s.id === skillId) || attacker.skills[0];
-                const teamList = isAllyTeam ? this.allies : this.enemies;
+                const teamListArr = isAllyTeam ? this.allies : this.enemies;
                 const opposingTeam = isAllyTeam ? this.enemies : this.allies;
-                const opponents = (skill.targetType === 'single_ally') ? teamList.filter(a => a.hp > 0) : opposingTeam.filter(e => e.hp > 0);
+                const opponents = (skill.targetType === 'single_ally') ? teamListArr.filter(a => a.hp > 0) : opposingTeam.filter(e => e.hp > 0);
                 if (opponents.length === 0) break;
                 let defender = opponents[Math.floor(Math.random() * opponents.length)];
                 if (skill.targetType === 'single_ally') {
                     const unbuffed = opponents.filter(a => !a.darknessPowerTurns || a.darknessPowerTurns <= 0);
                     defender = unbuffed.length > 0 ? unbuffed[Math.floor(Math.random() * unbuffed.length)] : opponents[Math.floor(Math.random() * opponents.length)];
-                } else if (isAllyTeam) {
-                    if (this.p1TargetChar && this.p1TargetChar.hp > 0 && opponents.includes(this.p1TargetChar)) {
-                        defender = this.p1TargetChar;
-                    } else if (this.p1TargetIndex !== null && this.enemies[this.p1TargetIndex] && opponents.includes(this.enemies[this.p1TargetIndex])) {
-                        defender = this.enemies[this.p1TargetIndex];
-                    }
                 }
 
                 this.executePlayerAction(attacker, defender, skillId);
@@ -506,11 +541,11 @@ class Battle3v3Engine {
         const isAlliesFirst = (this.turn % 2 === 1);
 
         if (isAlliesFirst) {
-            if (await executeTeamRest(this.allies, true)) return;
+            if (await executeAlliesTurn()) return;
             if (await executeTeamRest(this.enemies, false)) return;
         } else {
             if (await executeTeamRest(this.enemies, false)) return;
-            if (await executeTeamRest(this.allies, true)) return;
+            if (await executeAlliesTurn()) return;
         }
 
         this.p1TargetIndex = null;
@@ -520,6 +555,17 @@ class Battle3v3Engine {
         this.currentAttacker = null;
         this.isProcessing = false;
         this.turnJustStarted = true;
+        this.allyActions = new Array(this.allies.length).fill(null);
+        let firstLiving = 0;
+        for (let i = 0; i < this.allies.length; i++) {
+            if (this.allies[i] && this.allies[i].hp > 0) {
+                firstLiving = i;
+                break;
+            }
+        }
+        this.activeAllyIndex = firstLiving;
+        this.currentControllingAllyIndex = firstLiving;
+        this.p1 = this.allies[firstLiving];
         this.p1Action = null;
         this.p1TargetIndex = null;
         this.p1TargetChar = null;
@@ -528,7 +574,7 @@ class Battle3v3Engine {
         if (!this.battleEnded) {
             this.startTimer();
             if (this.onCutin) {
-                this.onCutin("🟢 自分のターンです！", `ターン ${this.turn} - 味方チームの行動を選択してください`);
+                this.onCutin("🟢 自分のターンです！", `ターン ${this.turn} - 味方 ${this.p1.charName} の行動を選択してください`);
             }
         }
     }

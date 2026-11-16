@@ -2482,6 +2482,9 @@ pasha_dark: {
                 this.p2Action = null;
                 this.p1TargetIndex = null;
                 this.p1TargetChar = null;
+                this.allyActions = this.isNewBattle ? new Array(this.allies.length).fill(null) : [null];
+                this.allyTargets = this.isNewBattle ? new Array(this.allies.length).fill(null) : [null];
+                this.currentControllingAllyIndex = 0;
 
                 this.botAdapter = isOnline ? null : new BotInputAdapter();
 
@@ -2525,6 +2528,7 @@ pasha_dark: {
 
             checkActiveAllyStatus() {
                 if (!this.isNewBattle || this.battleEnded || this.waitingForChoice) return false;
+                if (this.isProcessing) return false;
                 const currentActiveAlly = this.allies[this.activeAllyIndex || 0];
                 if (currentActiveAlly && currentActiveAlly.hp <= 0) {
                     if (this.allies.every(a => a.hp <= 0)) {
@@ -2995,8 +2999,16 @@ pasha_dark: {
 
                 if (this.p1.hp > 0 && this.p1.eggplantReady && !this.p1Action && !this.battleEnded) {
                     setTimeout(() => {
-                        if (this.p1.eggplantReady && !this.p1Action) {
+                        if (this.p1.eggplantReady && !this.p1Action && !this.battleEnded) {
                             this.submitAction(1, 'momo_eggplant_burst');
+                        }
+                    }, 400);
+                    return;
+                }
+                if (this.isNewBattle && this.p1.hp > 0 && this.p1.isResting && !this.p1Action && !this.battleEnded) {
+                    setTimeout(() => {
+                        if (this.p1.isResting && !this.p1Action && !this.battleEnded) {
+                            this.submitAction(1, 'rest');
                         }
                     }, 400);
                     return;
@@ -3065,6 +3077,8 @@ pasha_dark: {
                 if (this.isOnline) {
                     if (this.myPlayerNum === 1 && !this.p1Action) this.submitAction(1, p1Default);
                     if (this.myPlayerNum === 2 && !this.p2Action) this.submitAction(2, p2Default);
+                } else if (this.isNewBattle) {
+                    if (!this.p1Action) this.submitAction(1, p1Default);
                 } else {
                     if (!this.p1Action) this.p1Action = p1Default;
                     if (!this.p2Action) this.p2Action = p2Default;
@@ -3108,7 +3122,54 @@ pasha_dark: {
                     if (pNum === 1) {
                         this.p1Action = skillId;
                         if (this.isNewBattle) {
+                            const idx = this.currentControllingAllyIndex || 0;
+                            if (!this.allyActions) this.allyActions = new Array(this.allies.length).fill(null);
+                            if (!this.allyTargets) this.allyTargets = new Array(this.allies.length).fill(null);
+                            this.allyActions[idx] = skillId;
+                            this.allyTargets[idx] = {
+                                targetIndex: this.p1TargetIndex,
+                                targetChar: this.p1TargetChar,
+                                copiedObeySkill: (skillId === 'dopa_obey_copy' && window.newBattleTargetSelectCopiedSkill) ? { ...window.newBattleTargetSelectCopiedSkill } : null
+                            };
+                            this.p1TargetIndex = null;
+                            this.p1TargetChar = null;
+                            if (skillId === 'dopa_obey_copy') {
+                                window.newBattleTargetSelectCopiedSkill = null;
+                            }
                             this.stopTimer();
+
+                            let nextIdx = -1;
+                            for (let i = idx + 1; i < this.allies.length; i++) {
+                                if (this.allies[i] && this.allies[i].hp > 0 && this.allyActions[i] === null) {
+                                    nextIdx = i;
+                                    break;
+                                }
+                            }
+                            if (nextIdx === -1) {
+                                for (let i = 0; i <= idx; i++) {
+                                    if (this.allies[i] && this.allies[i].hp > 0 && this.allyActions[i] === null) {
+                                        nextIdx = i;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (nextIdx !== -1) {
+                                this.currentControllingAllyIndex = nextIdx;
+                                this.activeAllyIndex = nextIdx;
+                                this.p1 = this.allies[nextIdx];
+                                this.p1Action = null;
+                                this.isProcessing = false;
+                                if (typeof newBattleViewMode !== 'undefined') newBattleViewMode = 'main';
+                                if (typeof isNewBattleSkillModalOpen !== 'undefined') isNewBattleSkillModalOpen = false;
+                                if (typeof newBattleTargetSelectSkillId !== 'undefined') newBattleTargetSelectSkillId = null;
+                                if (typeof newBattleTargetSelectType !== 'undefined') newBattleTargetSelectType = null;
+                                this.log(`👉 続いて ${this.p1.charName} の行動を選択してください！`, 'text-amber-300 font-bold');
+                                if (this.onStateChange) this.onStateChange(this);
+                                this.startTimer();
+                                return;
+                            }
+
                             this.isProcessing = true;
                             this.turnJustStarted = false;
                             if (this.onStateChange) this.onStateChange(this);
@@ -3152,49 +3213,62 @@ pasha_dark: {
                 }
 
                 if (this.isNewBattle) {
-                    const ally1Action = this.p1Action || (this.p1.isResting ? 'rest' : this.p1.skills[0].id);
+                    const executeAlliesTurn = async () => {
+                        for (let i = 0; i < this.allies.length; i++) {
+                            const attacker = this.allies[i];
+                            if (!attacker || attacker.hp <= 0) continue;
 
-                    // 1. プレイヤーのキャラクター (p1) はボタンを押した瞬間に遅延なく即座に行動を実行・ダメージ反映・HPバー更新を行う
-                    if (this.p1.hp > 0) {
-                        this.currentAttacker = this.p1;
-                        if (this.onStateChange) this.onStateChange(this);
-
-                        const opponents = this.enemies.filter(e => e.hp > 0);
-                        if (opponents.length > 0) {
-                            const recordedRec = (this.p1.id === 'asaiomizu') ? this.p1.recordedSkill : null;
-                            const copiedObeySkill = window.newBattleTargetSelectCopiedSkill;
-                            let skill = null;
-                            if (ally1Action === 'dopa_obey_copy' && copiedObeySkill) {
-                                skill = { ...copiedObeySkill, id: 'dopa_obey_copy' };
-                            } else if (this.p1.id === 'asaiomizu' && ally1Action === 'asaiomizu_copied' && recordedRec) {
-                                skill = { targetType: recordedRec.targetType || 'single_enemy', ...recordedRec };
-                            } else {
-                                skill = this.p1.skills.find(s => s.id === ally1Action) || this.p1.skills[0];
-                            }
-                            const targetList = (skill && skill.targetType === 'single_ally') ? this.allies.filter(a => a.hp > 0) : opponents;
-                            const targetTeamArr = (skill && skill.targetType === 'single_ally') ? this.allies : this.enemies;
-
-                            let defender = targetList && targetList.length > 0 ? targetList[Math.floor(Math.random() * targetList.length)] : opponents[0];
-                            if (this.p1TargetChar && this.p1TargetChar.hp > 0 && targetList.includes(this.p1TargetChar)) {
-                                defender = this.p1TargetChar;
-                            } else if (this.p1TargetIndex !== null && targetTeamArr[this.p1TargetIndex] && targetTeamArr[this.p1TargetIndex].hp > 0 && targetList.includes(targetTeamArr[this.p1TargetIndex])) {
-                                defender = targetTeamArr[this.p1TargetIndex];
-                            } else if (targetList.length > 0) {
-                                defender = targetList[0];
-                            }
-
-                            this.executePlayerAction(this.p1, defender, ally1Action);
+                            const allyAction = (this.allyActions && this.allyActions[i]) || (attacker.isResting ? 'rest' : attacker.skills[0].id);
+                            const savedTarget = (this.allyTargets && this.allyTargets[i]) ? this.allyTargets[i] : null;
+                            this.currentAttacker = attacker;
                             if (this.onStateChange) this.onStateChange(this);
 
-                            if (await this.checkWinner()) return;
-                        }
-                    }
+                            if (i > 0 || (this.turn % 2 === 1 ? this.firstStrikerPlayerNum !== 1 : this.firstStrikerPlayerNum === 1)) {
+                                await new Promise(resolve => setTimeout(resolve, BOT_ACTION_DELAY));
+                            }
 
-                    // 2. 残りの味方 (ally2, ally3) と敵チームの行動を処理
+                            const opponents = this.enemies.filter(e => e.hp > 0);
+                            if (opponents.length > 0) {
+                                const recordedRec = (attacker.id === 'asaiomizu') ? attacker.recordedSkill : null;
+                                const copiedObeySkill = (savedTarget && savedTarget.copiedObeySkill) ? savedTarget.copiedObeySkill : window.newBattleTargetSelectCopiedSkill;
+                                if (copiedObeySkill && allyAction === 'dopa_obey_copy') {
+                                    window.newBattleTargetSelectCopiedSkill = copiedObeySkill;
+                                }
+                                let skill = null;
+                                if (allyAction === 'dopa_obey_copy' && copiedObeySkill) {
+                                    skill = { ...copiedObeySkill, id: 'dopa_obey_copy' };
+                                } else if (attacker.id === 'asaiomizu' && allyAction === 'asaiomizu_copied' && recordedRec) {
+                                    skill = { targetType: recordedRec.targetType || 'single_enemy', ...recordedRec };
+                                } else {
+                                    skill = attacker.skills.find(s => s.id === allyAction) || attacker.skills[0];
+                                }
+                                const targetList = (skill && skill.targetType === 'single_ally') ? this.allies.filter(a => a.hp > 0) : opponents;
+                                const targetTeamArr = (skill && skill.targetType === 'single_ally') ? this.allies : this.enemies;
+
+                                const tgtChar = savedTarget ? savedTarget.targetChar : this.p1TargetChar;
+                                const tgtIdx = savedTarget ? savedTarget.targetIndex : this.p1TargetIndex;
+                                let defender = targetList && targetList.length > 0 ? targetList[Math.floor(Math.random() * targetList.length)] : opponents[0];
+                                if (tgtChar && tgtChar.hp > 0 && targetList.includes(tgtChar)) {
+                                    defender = tgtChar;
+                                } else if (tgtIdx !== null && tgtIdx !== undefined && targetTeamArr[tgtIdx] && targetTeamArr[tgtIdx].hp > 0 && targetList.includes(targetTeamArr[tgtIdx])) {
+                                    defender = targetTeamArr[tgtIdx];
+                                } else if (targetList.length > 0) {
+                                    defender = targetList[0];
+                                }
+
+                                this.executePlayerAction(attacker, defender, allyAction);
+                                if (this.onStateChange) this.onStateChange(this);
+
+                                if (await this.checkWinner()) return true;
+                            }
+                        }
+                        return false;
+                    };
+
                     const executeTeamRest = async (teamList, isAllyTeam) => {
                         for (let i = 0; i < teamList.length; i++) {
                             const attacker = teamList[i];
-                            if (isAllyTeam && attacker === this.p1) continue;
+                            if (isAllyTeam) continue;
                             if (attacker.hp <= 0) continue;
 
                             this.currentAttacker = attacker;
@@ -3202,25 +3276,19 @@ pasha_dark: {
 
                             await new Promise(resolve => setTimeout(resolve, BOT_ACTION_DELAY));
 
-                            const targetPool = isAllyTeam ? this.enemies.filter(e => e.hp > 0) : this.allies.filter(a => a.hp > 0);
-                            const defaultOpponent = targetPool[0] || (isAllyTeam ? this.enemies[0] : this.allies[0]);
+                            const targetPool = this.allies.filter(a => a.hp > 0);
+                            const defaultOpponent = targetPool[0] || this.allies[0];
                             const skillId = this.botAdapter.getDecision(attacker, defaultOpponent);
 
                             const skill = attacker.skills.find(s => s.id === skillId) || attacker.skills[0];
-                            const tList = isAllyTeam ? this.allies : this.enemies;
-                            const opposingTeam = isAllyTeam ? this.enemies : this.allies;
+                            const tList = this.enemies;
+                            const opposingTeam = this.allies;
                             const opponents = (skill.targetType === 'single_ally') ? tList.filter(a => a.hp > 0) : opposingTeam.filter(e => e.hp > 0);
                             if (opponents.length === 0) break;
                             let defender = opponents[Math.floor(Math.random() * opponents.length)];
                             if (skill.targetType === 'single_ally') {
                                 const unbuffed = opponents.filter(a => !a.darknessPowerTurns || a.darknessPowerTurns <= 0);
                                 defender = unbuffed.length > 0 ? unbuffed[Math.floor(Math.random() * unbuffed.length)] : opponents[Math.floor(Math.random() * opponents.length)];
-                            } else if (isAllyTeam) {
-                                if (this.p1TargetChar && this.p1TargetChar.hp > 0 && opponents.includes(this.p1TargetChar)) {
-                                    defender = this.p1TargetChar;
-                                } else if (this.p1TargetIndex !== null && this.enemies[this.p1TargetIndex] && opponents.includes(this.enemies[this.p1TargetIndex])) {
-                                    defender = this.enemies[this.p1TargetIndex];
-                                }
                             }
 
                             this.executePlayerAction(attacker, defender, skillId);
@@ -3234,11 +3302,11 @@ pasha_dark: {
                     const isAlliesFirst = (this.turn % 2 === 1) ? (this.firstStrikerPlayerNum === 1) : (this.firstStrikerPlayerNum !== 1);
 
                     if (isAlliesFirst) {
-                        if (await executeTeamRest(this.allies, true)) return;
+                        if (await executeAlliesTurn()) return;
                         if (await executeTeamRest(this.enemies, false)) return;
                     } else {
                         if (await executeTeamRest(this.enemies, false)) return;
-                        if (await executeTeamRest(this.allies, true)) return;
+                        if (await executeAlliesTurn()) return;
                     }
 
                     this.p1TargetIndex = null;
@@ -3294,6 +3362,20 @@ pasha_dark: {
                 this.currentAttacker = null;
                 this.isProcessing = false;
                 this.turnJustStarted = true;
+                if (this.isNewBattle && this.allies) {
+                    this.allyActions = new Array(this.allies.length).fill(null);
+                    this.allyTargets = new Array(this.allies.length).fill(null);
+                    let firstLiving = 0;
+                    for (let i = 0; i < this.allies.length; i++) {
+                        if (this.allies[i] && this.allies[i].hp > 0) {
+                            firstLiving = i;
+                            break;
+                        }
+                    }
+                    this.activeAllyIndex = firstLiving;
+                    this.currentControllingAllyIndex = firstLiving;
+                    this.p1 = this.allies[firstLiving];
+                }
                 this.p1Action = null;
                 this.p2Action = null;
                 this.p1TargetIndex = null;
@@ -3304,7 +3386,7 @@ pasha_dark: {
                 if (!this.battleEnded) {
                     this.startTimer();
                     if (this.isNewBattle && this.onCutin) {
-                        this.onCutin("🟢 自分のターンです！", `ターン ${this.turn} - 味方チームの行動を選択してください`);
+                        this.onCutin("🟢 自分のターンです！", `ターン ${this.turn} - 味方 ${this.p1.charName} の行動を選択してください`);
                     }
                 }
             }
@@ -4361,7 +4443,7 @@ pasha_dark: {
                     this.log(winnerText, 'text-yellow-400 font-bold text-center text-sm');
                     this.log(`🤝 引き分けとなりました。`, 'text-yellow-400 font-bold text-center');
                 } else if (livingEnemies.length === 0) {
-                    winnerText = `🎉 【${this.p1.charName}】チームの勝利！`;
+                    winnerText = `🎉 【${(this.allies && this.allies[0]) ? this.allies[0].charName : this.p1.charName}】チームの勝利！`;
                     isEnded = true;
                     this.log(winnerText, 'text-emerald-400 font-bold text-center text-sm');
                     audioSystem.playVictory();
@@ -4391,7 +4473,13 @@ pasha_dark: {
                     this.stopElapsedTimer();
 
                     let result = 'draw';
-                    if (this.p1.hp > 0 && this.p2.hp <= 0) {
+                    if (this.isNewBattle) {
+                        if (livingAllies.length > 0 && livingEnemies.length === 0) {
+                            result = (this.isOnline && this.myPlayerNum === 2) ? 'lose' : 'win';
+                        } else if (livingAllies.length === 0 && livingEnemies.length > 0) {
+                            result = (this.isOnline && this.myPlayerNum === 2) ? 'win' : 'lose';
+                        }
+                    } else if (this.p1.hp > 0 && this.p2.hp <= 0) {
                         result = (this.isOnline && this.myPlayerNum === 2) ? 'lose' : 'win';
                     } else if (this.p1.hp <= 0 && this.p2.hp > 0) {
                         result = (this.isOnline && this.myPlayerNum === 2) ? 'win' : 'lose';
@@ -5149,26 +5237,20 @@ pasha_dark: {
                         <button onclick="renderDopagaKingdomScreen()" class="pixel-btn pixel-btn-danger px-3 py-1.5 text-xs font-bold">
                             ◀ 王国に戻る
                         </button>
-                        <h2 class="text-emerald-400 font-pixel text-base sm:text-xl font-bold tracking-wider drop-shadow-md">🌐 オンライン対戦モード選択</h2>
+                        <h2 class="text-emerald-400 font-pixel text-base sm:text-xl font-bold tracking-wider drop-shadow-md">🌐 オンラインで戦う</h2>
                         <div class="w-20"></div>
                     </div>
 
-                    <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10 my-auto items-center justify-center max-w-2xl mx-auto w-full">
-                        <button onclick="renderOnlineBattleCharSelectScreen()" class="pixel-box bg-slate-900 border-emerald-400 hover:border-emerald-300 p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transform hover:scale-105 transition-all shadow-xl h-36 sm:h-44 group">
-                            <span class="text-3xl sm:text-4xl">🌐</span>
-                            <span class="text-emerald-300 font-pixel font-bold text-sm sm:text-base text-center">オンライン3対3バトル</span>
-                            <span class="text-[10px] text-slate-400 text-center">全国のファイターと3対3のチームオンライン対戦！</span>
-                        </button>
-
-                        <button onclick="showModal('準備中', 'このモードは現在準備中です。')" class="pixel-box bg-slate-900 border-slate-700 hover:border-amber-400 p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transform hover:scale-105 transition-all shadow-xl h-36 sm:h-44 group opacity-80">
-                            <span class="text-3xl sm:text-4xl">🏆</span>
-                            <span class="text-slate-300 font-pixel font-bold text-sm sm:text-base text-center">オンラインランクマッチ</span>
-                            <span class="text-[10px] text-slate-400 text-center">段位をかけてトップを目指せ</span>
+                    <div class="flex-1 flex items-center justify-center relative z-10 my-auto max-w-md mx-auto w-full">
+                        <button onclick="renderOnlineBattleCharSelectScreen()" class="pixel-box bg-slate-900 border-emerald-400 hover:border-emerald-300 p-8 flex flex-col items-center justify-center gap-4 cursor-pointer transform hover:scale-105 transition-all shadow-xl w-full h-44 sm:h-52 group">
+                            <span class="text-4xl sm:text-5xl group-hover:scale-110 transition-transform">🌐</span>
+                            <span class="text-emerald-300 font-pixel font-bold text-base sm:text-lg text-center">オンライン3対3バトル</span>
+                            <span class="text-xs text-slate-400 text-center">全国のファイターと3対3のチームオンライン対戦！</span>
                         </button>
                     </div>
 
                     <div class="text-center relative z-10 pb-2">
-                        <p class="text-xs text-slate-400 font-pixel">プレイしたいオンラインモードを選んでください</p>
+                        <p class="text-xs text-slate-400 font-pixel">バトルモードを選んで出陣しよう！</p>
                     </div>
                 </div>
             `;
@@ -5271,6 +5353,8 @@ pasha_dark: {
             if (!activeNewBattle) return;
             const p1 = activeNewBattle.p1;
             const p2 = activeNewBattle.p2;
+            const allAlliesDead = (activeNewBattle.isNewBattle && activeNewBattle.allies) ? activeNewBattle.allies.every(a => a.hp <= 0) : (p1.hp <= 0);
+            const allEnemiesDead = (activeNewBattle.isNewBattle && activeNewBattle.enemies) ? activeNewBattle.enemies.every(e => e.hp <= 0) : (p2.hp <= 0);
             const isOnline = (window.isOnlineBattleMode || (activeNewBattle && activeNewBattle.isOnlineBattleMode));
             const returnFn = isOnline ? 'renderOnlineBattleCharSelectScreen()' : 'renderNewBattleCharSelectScreen()';
 
@@ -5278,7 +5362,7 @@ pasha_dark: {
                 const existing = document.getElementById('battle-result-overlay');
                 if (existing) existing.remove();
 
-                if (p1.hp <= 0 && p2.hp > 0) {
+                if (allAlliesDead && !allEnemiesDead) {
                     audioSystem.playDefeat();
                     const html = `
                         <div id="battle-result-overlay" class="fixed inset-0 bg-black/90 z-[9999] flex flex-col items-center justify-center p-4 sm:p-6 text-center opacity-0 transition-opacity duration-1000">
@@ -5296,7 +5380,7 @@ pasha_dark: {
                         const overlay = document.getElementById('battle-result-overlay');
                         if (overlay) overlay.classList.remove('opacity-0');
                     }, 50);
-                } else if (p2.hp <= 0 && p1.hp > 0) {
+                } else if (allEnemiesDead && !allAlliesDead) {
                     audioSystem.playVictory();
                     addDopa(150);
                     const html = `
@@ -5368,12 +5452,18 @@ pasha_dark: {
                 }
 
                 activeNewBattle.activeAllyIndex = nextIdx;
+                activeNewBattle.currentControllingAllyIndex = nextIdx;
                 activeNewBattle.p1 = activeNewBattle.allies[nextIdx];
                 activeNewBattle.waitingForChoice = false;
                 activeNewBattle.isRunModalOpen = false;
+                activeNewBattle.isProcessing = false;
                 activeNewBattle.p1Action = null;
                 activeNewBattle.p1TargetIndex = null;
                 activeNewBattle.p1TargetChar = null;
+                if (activeNewBattle.allies) {
+                    activeNewBattle.allyActions = new Array(activeNewBattle.allies.length).fill(null);
+                    activeNewBattle.allyTargets = new Array(activeNewBattle.allies.length).fill(null);
+                }
 
                 activeNewBattle.log(`🔄 ${activeNewBattle.p1.charName} に操作権が引き継がれた！`, 'text-amber-300 font-bold');
                 if (activeNewBattle.onCutin) {
@@ -5464,9 +5554,10 @@ pasha_dark: {
                 `;
             } else if (isMyTurn) {
                 const p1Name = (p1.charName || '').replace(/SPパシャ憎・半浸闇化状態|パシャ憎・半浸闇化状態/g, 'パシャ憎・半浸闇化');
+                const allyOrderNum = (activeNewBattle.allies ? activeNewBattle.allies.indexOf(p1) + 1 : 1);
                 actorIndicator = `
                     <div class="px-2 py-0.5 rounded border border-emerald-400 bg-emerald-950/90 text-emerald-300 text-[10px] sm:text-xs font-bold font-pixel animate-pulse shadow">
-                        🟢 自分のターン (${p1Name})
+                        🟢 自分のターン (${allyOrderNum}体目: ${p1Name})
                     </div>
                 `;
             } else {
@@ -5692,6 +5783,7 @@ pasha_dark: {
                                          ? `onclick="selectNewBattleTarget(${origIdx}, true)" style="cursor: pointer;"` 
                                          : '';
                                      const isCurrentActor = currentActor === c;
+                                     const isCurrentControlling = isMyTurn && p1 === c;
 
                                      let posClasses = 'flex flex-col items-center justify-end relative transition-all duration-300 ';
                                      if (posType === 'center') {
@@ -5700,13 +5792,13 @@ pasha_dark: {
                                           posClasses += 'w-[30%] h-[72%] z-25 opacity-95 -translate-y-6';
                                       }
 
-                                     const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : 'hover:brightness-110';
+                                     const interactiveStyle = isSelectable ? 'cursor-pointer ring-4 ring-amber-400 bg-amber-950/40 rounded-xl' : (isCurrentControlling ? 'ring-2 ring-emerald-400/80 rounded-xl brightness-110' : 'hover:brightness-110');
                                      const deadStyle = c.hp <= 0 ? 'opacity-40 grayscale' : '';
                                      const hpBarPosClass = 'battle-char-status-bar absolute -top-6 left-1/2 -translate-x-1/2 w-[95%] min-w-[65px] z-40 flex flex-col items-center bg-black/85 backdrop-blur-md px-1 py-0.5 rounded border border-white/20 shadow-lg cursor-pointer hover:border-amber-400 hover:brightness-110 active:scale-95 transition-all select-none';
 
                                      return `
                                          <div id="ally-char-${origIdx}" ${cardClickAttr} data-char-team="ally" data-char-idx="${origIdx}" class="${posClasses} ${interactiveStyle} ${deadStyle}" >
-                                            ${isCurrentActor ? '<div class="absolute -top-12 left-1/2 -translate-x-1/2 text-amber-400 font-bold text-sm animate-arrow-float z-50 drop-shadow-md">▼</div>' : ''}
+                                            ${(isCurrentActor || isCurrentControlling) ? `<div class="absolute -top-12 left-1/2 -translate-x-1/2 ${isCurrentControlling && !isCurrentActor ? 'text-emerald-400' : 'text-amber-400'} font-bold text-sm animate-arrow-float z-50 drop-shadow-md">▼</div>` : ''}
                                             
                                              <!-- 頭上のステータスUI -->
                                              <div data-char-bar="true" data-bar-team="ally" data-bar-idx="${origIdx}" onclick="event.stopPropagation(); if(typeof toggleBattleCharTooltip === 'function') toggleBattleCharTooltip('ally', ${origIdx}, event);" class="${hpBarPosClass}" title="タップして詳細を表示">
