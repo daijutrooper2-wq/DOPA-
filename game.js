@@ -3569,7 +3569,14 @@ pasha_dark: {
                     teamList.forEach(a => {
                         if (a.hp > 0) {
                             a.hp = Math.min(a.maxHp, a.hp + hAmt);
-                            this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, a);
+                            if (typeof triggerNewBattleCharacterEffect === 'function') {
+                                triggerNewBattleCharacterEffect(a, 'heal', `+${hAmt}`);
+                            } else {
+                                this.triggerEffect(this.getCharacterTeam(a) === 'ally' ? 'Player' : 'Enemy', 'heal', `+${hAmt}`, a);
+                            }
+                            if (typeof this.checkPashaDarkMode === 'function') {
+                                this.checkPashaDarkMode(a);
+                            }
                         }
                     });
 
