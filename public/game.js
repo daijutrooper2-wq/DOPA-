@@ -1792,38 +1792,38 @@ static drawDopagaking(p, isCharged) {
                                 <div class="space-y-1.5 text-center">
                                     <div class="text-3xl sm:text-4xl">⚡</div>
                                     <h3 class="font-pixel text-sm sm:text-base font-bold text-emerald-300">
-                                        ${isSoloMulti ? 'ソロ練習スタート' : 'クイックマッチ'}
+                                        ${isSoloMulti ? 'ソロ練習スタート' : 'すぐに戦う（クイックマッチ）'}
                                     </h3>
                                     <p class="text-[11px] text-slate-300 font-mono leading-relaxed">
                                         ${isSoloMulti
                                             ? '設定したソロ構成（あなた1人＋BOT5体）で対戦準備画面へ進みます。'
                                             : (is2p
-                                                ? 'オンライン中の相手と自動でマッチング！相手が見つかり次第すぐに対戦開始します。'
-                                                : '同じ人数構成のプレイヤーと自動でマッチング！全員揃ったら対戦準備へ進みます。')}
+                                                ? '自動マッチング！15秒以内に人間が見つからない場合は自動でBOTを補充してバトル開始します。'
+                                                : '同じ人数構成の相手と自動マッチング！15秒以内に揃わない枠は自動でBOT補充して開始します。')}
                                     </p>
                                 </div>
                                 <button type="button" onclick="${isSoloMulti ? 'startSoloMultiReadyLobby()' : `startOnlineQuickMatch('${mode}')`}" class="pixel-btn pixel-btn-success w-full py-2.5 px-4 text-xs sm:text-sm font-bold font-pixel shadow-lg whitespace-nowrap">
-                                    ${isSoloMulti ? '🚀 対戦準備へ進む ▶' : '⚡ クイックマッチを開始 ▶'}
+                                    ${isSoloMulti ? '🚀 対戦準備へ進む ▶' : '⚡ すぐに戦う（クイックマッチ） ▶'}
                                 </button>
                             </div>
 
-                            <!-- カード2: コードでルーム作成 ＋ コード入力 -->
+                            <!-- カード2: フレンドと遊ぶ（ルーム作成 ＋ コード入力） -->
                             <div class="pixel-box bg-slate-900/95 border-2 border-amber-400/80 p-4 flex flex-col justify-between gap-3 shadow-xl">
                                 <div class="space-y-1 text-center">
                                     <div class="text-3xl sm:text-4xl">🔑</div>
-                                    <h3 class="font-pixel text-sm sm:text-base font-bold text-amber-300">ルーム作成 / コード入力</h3>
+                                    <h3 class="font-pixel text-sm sm:text-base font-bold text-amber-300">フレンドと遊ぶ（ルーム作成）</h3>
                                     <p class="text-[10px] sm:text-[11px] text-slate-300 font-mono">
-                                        合言葉コードを発行して友達と対戦、または相手のコードを入力して参加！
+                                        ルームID（6桁コード）を発行・共有して招待、または相手のコードを入力して参加！
                                     </p>
                                 </div>
 
                                 <div class="space-y-2.5">
                                     <button type="button" onclick="createOnlineCodeRoom('${mode}')" class="pixel-btn pixel-btn-primary w-full py-2 px-3 text-xs font-bold font-pixel shadow whitespace-nowrap">
-                                        🏠 コードでルームを作成
+                                        🏠 フレンド用ルームを作成
                                     </button>
 
                                     <div class="border-t border-slate-700/80 pt-2 space-y-1.5">
-                                        <label class="block text-[10px] font-pixel text-sky-300 text-center">🚪 相手から受け取ったコードを入力</label>
+                                        <label class="block text-[10px] font-pixel text-sky-300 text-center">🚪 ルームID（6桁コード）を入力して参加</label>
                                         <div class="flex gap-1.5">
                                             <input id="online-room-code-input" type="text" maxlength="6" inputmode="numeric" placeholder="6桁コード" class="pixel-box bg-slate-950 border-sky-500/80 text-amber-300 font-mono font-bold text-sm text-center tracking-widest px-2 py-1.5 flex-1 min-w-0 outline-none">
                                             <button type="button" onclick="joinOnlineRoomByCode('${mode}')" class="pixel-btn pixel-btn-warning px-3 py-1.5 text-xs font-bold font-pixel whitespace-nowrap shrink-0">
@@ -1836,13 +1836,13 @@ static drawDopagaking(p, isCharged) {
                         </div>
 
                         <div id="online-match-status-msg" class="text-xs font-mono text-center min-h-[20px] text-slate-400">
-                            「クイックマッチ」または「ルーム作成 / コード入力」を選択してください
+                            「すぐに戦う（クイックマッチ）」または「フレンドと遊ぶ（ルーム作成）」を選択してください
                         </div>
                     </div>
 
                     <div class="flex justify-center pt-1 pb-1 shrink-0">
                         <button type="button" onclick="fallbackLaunchBotFromMatchmaking('${mode}')" class="text-[11px] font-mono text-slate-400 hover:text-amber-300 underline cursor-pointer">
-                            🤖 相手がいない場合はBOT相手にテスト対戦する
+                            🤖 すぐにBOT相手にバトルを開始する
                         </button>
                     </div>
                 </div>
@@ -2293,14 +2293,27 @@ static drawDopagaking(p, isCharged) {
 
         function copyOnlineRoomCode(code) {
             audioSystem.playSelect();
+            const showToast = () => {
+                const el = document.getElementById('room-code-copy-toast');
+                if (el) {
+                    el.innerText = '✓ コピーしました！';
+                    setTimeout(() => { if (el) el.innerText = ''; }, 1800);
+                }
+            };
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(code).then(() => {
-                    const el = document.getElementById('room-code-copy-toast');
-                    if (el) {
-                        el.innerText = '✓ コピーしました！';
-                        setTimeout(() => { if (el) el.innerText = ''; }, 1800);
-                    }
-                }).catch(() => {});
+                navigator.clipboard.writeText(code).then(showToast).catch(() => {
+                    try {
+                        const ta = document.createElement('textarea');
+                        ta.value = code;
+                        ta.style.position = 'fixed';
+                        ta.style.opacity = '0';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        ta.remove();
+                        showToast();
+                    } catch (e) {}
+                });
             }
         }
 
@@ -2310,6 +2323,7 @@ static drawDopagaking(p, isCharged) {
             const roomId = st.roomId;
             const isSolo = st.isSoloLocal;
             cleanupOnlineLobby();
+            closeOnlineLobbyBotCharPicker();
             if (!isSolo && roomId && window.fbDb && window.fbDoc) {
                 try {
                     const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
@@ -2330,22 +2344,82 @@ static drawDopagaking(p, isCharged) {
             renderOnlineMatchmakingScreen(mode);
         }
 
+        async function hostFill2pWithBotsAndStart(roomId) {
+            const myUid = window.getOnlineClientId();
+            if (!window.fbDb || !window.fbDoc || !window.fbRunTransaction) {
+                fallbackLaunchBotFromMatchmaking('2p');
+                return;
+            }
+            const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
+            const allIds = Object.keys(CHARACTER_DATA);
+            try {
+                await window.fbRunTransaction(window.fbDb, async (tx) => {
+                    const snap = await tx.get(roomRef);
+                    if (!snap.exists()) return;
+                    const rd = snap.data();
+                    if (rd.hostUid !== myUid || rd.status === 'playing' || rd.status === 'ended') return;
+                    const t1 = (rd.team1Slots || []).map(s => ({ ...s, ready: true }));
+                    const used = new Set(t1.map(s => s?.charConfig?.charId).filter(Boolean));
+                    const t2 = [0, 1, 2].map((idx) => {
+                        const existing = rd.team2Slots && rd.team2Slots[idx];
+                        if (existing && existing.type === 'human' && existing.uid) return existing;
+                        if (existing && existing.type === 'bot' && existing.charConfig && existing.charConfig.charId) {
+                            return { ...existing, ready: true };
+                        }
+                        const pool = allIds.filter(id => !used.has(id));
+                        const pickPool = pool.length > 0 ? pool : allIds;
+                        const botCharId = (existing && existing.charConfig && existing.charConfig.charId) || pickPool[Math.floor(Math.random() * pickPool.length)] || 'pasha';
+                        used.add(botCharId);
+                        return {
+                            type: 'bot',
+                            uid: null,
+                            playerName: `敵BOT ${idx + 1}`,
+                            selectedIcon: botCharId,
+                            charConfig: { charId: botCharId, customStats: null },
+                            ready: true,
+                            lastSeen: Date.now()
+                        };
+                    });
+                    tx.update(roomRef, { team1Slots: t1, team2Slots: t2, status: 'playing', startedAt: Date.now(), updatedAt: Date.now() });
+                });
+            } catch (e) {
+                console.warn('2p auto-BOT fill error:', e);
+                fallbackLaunchBotFromMatchmaking('2p');
+            }
+        }
+
         function renderOnlineWaitingRoomScreen(roomId, initialData = null) {
             cleanupOnlineLobby();
             window._onlineLobbyState.roomId = roomId;
             window._onlineLobbyState.waitStartAt = Date.now();
+            const QUICK_TIMEOUT_SEC = 15;
+            let latestRoomSnapshot = initialData;
+            let autoBotTriggered = false;
+            let lastWaitSig = '';
 
             const drawWaitingView = (roomData) => {
+                latestRoomSnapshot = roomData;
                 const container = document.getElementById('screen-container');
                 if (!container || !roomData) return;
+                const sig = JSON.stringify({
+                    st: roomData.status,
+                    rc: roomData.roomCode,
+                    t1: (roomData.team1Slots || []).map(s => [s?.type, s?.uid, s?.charConfig?.charId, s?.ready]),
+                    t2: (roomData.team2Slots || []).map(s => [s?.type, s?.uid, s?.charConfig?.charId, s?.ready])
+                });
+                if (sig === lastWaitSig) return;
+                lastWaitSig = sig;
 
                 const myUid = window.getOnlineClientId();
                 const isHost = roomData.hostUid === myUid;
                 const mySlots = isHost ? (roomData.team1Slots || []) : (roomData.team2Slots || []);
                 const oppSlots = isHost ? (roomData.team2Slots || []) : (roomData.team1Slots || []);
-                const isMatched = (roomData.status === 'matched' || roomData.status === 'playing') && oppSlots[0] && !!oppSlots[0].uid;
-                const oppName = oppSlots[0]?.playerName || '対戦相手';
+                const isMatched = (roomData.status === 'matched' || roomData.status === 'playing') && oppSlots.some(s => s && (s.uid || s.type === 'bot'));
+                const hasHumanOpp = oppSlots.some(s => s && s.type === 'human' && !!s.uid);
+                const oppName = hasHumanOpp ? (oppSlots.find(s => s && s.uid)?.playerName || '対戦相手') : 'CPU (自動補充BOT)';
                 const elapsedSec = Math.floor((Date.now() - window._onlineLobbyState.waitStartAt) / 1000);
+                const remainSec = Math.max(0, QUICK_TIMEOUT_SEC - elapsedSec);
+                const isQuickWaiting = roomData.matchType === 'quick' && !isMatched;
 
                 container.innerHTML = `
                     <div class="relative w-full h-full flex flex-col justify-between p-3 sm:p-5 select-none overflow-y-auto bg-slate-950 text-white">
@@ -2353,21 +2427,27 @@ static drawDopagaking(p, isCharged) {
                             <button onclick="cancelOnlineRoomAndReturn('2p')" class="pixel-btn pixel-btn-danger px-3 py-1 text-xs font-bold whitespace-nowrap">
                                 ✕ キャンセル
                             </button>
-                            <h2 class="text-emerald-300 font-pixel text-xs sm:text-lg font-bold whitespace-nowrap">
-                                ${isMatched ? '⚡ マッチ成立！バトル開始準備中...' : (roomData.matchType === 'code' ? '🔑 ルーム待機中 (2人対戦)' : '⚡ クイックマッチ検索中...')}
+                            <h2 class="text-emerald-300 font-pixel text-xs sm:text-lg font-bold whitespace-nowrap truncate">
+                                ${isMatched ? '⚡ マッチ成立！バトル開始準備中...' : (roomData.matchType === 'code' ? '🔑 フレンド対戦ルーム待機中 (2人対戦)' : '⚡ クイックマッチ検索中...')}
                             </h2>
-                            <div class="text-xs font-mono text-amber-300 whitespace-nowrap">${elapsedSec}秒</div>
+                            <div id="waiting-elapsed-badge" class="text-xs font-mono text-amber-300 whitespace-nowrap">${elapsedSec}秒</div>
                         </div>
 
                         <div class="max-w-3xl mx-auto w-full flex-1 flex flex-col justify-center gap-4">
                             ${roomData.matchType === 'code' && roomData.roomCode ? `
                                 <div class="pixel-box-gold bg-amber-950/70 border-2 border-amber-400 p-3 text-center space-y-1.5">
-                                    <div class="text-[11px] font-pixel text-amber-200">相手に共有するルームコード</div>
+                                    <div class="text-[11px] font-pixel text-amber-200">フレンドに共有するルームID（コード）</div>
                                     <div class="flex items-center justify-center gap-3">
                                         <span class="text-2xl sm:text-4xl font-mono font-black tracking-[0.25em] text-amber-300">${roomData.roomCode}</span>
                                         <button type="button" onclick="copyOnlineRoomCode('${roomData.roomCode}')" class="pixel-btn pixel-btn-primary px-3 py-1.5 text-xs font-bold whitespace-nowrap">📋 コピー</button>
                                     </div>
                                     <div id="room-code-copy-toast" class="text-[11px] text-emerald-300 font-bold min-h-[16px]"></div>
+                                </div>
+                            ` : ''}
+
+                            ${isQuickWaiting ? `
+                                <div id="waiting-quick-banner" class="px-3 py-2 rounded border border-sky-500/80 bg-sky-950/60 text-center text-xs font-mono text-sky-200">
+                                    ⏱️ 人間プレイヤーを検索中… あと <b id="waiting-countdown-sec" class="text-amber-300 font-pixel text-sm">${remainSec}</b> 秒 見つからない場合、自動でBOTを補充してバトル開始します
                                 </div>
                             ` : ''}
 
@@ -2408,7 +2488,7 @@ static drawDopagaking(p, isCharged) {
                                             <div class="text-3xl animate-bounce">⏳</div>
                                             <div class="text-xs sm:text-sm font-pixel text-amber-300 animate-pulse">対戦相手の参加を待っています...</div>
                                             <div class="text-[10px] text-slate-400 font-mono">
-                                                ${roomData.matchType === 'code' ? '相手が上記の6桁コードを入力するとマッチします' : '別プレイヤーがクイックマッチを押すとマッチします'}
+                                                ${roomData.matchType === 'code' ? '相手が上記の6桁コードを入力するとマッチします' : '別プレイヤーが見つからない場合は自動BOT補充で開始します'}
                                             </div>
                                         </div>
                                     `}
@@ -2416,14 +2496,16 @@ static drawDopagaking(p, isCharged) {
                             </div>
                         </div>
 
-                        <div class="flex justify-center gap-3 pt-2 shrink-0">
-                            ${!isMatched ? `
-                                <button type="button" onclick="cancelOnlineRoomAndReturn('2p'); fallbackLaunchBotFromMatchmaking('2p');" class="pixel-btn pixel-btn-warning px-4 py-2 text-xs font-bold font-pixel">
-                                    🤖 待たずにBOTと戦う
+                        <div class="flex flex-wrap justify-center gap-3 pt-2 shrink-0">
+                            ${!isMatched && isHost ? `
+                                <button type="button" onclick="hostFill2pWithBotsAndStart('${roomId}')" class="pixel-btn pixel-btn-success px-6 py-2.5 text-xs sm:text-sm font-bold font-pixel shadow-xl">
+                                    ⚔️ 対戦開始（相手枠にBOTを補充してスタート）
                                 </button>
+                            ` : (!isMatched ? `
+                                <div class="text-xs font-pixel text-slate-400">⏳ マッチ待機中...</div>
                             ` : `
                                 <div class="text-sm font-pixel font-bold text-amber-300 animate-pulse">⚔️ まもなくバトル開始！</div>
-                            `}
+                            `)}
                         </div>
                     </div>
                 `;
@@ -2446,6 +2528,24 @@ static drawDopagaking(p, isCharged) {
                 drawWaitingView(initialData);
             }
 
+            window._onlineLobbyState.waitTimerId = setInterval(() => {
+                if (window._onlineLobbyState.roomId !== roomId || !latestRoomSnapshot) return;
+                const elapsed = Math.floor((Date.now() - window._onlineLobbyState.waitStartAt) / 1000);
+                const elBadge = document.getElementById('waiting-elapsed-badge');
+                if (elBadge) elBadge.innerText = `${elapsed}秒`;
+                const rd = latestRoomSnapshot;
+                const oppJoined = (rd.status === 'matched' || rd.status === 'playing') && rd.team2Slots && rd.team2Slots.some(s => s && (s.uid || s.type === 'bot'));
+                if (rd.matchType === 'quick' && !oppJoined) {
+                    const rem = Math.max(0, QUICK_TIMEOUT_SEC - elapsed);
+                    const cdEl = document.getElementById('waiting-countdown-sec');
+                    if (cdEl) cdEl.innerText = String(rem);
+                    if (rem <= 0 && !autoBotTriggered && rd.hostUid === window.getOnlineClientId()) {
+                        autoBotTriggered = true;
+                        hostFill2pWithBotsAndStart(roomId);
+                    }
+                }
+            }, 1000);
+
             if (window.fbDb && window.fbDoc && window.fbOnSnapshot) {
                 const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
                 window._onlineLobbyState.heartbeatId = setInterval(() => {
@@ -2463,13 +2563,13 @@ static drawDopagaking(p, isCharged) {
                         return;
                     }
                     drawWaitingView(rd);
-                    const oppReady = rd.team2Slots && rd.team2Slots[0] && !!rd.team2Slots[0].uid;
+                    const oppReady = rd.team2Slots && rd.team2Slots[0] && (!!rd.team2Slots[0].uid || rd.team2Slots[0].type === 'bot');
                     if ((rd.status === 'matched' || rd.status === 'playing') && oppReady) {
                         if (window._onlineLobbyState.launchedRoomId !== roomId) {
                             window._onlineLobbyState.launchedRoomId = roomId;
                             window._onlineLobbyState.launchTimeoutId = setTimeout(() => {
                                 launchOnlineSyncedBattle(roomId, rd);
-                            }, 900);
+                            }, 700);
                         }
                     }
                 });
@@ -2574,9 +2674,51 @@ static drawDopagaking(p, isCharged) {
             }).catch(e => console.warn('Move slot error:', e));
         }
 
-        async function hostFillEmptySlotsWithBotsAndStart(roomId) {
+        async function toggleOnlineMultiLobbySlotType(roomId, targetTeamNum, targetSlotIdx) {
             audioSystem.playSelect();
             const myUid = window.getOnlineClientId();
+            const st = window._onlineLobbyState;
+            const allIds = Object.keys(CHARACTER_DATA);
+
+            const transformSlots = (rd) => {
+                const t1 = [...(rd.team1Slots || [])];
+                const t2 = [...(rd.team2Slots || [])];
+                const arr = targetTeamNum === 1 ? t1 : t2;
+                const slot = arr[targetSlotIdx];
+                if (!slot) return null;
+                if (slot.uid === myUid || (slot.type === 'human' && slot.uid)) return null;
+                const teamLabel = targetTeamNum === 1 ? '味方' : '敵';
+                if (slot.type === 'bot') {
+                    arr[targetSlotIdx] = { type: 'human', uid: null, playerName: '', selectedIcon: 'courtney', charConfig: null, ready: false, lastSeen: 0 };
+                } else {
+                    const existingCharId = slot.charConfig?.charId;
+                    const botCharId = (existingCharId && CHARACTER_DATA[existingCharId])
+                        ? existingCharId
+                        : (allIds[Math.floor(Math.random() * allIds.length)] || 'pasha');
+                    arr[targetSlotIdx] = {
+                        type: 'bot',
+                        uid: null,
+                        playerName: `${teamLabel}BOT ${targetSlotIdx + 1}`,
+                        selectedIcon: botCharId,
+                        charConfig: { charId: botCharId, customStats: null },
+                        ready: true,
+                        lastSeen: Date.now()
+                    };
+                }
+                const allHumansJoined = [...t1, ...t2].filter(s => s && s.type === 'human').every(s => !!s.uid);
+                return { t1, t2, nextStatus: allHumansJoined ? 'preparing' : 'waiting' };
+            };
+
+            if (st.isSoloLocal && st.soloRoomData) {
+                const res = transformSlots(st.soloRoomData);
+                if (!res) return;
+                st.soloRoomData.team1Slots = res.t1;
+                st.soloRoomData.team2Slots = res.t2;
+                st.soloRoomData.status = res.nextStatus;
+                renderOnlineMultiReadyScreen(roomId, st.soloRoomData);
+                return;
+            }
+
             if (!window.fbDb || !window.fbDoc || !window.fbRunTransaction) return;
             const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
             await window.fbRunTransaction(window.fbDb, async (tx) => {
@@ -2584,21 +2726,158 @@ static drawDopagaking(p, isCharged) {
                 if (!snap.exists()) return;
                 const rd = snap.data();
                 if (rd.hostUid !== myUid || rd.status === 'playing') return;
-                const allIds = Object.keys(CHARACTER_DATA);
+                const res = transformSlots(rd);
+                if (!res) return;
+                tx.update(roomRef, { team1Slots: res.t1, team2Slots: res.t2, status: res.nextStatus, updatedAt: Date.now() });
+            }).catch(e => console.warn('Toggle slot type error:', e));
+        }
+
+        async function assignOnlineLobbyBotChar(roomId, targetTeamNum, targetSlotIdx, botCharId) {
+            audioSystem.playSelect();
+            if (!CHARACTER_DATA[botCharId]) return;
+            const myUid = window.getOnlineClientId();
+            const st = window._onlineLobbyState;
+            const charConfig = { charId: botCharId, customStats: null };
+
+            const applyBotChar = (rd) => {
+                const t1 = [...(rd.team1Slots || [])];
+                const t2 = [...(rd.team2Slots || [])];
+                const arr = targetTeamNum === 1 ? t1 : t2;
+                const slot = arr[targetSlotIdx];
+                if (!slot || slot.type !== 'bot') return null;
+                arr[targetSlotIdx] = { ...slot, selectedIcon: botCharId, charConfig, ready: true, lastSeen: Date.now() };
+                return { t1, t2 };
+            };
+
+            if (st.isSoloLocal && st.soloRoomData) {
+                const res = applyBotChar(st.soloRoomData);
+                if (!res) return;
+                st.soloRoomData.team1Slots = res.t1;
+                st.soloRoomData.team2Slots = res.t2;
+                renderOnlineMultiReadyScreen(roomId, st.soloRoomData);
+                return;
+            }
+
+            if (!window.fbDb || !window.fbDoc || !window.fbRunTransaction) return;
+            const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
+            await window.fbRunTransaction(window.fbDb, async (tx) => {
+                const snap = await tx.get(roomRef);
+                if (!snap.exists()) return;
+                const rd = snap.data();
+                if (rd.hostUid !== myUid || rd.status === 'playing') return;
+                const res = applyBotChar(rd);
+                if (!res) return;
+                tx.update(roomRef, { team1Slots: res.t1, team2Slots: res.t2, updatedAt: Date.now() });
+            }).catch(e => console.warn('Assign BOT char error:', e));
+        }
+
+        function closeOnlineLobbyBotCharPicker() {
+            const existing = document.getElementById('online-bot-picker-modal');
+            if (existing) existing.remove();
+        }
+
+        function selectOnlineLobbyBotCharFromPicker(roomId, teamNum, slotIdx, botCharId) {
+            closeOnlineLobbyBotCharPicker();
+            assignOnlineLobbyBotChar(roomId, teamNum, slotIdx, botCharId);
+        }
+
+        function openOnlineLobbyBotCharPicker(roomId, teamNum, slotIdx, currentCharId = 'pasha') {
+            audioSystem.playSelect();
+            closeOnlineLobbyBotCharPicker();
+            const chars = Object.values(CHARACTER_DATA);
+            const modal = document.createElement('div');
+            modal.id = 'online-bot-picker-modal';
+            modal.className = 'fixed inset-0 bg-black/85 z-[9999] flex items-center justify-center p-3 sm:p-5';
+            modal.onclick = (e) => { if (e.target === modal) closeOnlineLobbyBotCharPicker(); };
+            modal.innerHTML = `
+                <div class="pixel-box bg-slate-900 border-2 border-amber-400 max-w-2xl w-full p-4 sm:p-5 flex flex-col max-h-[88vh] shadow-2xl">
+                    <div class="flex items-center justify-between border-b border-amber-500/40 pb-2.5 mb-3 shrink-0">
+                        <div>
+                            <h3 class="font-pixel text-sm sm:text-base font-bold text-amber-300">🤖 BOT割り当てキャラクター選択</h3>
+                            <p class="text-[11px] font-mono text-slate-300">このBOT枠が出陣させるキャラクターを選んでください</p>
+                        </div>
+                        <button type="button" onclick="closeOnlineLobbyBotCharPicker()" class="pixel-btn pixel-btn-danger px-3 py-1 text-xs font-bold">✕ 閉じる</button>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 overflow-y-auto pr-1 flex-1">
+                        ${chars.map(c => {
+                            const isCurrent = c.id === currentCharId;
+                            return `
+                                <button type="button" onclick="selectOnlineLobbyBotCharFromPicker('${roomId}', ${teamNum}, ${slotIdx}, '${c.id}')" class="pixel-box p-2.5 flex flex-col items-center gap-1.5 cursor-pointer transition-all text-center ${isCurrent ? 'border-2 border-amber-400 bg-amber-950/60 shadow-lg' : 'border border-slate-700 bg-slate-950 hover:border-sky-400'}">
+                                    <canvas id="bot-picker-cvs-${c.id}" width="56" height="56" class="w-12 h-12 rounded bg-slate-900 border border-slate-700"></canvas>
+                                    <div class="text-xs font-bold ${isCurrent ? 'text-amber-300' : 'text-white'} truncate max-w-full">${c.name}</div>
+                                    <div class="text-[9px] font-mono text-slate-400">HP:${c.hp} 攻:${c.atk} 防:${c.def}</div>
+                                </button>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            setTimeout(() => {
+                chars.forEach(c => {
+                    const cvs = document.getElementById(`bot-picker-cvs-${c.id}`);
+                    if (cvs) CharacterRenderer.drawCharacter(cvs, c.id);
+                });
+            }, 20);
+        }
+
+        async function hostStartOnlineBattleNow(roomId) {
+            audioSystem.playSelect();
+            const myUid = window.getOnlineClientId();
+            const st = window._onlineLobbyState;
+            const allIds = Object.keys(CHARACTER_DATA);
+
+            const finalizeSlotsAndStatus = (rd) => {
+                const used = new Set();
+                [...(rd.team1Slots || []), ...(rd.team2Slots || [])].forEach(s => {
+                    if (s && s.charConfig && s.charConfig.charId) used.add(s.charConfig.charId);
+                });
                 const fillFn = (teamLabel) => (s, idx) => {
-                    if (s && s.type === 'human' && !s.uid) {
-                        const botCharId = allIds[Math.floor(Math.random() * allIds.length)] || 'pasha';
+                    if (!s || (s.type === 'human' && !s.uid)) {
+                        const pool = allIds.filter(id => !used.has(id));
+                        const pickPool = pool.length > 0 ? pool : allIds;
+                        const botCharId = (s && s.charConfig && s.charConfig.charId) || pickPool[Math.floor(Math.random() * pickPool.length)] || 'pasha';
+                        used.add(botCharId);
                         return { type: 'bot', uid: null, playerName: `${teamLabel}BOT ${idx + 1}`, selectedIcon: botCharId, charConfig: { charId: botCharId, customStats: null }, ready: true, lastSeen: Date.now() };
                     }
-                    if (s && s.type === 'human' && s.uid && !s.charConfig) {
-                        return { ...s, charConfig: buildOnlineCharConfig(getSelectedOnlineMultiChar()), ready: true };
+                    if (s.type === 'bot') {
+                        const botCharId = (s.charConfig && s.charConfig.charId && CHARACTER_DATA[s.charConfig.charId])
+                            ? s.charConfig.charId
+                            : (allIds[Math.floor(Math.random() * allIds.length)] || 'pasha');
+                        return { ...s, selectedIcon: botCharId, charConfig: { charId: botCharId, customStats: null }, ready: true };
                     }
-                    return { ...s, ready: true };
+                    const humanChar = (s.charConfig && s.charConfig.charId)
+                        ? s.charConfig
+                        : buildOnlineCharConfig(getSelectedOnlineMultiChar());
+                    return { ...s, charConfig: humanChar, ready: true };
                 };
-                const t1 = (rd.team1Slots || []).map(fillFn('味方'));
-                const t2 = (rd.team2Slots || []).map(fillFn('敵'));
-                tx.update(roomRef, { team1Slots: t1, team2Slots: t2, status: 'preparing', updatedAt: Date.now() });
-            }).catch(e => console.warn('Fill bots error:', e));
+                return {
+                    t1: (rd.team1Slots || []).map(fillFn('味方')),
+                    t2: (rd.team2Slots || []).map(fillFn('敵'))
+                };
+            };
+
+            if (st.isSoloLocal && st.soloRoomData) {
+                const res = finalizeSlotsAndStatus(st.soloRoomData);
+                const launchedData = { ...st.soloRoomData, team1Slots: res.t1, team2Slots: res.t2, status: 'playing', startedAt: Date.now() };
+                launchOnlineSyncedBattle(roomId, launchedData, true);
+                return;
+            }
+
+            if (!window.fbDb || !window.fbDoc || !window.fbRunTransaction) return;
+            const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
+            await window.fbRunTransaction(window.fbDb, async (tx) => {
+                const snap = await tx.get(roomRef);
+                if (!snap.exists()) return;
+                const rd = snap.data();
+                if (rd.hostUid !== myUid || rd.status === 'playing' || rd.status === 'ended') return;
+                const res = finalizeSlotsAndStatus(rd);
+                tx.update(roomRef, { team1Slots: res.t1, team2Slots: res.t2, status: 'playing', startedAt: Date.now(), updatedAt: Date.now() });
+            }).catch(e => console.warn('Host start battle error:', e));
+        }
+
+        async function hostFillEmptySlotsWithBotsAndStart(roomId) {
+            return hostStartOnlineBattleNow(roomId);
         }
 
         function renderOnlineMultiReadyScreen(roomId, initialData = null) {
@@ -2606,14 +2885,29 @@ static drawDopagaking(p, isCharged) {
             const prevSoloData = window._onlineLobbyState.soloRoomData;
             cleanupOnlineLobby();
             window._onlineLobbyState.roomId = roomId;
+            window._onlineLobbyState.waitStartAt = Date.now();
+            const QUICK_TIMEOUT_SEC = 15;
+            let latestLobbyData = initialData;
+            let quickAutoStarted = false;
+            let lastLobbySig = '';
             if (prevSolo) {
                 window._onlineLobbyState.isSoloLocal = true;
                 window._onlineLobbyState.soloRoomData = prevSoloData;
             }
 
             const drawLobbyView = (roomData) => {
+                latestLobbyData = roomData;
                 const container = document.getElementById('screen-container');
                 if (!container || !roomData) return;
+                const sig = JSON.stringify({
+                    st: roomData.status,
+                    rc: roomData.roomCode,
+                    hu: roomData.hostUid,
+                    t1: (roomData.team1Slots || []).map(s => [s?.type, s?.uid, s?.playerName, s?.charConfig?.charId, s?.ready]),
+                    t2: (roomData.team2Slots || []).map(s => [s?.type, s?.uid, s?.playerName, s?.charConfig?.charId, s?.ready])
+                });
+                if (sig === lastLobbySig) return;
+                lastLobbySig = sig;
                 const myUid = window.getOnlineClientId();
                 const isHost = roomData.hostUid === myUid;
                 const myFound = findMySlotInRoom(roomData, myUid);
@@ -2630,50 +2924,65 @@ static drawDopagaking(p, isCharged) {
 
                 const renderLobbySlotList = (slots, teamNum, isAllySide) => slots.map((s, idx) => {
                     if (!s || s.type === 'bot') {
+                        const botCharId = (s && s.charConfig && s.charConfig.charId) || 'pasha';
+                        const botChar = CHARACTER_DATA[botCharId] || {};
                         return `
-                            <div class="flex items-center justify-between gap-2 px-2.5 py-2 rounded border border-amber-500/60 bg-slate-900/90">
+                            <div class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded border-2 border-amber-500/70 bg-slate-900/95">
                                 <div class="flex items-center gap-2 min-w-0">
-                                    <span class="w-7 h-7 rounded bg-amber-950 border border-amber-500 flex items-center justify-center text-sm shrink-0">🤖</span>
+                                    <canvas id="lobby-bot-cvs-${teamNum}-${idx}" width="32" height="32" class="w-8 h-8 rounded bg-slate-950 border border-amber-500/70 shrink-0"></canvas>
                                     <div class="min-w-0">
-                                        <div class="text-xs font-bold text-amber-300 truncate">${isAllySide ? '味方BOT' : '敵BOT'} ${idx + 1}</div>
-                                        <div class="text-[10px] text-slate-400 font-mono">CPU自動参戦</div>
+                                        <div class="text-xs font-bold text-amber-300 truncate">🤖 ${isAllySide ? '味方BOT' : '敵BOT'} ${idx + 1}：${botChar.name || botCharId}</div>
+                                        <div class="text-[10px] text-slate-400 font-mono">HP:${botChar.hp || '?'} 攻:${botChar.atk || '?'} 防:${botChar.def || '?'}</div>
                                     </div>
                                 </div>
-                                <span class="text-[10px] font-pixel px-2 py-0.5 rounded bg-amber-900/70 text-amber-200 border border-amber-500/60 shrink-0">自動OK</span>
+                                <div class="flex items-center gap-1 shrink-0">
+                                    ${isHost ? `
+                                        <button type="button" onclick="openOnlineLobbyBotCharPicker('${roomId}', ${teamNum}, ${idx}, '${botCharId}')" class="pixel-btn pixel-btn-primary px-2 py-0.5 text-[10px] font-bold whitespace-nowrap" title="BOTキャラクターを指定・変更">🎭 キャラ</button>
+                                        <button type="button" onclick="toggleOnlineMultiLobbySlotType('${roomId}', ${teamNum}, ${idx})" class="pixel-btn px-2 py-0.5 text-[10px] bg-slate-800 border-slate-500 text-sky-300 font-bold whitespace-nowrap" title="空き人間枠へ切り替え">⇄ 人間</button>
+                                    ` : `<span class="text-[10px] font-pixel px-2 py-0.5 rounded bg-amber-900/70 text-amber-200 border border-amber-500/60 shrink-0">🤖 BOT</span>`}
+                                </div>
                             </div>
                         `;
                     }
                     if (!s.uid) {
                         return `
-                            <div class="flex items-center justify-between gap-2 px-2.5 py-2 rounded border border-dashed border-slate-600 bg-slate-950/80">
+                            <div class="flex items-center justify-between gap-2 px-2.5 py-2 rounded border border-dashed border-slate-600 bg-slate-950/85">
                                 <div class="flex items-center gap-2 min-w-0">
-                                    <span class="w-7 h-7 rounded bg-slate-900 border border-slate-700 flex items-center justify-center text-xs text-slate-400 shrink-0">⏳</span>
+                                    <span class="w-8 h-8 rounded bg-slate-900 border border-slate-700 flex items-center justify-center text-xs text-slate-400 shrink-0">⏳</span>
                                     <div class="min-w-0">
-                                        <div class="text-xs font-bold text-slate-400 truncate">空きプレイヤー枠</div>
-                                        <div class="text-[10px] text-slate-500 font-mono">参加待機中...</div>
+                                        <div class="text-xs font-bold text-slate-300 truncate">空きプレイヤー枠</div>
+                                        <div class="text-[10px] text-slate-500 font-mono">参加待機中（開始時にBOT補充可）</div>
                                     </div>
                                 </div>
-                                ${!isMyReady && !window._onlineLobbyState.isSoloLocal ? `
-                                    <button type="button" onclick="moveOnlineMultiLobbySlot('${roomId}', ${teamNum}, ${idx})" class="pixel-btn px-2 py-0.5 text-[10px] bg-slate-800 border-slate-500 text-sky-300 shrink-0">⇄ 移動</button>
-                                ` : ''}
+                                <div class="flex items-center gap-1 shrink-0">
+                                    ${!isMyReady && !window._onlineLobbyState.isSoloLocal ? `
+                                        <button type="button" onclick="moveOnlineMultiLobbySlot('${roomId}', ${teamNum}, ${idx})" class="pixel-btn px-2 py-0.5 text-[10px] bg-slate-800 border-slate-500 text-sky-300 font-bold whitespace-nowrap">⇄ 移動</button>
+                                    ` : ''}
+                                    ${isHost ? `
+                                        <button type="button" onclick="toggleOnlineMultiLobbySlotType('${roomId}', ${teamNum}, ${idx})" class="pixel-btn px-2 py-0.5 text-[10px] bg-amber-950 border-amber-500 text-amber-300 font-bold whitespace-nowrap" title="この枠をBOTに切り替え">⇄ BOT</button>
+                                    ` : ''}
+                                </div>
                             </div>
                         `;
                     }
                     const isMe = s.uid === myUid;
                     const charId = s.charConfig?.charId || 'asaiomizu';
                     const charName = (CHARACTER_DATA[charId] && CHARACTER_DATA[charId].name) || charId;
+                    const isSlotHost = s.uid === roomData.hostUid;
                     const borderColor = isMe ? 'border-emerald-400 bg-emerald-950/60' : (isAllySide ? 'border-emerald-600/80 bg-emerald-950/35' : 'border-red-500/80 bg-red-950/35');
                     return `
                         <div class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded border-2 ${borderColor}">
                             <div class="flex items-center gap-2 min-w-0">
                                 <canvas id="lobby-slot-cvs-${teamNum}-${idx}" width="32" height="32" class="w-8 h-8 rounded bg-slate-950 border border-slate-700 shrink-0"></canvas>
                                 <div class="min-w-0">
-                                    <div class="text-xs font-bold ${isMe ? 'text-emerald-300' : 'text-white'} truncate">${isMe ? '★あなた' : (s.playerName || 'プレイヤー')}</div>
+                                    <div class="text-xs font-bold ${isMe ? 'text-emerald-300' : 'text-white'} truncate">
+                                        ${isMe ? 'あなた（操作）' : (s.playerName || 'プレイヤー')}${isSlotHost && isMe ? ' 🔒' : ''}
+                                    </div>
                                     <div class="text-[10px] text-amber-300 font-mono truncate">使用: ${charName}</div>
                                 </div>
                             </div>
                             <span class="text-[10px] font-pixel font-bold px-2 py-0.5 rounded border whitespace-nowrap shrink-0 ${s.ready ? 'bg-emerald-700 text-white border-emerald-300' : 'bg-slate-800 text-amber-300 border-amber-500/60'}">
-                                ${s.ready ? '✅ 完了' : '⏳ 準備中'}
+                                ${isSlotHost && !s.ready ? '🔒 ホスト' : (s.ready ? '✅ 完了' : '⏳ 準備中')}
                             </span>
                         </div>
                     `;
@@ -2681,11 +2990,16 @@ static drawDopagaking(p, isCharged) {
 
                 let bannerText = '';
                 let bannerStyle = '';
-                if (!stats.allJoined) {
-                    bannerText = `⏳ マッチング待機中 (${stats.joinedHumans}/${stats.requiredHumans}人参加) — 待っている間に下のキャラを選んでおけます`;
+                const elapsedSec = Math.floor((Date.now() - window._onlineLobbyState.waitStartAt) / 1000);
+                const remainSec = Math.max(0, QUICK_TIMEOUT_SEC - elapsedSec);
+                if (roomData.matchType === 'quick' && !stats.allJoined) {
+                    bannerText = `⏱️ クイックマッチ待機中 (${stats.joinedHumans}/${stats.requiredHumans}人) — あと <b id="lobby-quick-countdown">${remainSec}</b> 秒で空き枠に自動BOT補充して開始`;
+                    bannerStyle = 'bg-sky-950/80 border-sky-400 text-sky-200';
+                } else if (!stats.allJoined) {
+                    bannerText = `⏳ 参加者待機中 (${stats.joinedHumans}/${stats.requiredHumans}人参加) — ホストはBOT枠・BOTキャラ編集や「対戦開始（未参加枠はBOT補充）」が可能です`;
                     bannerStyle = 'bg-amber-950/70 border-amber-500 text-amber-200';
                 } else if (!stats.allReady) {
-                    bannerText = `🎉 マッチ成立！(${stats.joinedHumans}/${stats.requiredHumans}人) — 出陣キャラを選んで「✅ 完了」を押してください (${stats.readyHumans}/${stats.requiredHumans})`;
+                    bannerText = `🎉 メンバー揃いました！(${stats.joinedHumans}/${stats.requiredHumans}人) — キャラを選んで「✅ 完了」またはホストが「⚔️ 対戦開始」を押してください`;
                     bannerStyle = 'bg-sky-950/80 border-sky-400 text-sky-200';
                 } else {
                     bannerText = '⚔️ 全員準備完了！まもなくバトルを開始します！';
@@ -2701,9 +3015,9 @@ static drawDopagaking(p, isCharged) {
                                 ◀ 退出
                             </button>
                             <div class="flex items-center gap-2 min-w-0">
-                                <h2 class="text-sky-300 font-pixel text-xs sm:text-base font-bold whitespace-nowrap truncate">🛡️ 対戦準備ロビー</h2>
+                                <h2 class="text-sky-300 font-pixel text-xs sm:text-base font-bold whitespace-nowrap truncate">🛡️ 対戦準備画面（編成・BOT設定）</h2>
                                 ${roomData.roomCode ? `
-                                    <span class="bg-amber-950 border border-amber-400 text-amber-300 font-mono font-bold text-xs px-2 py-0.5 rounded whitespace-nowrap">CODE: ${roomData.roomCode}</span>
+                                    <span class="bg-amber-950 border border-amber-400 text-amber-300 font-mono font-bold text-xs px-2 py-0.5 rounded whitespace-nowrap">ID: ${roomData.roomCode}</span>
                                     <button type="button" onclick="copyOnlineRoomCode('${roomData.roomCode}')" class="pixel-btn pixel-btn-primary px-2 py-0.5 text-[10px] font-bold whitespace-nowrap">📋</button>
                                     <span id="room-code-copy-toast" class="text-[10px] text-emerald-300 font-bold"></span>
                                 ` : `<span class="bg-slate-900 border border-sky-500/60 text-sky-300 font-mono text-[10px] px-2 py-0.5 rounded whitespace-nowrap">${roomData.matchType === 'solo' ? 'ソロ練習' : 'クイックマッチ'}</span>`}
@@ -2749,12 +3063,12 @@ static drawDopagaking(p, isCharged) {
                         </div>
 
                         <div class="flex flex-wrap items-center justify-center gap-2 pt-2 shrink-0">
-                            <button type="button" onclick="toggleOnlineMultiLobbyReady('${roomId}')" class="pixel-btn ${isMyReady ? 'pixel-btn-warning' : 'pixel-btn-success'} px-8 py-2 text-xs sm:text-sm font-bold font-pixel shadow-xl whitespace-nowrap">
+                            <button type="button" onclick="toggleOnlineMultiLobbyReady('${roomId}')" class="pixel-btn ${isMyReady ? 'pixel-btn-warning' : 'pixel-btn-primary'} px-6 py-2 text-xs sm:text-sm font-bold font-pixel shadow-lg whitespace-nowrap">
                                 ${isMyReady ? '⏳ 準備完了を解除する' : '✅ 完了（準備OK）'}
                             </button>
-                            ${isHost && !stats.allJoined && !window._onlineLobbyState.isSoloLocal ? `
-                                <button type="button" onclick="hostFillEmptySlotsWithBotsAndStart('${roomId}')" class="pixel-btn pixel-btn-primary px-4 py-2 text-xs font-bold font-pixel whitespace-nowrap">
-                                    🤖 空き枠をBOTにして開始
+                            ${isHost ? `
+                                <button type="button" onclick="hostStartOnlineBattleNow('${roomId}')" class="pixel-btn pixel-btn-success px-8 py-2 text-xs sm:text-sm font-bold font-pixel shadow-xl whitespace-nowrap">
+                                    ${stats.allJoined ? '⚔️ 対戦開始！' : '⚔️ 対戦開始（空き枠は自動BOT補充）'}
                                 </button>
                             ` : ''}
                         </div>
@@ -2766,12 +3080,18 @@ static drawDopagaking(p, isCharged) {
                         if (s && s.type === 'human' && s.uid) {
                             const cvs = document.getElementById(`lobby-slot-cvs-${allyTeamNum}-${idx}`);
                             if (cvs) CharacterRenderer.drawCharacter(cvs, s.charConfig?.charId || 'asaiomizu');
+                        } else if (s && s.type === 'bot') {
+                            const cvs = document.getElementById(`lobby-bot-cvs-${allyTeamNum}-${idx}`);
+                            if (cvs) CharacterRenderer.drawCharacter(cvs, s.charConfig?.charId || 'pasha');
                         }
                     });
                     enemySlots.forEach((s, idx) => {
                         if (s && s.type === 'human' && s.uid) {
                             const cvs = document.getElementById(`lobby-slot-cvs-${enemyTeamNum}-${idx}`);
                             if (cvs) CharacterRenderer.drawCharacter(cvs, s.charConfig?.charId || 'asaiomizu');
+                        } else if (s && s.type === 'bot') {
+                            const cvs = document.getElementById(`lobby-bot-cvs-${enemyTeamNum}-${idx}`);
+                            if (cvs) CharacterRenderer.drawCharacter(cvs, s.charConfig?.charId || 'pasha');
                         }
                     });
                     unlockedList.forEach(c => {
@@ -2789,6 +3109,22 @@ static drawDopagaking(p, isCharged) {
                 return;
             }
 
+            window._onlineLobbyState.waitTimerId = setInterval(() => {
+                if (window._onlineLobbyState.roomId !== roomId || !latestLobbyData) return;
+                const rd = latestLobbyData;
+                const st = countHumanSlotStats(rd);
+                if (rd.matchType === 'quick' && !st.allJoined && rd.status !== 'playing') {
+                    const elapsed = Math.floor((Date.now() - window._onlineLobbyState.waitStartAt) / 1000);
+                    const rem = Math.max(0, QUICK_TIMEOUT_SEC - elapsed);
+                    const cdEl = document.getElementById('lobby-quick-countdown');
+                    if (cdEl) cdEl.innerText = String(rem);
+                    if (rem <= 0 && !quickAutoStarted && rd.hostUid === window.getOnlineClientId()) {
+                        quickAutoStarted = true;
+                        hostStartOnlineBattleNow(roomId);
+                    }
+                }
+            }, 1000);
+
             const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
             window._onlineLobbyState.heartbeatId = setInterval(() => {
                 if (window._onlineLobbyState.roomId !== roomId) return;
@@ -2800,6 +3136,7 @@ static drawDopagaking(p, isCharged) {
                 const rd = snap.data();
                 if (!rd || rd.status === 'ended') {
                     cleanupOnlineLobby();
+                    closeOnlineLobbyBotCharPicker();
                     showModal('ルーム解散', 'ホストがルームを終了しました。');
                     renderOnlineMatchmakingScreen('multi');
                     return;
@@ -2808,14 +3145,15 @@ static drawDopagaking(p, isCharged) {
                 const stats = countHumanSlotStats(rd);
                 const myUid = window.getOnlineClientId();
                 if (stats.allReady && rd.hostUid === myUid && rd.status !== 'playing') {
-                    window.fbUpdateDoc(roomRef, { status: 'playing', updatedAt: Date.now() }).catch(() => {});
+                    window.fbUpdateDoc(roomRef, { status: 'playing', startedAt: Date.now(), updatedAt: Date.now() }).catch(() => {});
                 }
                 if ((rd.status === 'playing' || stats.allReady) && window._onlineLobbyState.launchedRoomId !== roomId) {
                     if (rd.status === 'playing') {
+                        closeOnlineLobbyBotCharPicker();
                         window._onlineLobbyState.launchedRoomId = roomId;
                         window._onlineLobbyState.launchTimeoutId = setTimeout(() => {
                             launchOnlineSyncedBattle(roomId, rd);
-                        }, 700);
+                        }, 600);
                     }
                 }
             });
@@ -2824,6 +3162,7 @@ static drawDopagaking(p, isCharged) {
         function launchOnlineSyncedBattle(roomId, roomData, isLocalSolo = false) {
             audioSystem.playSelect();
             cleanupOnlineLobby();
+            closeOnlineLobbyBotCharPicker();
             window.isOnlineBattleMode = true;
             newBattleViewMode = 'main';
             isNewBattleSkillModalOpen = false;
@@ -2865,12 +3204,14 @@ static drawDopagaking(p, isCharged) {
 
             const t1Slots = fillBotCharConfigs(roomData.team1Slots || []);
             const t2Slots = fillBotCharConfigs(roomData.team2Slots || []);
+            const hasRemoteHuman = !isLocalSolo && [...t1Slots, ...t2Slots].some(s => s && s.type === 'human' && s.uid && s.uid !== myUid);
+            const useSyncedFirestore = hasRemoteHuman;
             const myTeamConfigs = (myTeamNum === 1 ? t1Slots : t2Slots).map(s => s.charConfig.charId);
             const oppLeadId = (myTeamNum === 1 ? t2Slots : t1Slots)[0]?.charConfig?.charId || 'pasha';
 
             const battleOptions = {
                 isOnlineBattleMode: true,
-                isOnlineSynced: !isLocalSolo,
+                isOnlineSynced: useSyncedFirestore,
                 isOnlineHost: isHost,
                 onlineClientId: myUid,
                 myTeamNum: myTeamNum,
@@ -2889,9 +3230,9 @@ static drawDopagaking(p, isCharged) {
             activeNewBattle = new BattleEngine(
                 myTeamConfigs,
                 oppLeadId,
-                !isLocalSolo,
+                useSyncedFirestore,
                 myTeamNum,
-                isLocalSolo ? null : roomId,
+                useSyncedFirestore ? roomId : null,
                 true,
                 battleOptions
             );
@@ -2937,11 +3278,18 @@ static drawDopagaking(p, isCharged) {
         window.joinOnlineRoomByCode = joinOnlineRoomByCode;
         window.copyOnlineRoomCode = copyOnlineRoomCode;
         window.cancelOnlineRoomAndReturn = cancelOnlineRoomAndReturn;
+        window.hostFill2pWithBotsAndStart = hostFill2pWithBotsAndStart;
         window.renderOnlineWaitingRoomScreen = renderOnlineWaitingRoomScreen;
         window.renderOnlineMultiReadyScreen = renderOnlineMultiReadyScreen;
         window.selectOnlineMultiLobbyChar = selectOnlineMultiLobbyChar;
         window.toggleOnlineMultiLobbyReady = toggleOnlineMultiLobbyReady;
         window.moveOnlineMultiLobbySlot = moveOnlineMultiLobbySlot;
+        window.toggleOnlineMultiLobbySlotType = toggleOnlineMultiLobbySlotType;
+        window.assignOnlineLobbyBotChar = assignOnlineLobbyBotChar;
+        window.openOnlineLobbyBotCharPicker = openOnlineLobbyBotCharPicker;
+        window.closeOnlineLobbyBotCharPicker = closeOnlineLobbyBotCharPicker;
+        window.selectOnlineLobbyBotCharFromPicker = selectOnlineLobbyBotCharFromPicker;
+        window.hostStartOnlineBattleNow = hostStartOnlineBattleNow;
         window.hostFillEmptySlotsWithBotsAndStart = hostFillEmptySlotsWithBotsAndStart;
         window.launchOnlineSyncedBattle = launchOnlineSyncedBattle;
         window.cleanupOnlineLobby = cleanupOnlineLobby;
@@ -4354,9 +4702,15 @@ pasha_dark: {
                             }
                         } else {
                             if (!this.controlSingleAllyOnly) {
-                                fighter.roleType = (this.isOnlineSynced || this.isOnlineBattleMode) ? 'enemy_player' : 'bot';
-                                fighter.roleBadge = idx === 0 ? 'BOSS' : ((this.isOnlineSynced || this.isOnlineBattleMode) ? `敵${idx + 1}` : 'BOT');
-                                fighter.isBot = !(this.isOnlineSynced || this.isOnlineBattleMode);
+                                if (isSlotBot) {
+                                    fighter.roleType = 'bot';
+                                    fighter.roleBadge = 'BOT';
+                                    fighter.isBot = true;
+                                } else {
+                                    fighter.roleType = (this.isOnlineSynced || this.isOnlineBattleMode) ? 'enemy_player' : 'bot';
+                                    fighter.roleBadge = idx === 0 ? 'BOSS' : ((this.isOnlineSynced || this.isOnlineBattleMode) ? `敵${idx + 1}` : 'BOT');
+                                    fighter.isBot = !(this.isOnlineSynced || this.isOnlineBattleMode);
+                                }
                             } else if (isSlotBot) {
                                 fighter.roleType = 'bot';
                                 fighter.roleBadge = 'BOT';
@@ -8326,6 +8680,7 @@ pasha_dark: {
             window.isOnlineBattleMode = true;
             const container = document.getElementById('screen-container');
             if (!container) return;
+            const isConnected = !!(window.fbDb && window.fbAuth && window.fbAuth.currentUser);
             container.innerHTML = `
                 <div class="relative w-full h-full flex flex-col justify-between p-4 sm:p-6 select-none overflow-hidden bg-slate-950">
                     <div class="absolute inset-0 overflow-hidden pointer-events-none z-0 opacity-20">
@@ -8335,35 +8690,51 @@ pasha_dark: {
                         </div>
                     </div>
 
-                    <div class="flex items-center justify-between relative z-10 w-full mb-3">
-                        <button onclick="renderDopagaKingdomScreen()" class="pixel-btn pixel-btn-danger px-3 py-1.5 text-xs font-bold">
+                    <div class="flex items-center justify-between relative z-10 w-full mb-3 gap-2">
+                        <button onclick="renderDopagaKingdomScreen()" class="pixel-btn pixel-btn-danger px-3 py-1.5 text-xs font-bold whitespace-nowrap">
                             ◀ 王国に戻る
                         </button>
-                        <h2 class="text-emerald-400 font-pixel text-base sm:text-xl font-bold tracking-wider drop-shadow-md">🌐 オンライン対戦モード選択</h2>
-                        <div class="w-20"></div>
+                        <h2 class="text-emerald-400 font-pixel text-sm sm:text-xl font-bold tracking-wider drop-shadow-md truncate">🌐 オンライン対戦モード選択</h2>
+                        <div id="online-server-status-badge" class="text-[10px] font-mono px-2 py-1 rounded border whitespace-nowrap ${isConnected ? 'bg-emerald-950/90 border-emerald-500 text-emerald-300' : 'bg-amber-950/90 border-amber-500 text-amber-300'}">
+                            ${isConnected ? '🟢 サーバー接続OK' : '🔄 サーバー接続中...'}
+                        </div>
                     </div>
 
                     <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10 my-auto max-w-3xl mx-auto w-full items-center">
                         <button onclick="setOnlineMatchFormat('2p', 1, 1)" class="pixel-box bg-slate-900 border-2 border-emerald-400 hover:border-emerald-300 p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transform hover:scale-[1.03] transition-all shadow-xl w-full h-48 sm:h-56 group">
                             <span class="text-4xl sm:text-5xl group-hover:scale-110 transition-transform">⚔️</span>
-                            <span class="text-emerald-300 font-pixel font-bold text-base sm:text-lg text-center">2人対戦 (1vs1)</span>
-                            <span class="text-xs text-amber-300 font-bold text-center">味方3体を選んで3体すべて操作！</span>
-                            <span class="text-[11px] text-slate-400 text-center leading-relaxed">お互い3体のキャラクターを順番に操作して戦うタイマン3対3バトル！</span>
+                            <span class="text-emerald-300 font-pixel font-bold text-base sm:text-lg text-center">2人対戦 (1vs1・3体連続操作)</span>
+                            <span class="text-xs text-amber-300 font-bold text-center">すぐに戦う(自動BOT補充) / フレンド対戦！</span>
+                            <span class="text-[11px] text-slate-400 text-center leading-relaxed">選んだ3体を順番に連続操作！相手が見つからない時はタイムアウト後に自動BOT補充して開始！</span>
                         </button>
 
                         <button onclick="setOnlineMatchFormat('multi', 2, 2)" class="pixel-box bg-slate-900 border-2 border-sky-400 hover:border-sky-300 p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transform hover:scale-[1.03] transition-all shadow-xl w-full h-48 sm:h-56 group">
                             <span class="text-4xl sm:text-5xl group-hover:scale-110 transition-transform">👥</span>
-                            <span class="text-sky-300 font-pixel font-bold text-base sm:text-lg text-center">それ以上の対戦 (3〜6人)</span>
-                            <span class="text-xs text-amber-300 font-bold text-center">選んだ1体を操作 ＋ 人数に応じてBOT参戦！</span>
-                            <span class="text-[11px] text-slate-400 text-center leading-relaxed">2人同士(2vs2)なら味方・敵に各1体のBOTが自動参加！最大3vs3まで対応。</span>
+                            <span class="text-sky-300 font-pixel font-bold text-base sm:text-lg text-center">3〜6人対戦・自由編成ロビー</span>
+                            <span class="text-xs text-amber-300 font-bold text-center">6枠の人/BOT切替 ＋ BOTキャラ割り当て！</span>
+                            <span class="text-[11px] text-slate-400 text-center leading-relaxed">対戦準備画面で各BOT枠のキャラ指定や空き枠の自動BOT補充が可能！最大3vs3まで対応。</span>
                         </button>
                     </div>
 
                     <div class="text-center relative z-10 pb-2">
-                        <p class="text-xs text-slate-400 font-pixel">対戦人数モードを選んで出陣しよう！</p>
+                        <p class="text-xs text-slate-400 font-pixel">モードを選んで「クイックマッチ」または「フレンドと遊ぶ（ルーム作成）」へ！</p>
                     </div>
                 </div>
             `;
+
+            if (!isConnected && typeof window.initFirebaseOnline === 'function') {
+                window.initFirebaseOnline().then((ok) => {
+                    const el = document.getElementById('online-server-status-badge');
+                    if (!el) return;
+                    if (ok || (window.fbDb && window.fbAuth && window.fbAuth.currentUser)) {
+                        el.className = 'text-[10px] font-mono px-2 py-1 rounded border whitespace-nowrap bg-emerald-950/90 border-emerald-500 text-emerald-300';
+                        el.innerText = '🟢 サーバー接続OK';
+                    } else {
+                        el.className = 'text-[10px] font-mono px-2 py-1 rounded border whitespace-nowrap bg-red-950/90 border-red-500 text-red-300';
+                        el.innerText = '⚠️ オフライン/再試行';
+                    }
+                }).catch(() => {});
+            }
         }
 
         function renderOnlineMultiSetupScreen() {
@@ -9606,6 +9977,9 @@ pasha_dark: {
 
         function handleOnlineBattleClick() {
             audioSystem.playSelect();
+            if (typeof window.initFirebaseOnline === 'function') {
+                window.initFirebaseOnline().catch(() => {});
+            }
             renderOnlineModesScreen();
         }
 
