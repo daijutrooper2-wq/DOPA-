@@ -14,7 +14,7 @@
         const firebaseReady = (async () => {
             const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
             const { getAuth, signInAnonymously, onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-            const { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, deleteDoc, collection, addDoc, getDocs, query, orderBy, limit } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+            const { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, deleteDoc, collection, addDoc, getDocs, query, orderBy, limit, where, runTransaction } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
 
             window.fbApp = initializeApp(firebaseConfig);
             window.fbDb = getFirestore(window.fbApp);
@@ -32,29 +32,59 @@
             window.fbQuery = query;
             window.fbOrderBy = orderBy;
             window.fbLimit = limit;
+            window.fbWhere = where;
+            window.fbRunTransaction = runTransaction;
 
             window._firebaseAuthHelpers = { signInAnonymously, onAuthStateChanged };
         })().catch((err) => {
             console.warn("Firebase SDK load error:", err);
         });
 
+        window.getOnlineClientId = function() {
+            let cid = null;
+            try {
+                cid = sessionStorage.getItem('dopa_online_tab_client_id');
+                if (!cid) {
+                    const baseId = (typeof playerState !== 'undefined' && playerState.playerId) ? playerState.playerId : 'DP';
+                    cid = `${baseId}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+                    sessionStorage.setItem('dopa_online_tab_client_id', cid);
+                }
+            } catch (e) {
+                if (!window._fallbackOnlineClientId) {
+                    window._fallbackOnlineClientId = `DP_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+                }
+                cid = window._fallbackOnlineClientId;
+            }
+            return cid;
+        };
+
         window.initFirebaseOnline = async function() {
             await firebaseReady;
-            if (!window.fbAuth || !window._firebaseAuthHelpers) return false;
+            if (!window.fbAuth || !window._firebaseAuthHelpers) return !!window.fbDb;
+            if (window.fbUser) return true;
             const { signInAnonymously, onAuthStateChanged } = window._firebaseAuthHelpers;
             return new Promise((resolve) => {
-                onAuthStateChanged(window.fbAuth, async (user) => {
+                let settled = false;
+                const finish = (ok) => {
+                    if (!settled) {
+                        settled = true;
+                        resolve(ok);
+                    }
+                };
+                setTimeout(() => finish(!!window.fbDb), 4000);
+                const unsub = onAuthStateChanged(window.fbAuth, async (user) => {
+                    if (typeof unsub === 'function') unsub();
                     if (user) {
                         window.fbUser = user;
-                        resolve(true);
+                        finish(true);
                     } else {
                         try {
                             const userCred = await signInAnonymously(window.fbAuth);
                             window.fbUser = userCred.user;
-                            resolve(true);
+                            finish(true);
                         } catch (err) {
                             console.warn("Firebase Auth Error:", err);
-                            resolve(false);
+                            finish(!!window.fbDb);
                         }
                     }
                 });
@@ -1345,12 +1375,14 @@ static drawDopagaking(p, isCharged) {
             for (let i = 0; i < 3; i++) {
                 if (!validateCharCustomStats(team[i])) return;
             }
-            const allIds = Object.keys(CHARACTER_DATA);
-            const otherIds = allIds.filter(id => id !== team[0]);
-            const eChar = otherIds[Math.floor(Math.random() * otherIds.length)] || 'pasha';
             if (isOnline) {
-                startOnlineBattleMode(team, eChar);
+                window.pendingOnline2pTeam = [...team];
+                saveSelectedNewBattleTeam(team);
+                renderOnlineMatchmakingScreen('2p');
             } else {
+                const allIds = Object.keys(CHARACTER_DATA);
+                const otherIds = allIds.filter(id => id !== team[0]);
+                const eChar = otherIds[Math.floor(Math.random() * otherIds.length)] || 'pasha';
                 startNewBattleMode(team, eChar);
             }
         }
@@ -1517,12 +1549,1402 @@ static drawDopagaking(p, isCharged) {
                 return;
             }
             if (!validateCharCustomStats(selectedCharId)) return;
-            const cfg = getOnlineBattleConfig();
-            const allIds = Object.keys(CHARACTER_DATA);
-            const otherIds = allIds.filter(id => id !== selectedCharId);
-            const eChar = otherIds[Math.floor(Math.random() * otherIds.length)] || 'pasha';
-            startOnlineBattleMode(selectedCharId, eChar, cfg);
+            renderOnlineMatchmakingScreen('multi');
         }
+
+        function buildOnlineCharConfig(charId) {
+            const safeId = (charId && CHARACTER_DATA[charId]) ? charId : 'asaiomizu';
+            let customStats = null;
+            if (!['dopagaking', 'courtney', 'pasha_dark'].includes(safeId)) {
+                const cust = typeof getNewBattleCustomStats === 'function' ? getNewBattleCustomStats(safeId) : null;
+                if (cust) {
+                    customStats = {
+                        hp: cust.hp,
+                        atk: cust.atk,
+                        def: cust.def,
+                        critRate: cust.critRate,
+                        eva: cust.eva
+                    };
+                }
+            }
+            return { charId: safeId, customStats };
+        }
+
+        window._onlineLobbyState = window._onlineLobbyState || {
+            unsub: null,
+            heartbeatId: null,
+            launchTimeoutId: null,
+            roomId: null,
+            launchedRoomId: null,
+            isSoloLocal: false,
+            soloRoomData: null,
+            waitStartAt: 0,
+            waitTimerId: null
+        };
+
+        function cleanupOnlineLobby() {
+            const st = window._onlineLobbyState;
+            if (st.unsub) {
+                try { st.unsub(); } catch (e) {}
+                st.unsub = null;
+            }
+            if (st.heartbeatId) {
+                clearInterval(st.heartbeatId);
+                st.heartbeatId = null;
+            }
+            if (st.waitTimerId) {
+                clearInterval(st.waitTimerId);
+                st.waitTimerId = null;
+            }
+            if (st.launchTimeoutId) {
+                clearTimeout(st.launchTimeoutId);
+                st.launchTimeoutId = null;
+            }
+            st.roomId = null;
+            st.launchedRoomId = null;
+            st.isSoloLocal = false;
+            st.soloRoomData = null;
+        }
+
+        function setOnlineMatchStatus(msg, colorClass = 'text-amber-300') {
+            const el = document.getElementById('online-match-status-msg');
+            if (el) {
+                el.className = `text-xs font-mono text-center min-h-[20px] ${colorClass}`;
+                el.innerText = msg;
+            }
+        }
+
+        function generateSixDigitRoomCode() {
+            return String(Math.floor(100000 + Math.random() * 900000));
+        }
+
+        function createMultiInitialSlots(allySlotTypes, enemySlotTypes, hostCharConfig, hostUid, hostName, hostIcon) {
+            const allIds = Object.keys(CHARACTER_DATA);
+            const pickBotCharId = (seedIdx) => {
+                const picked = allIds[Math.floor(Math.random() * allIds.length)] || 'pasha';
+                return picked;
+            };
+            const t1 = (allySlotTypes || ['human', 'human', 'bot']).map((type, idx) => {
+                if (idx === 0) {
+                    return {
+                        type: 'human',
+                        uid: hostUid,
+                        playerName: hostName,
+                        selectedIcon: hostIcon,
+                        charConfig: hostCharConfig,
+                        ready: false,
+                        lastSeen: Date.now()
+                    };
+                }
+                if (type === 'bot') {
+                    const botCharId = pickBotCharId(idx);
+                    return {
+                        type: 'bot',
+                        uid: null,
+                        playerName: `味方BOT ${idx + 1}`,
+                        selectedIcon: botCharId,
+                        charConfig: { charId: botCharId, customStats: null },
+                        ready: true,
+                        lastSeen: Date.now()
+                    };
+                }
+                return {
+                    type: 'human',
+                    uid: null,
+                    playerName: '',
+                    selectedIcon: 'courtney',
+                    charConfig: null,
+                    ready: false,
+                    lastSeen: 0
+                };
+            });
+
+            const t2 = (enemySlotTypes || ['human', 'human', 'bot']).map((type, idx) => {
+                if (type === 'bot') {
+                    const botCharId = pickBotCharId(idx + 3);
+                    return {
+                        type: 'bot',
+                        uid: null,
+                        playerName: `敵BOT ${idx + 1}`,
+                        selectedIcon: botCharId,
+                        charConfig: { charId: botCharId, customStats: null },
+                        ready: true,
+                        lastSeen: Date.now()
+                    };
+                }
+                return {
+                    type: 'human',
+                    uid: null,
+                    playerName: '',
+                    selectedIcon: 'courtney',
+                    charConfig: null,
+                    ready: false,
+                    lastSeen: 0
+                };
+            });
+
+            return { t1, t2 };
+        }
+
+        function countHumanSlotStats(roomData) {
+            const allSlots = [...(roomData.team1Slots || []), ...(roomData.team2Slots || [])];
+            const humanSlots = allSlots.filter(s => s && s.type === 'human');
+            const joined = humanSlots.filter(s => !!s.uid);
+            const ready = joined.filter(s => !!s.ready);
+            return {
+                requiredHumans: humanSlots.length,
+                joinedHumans: joined.length,
+                readyHumans: ready.length,
+                allJoined: humanSlots.length > 0 && joined.length === humanSlots.length,
+                allReady: humanSlots.length > 0 && joined.length === humanSlots.length && ready.length === humanSlots.length
+            };
+        }
+
+        function findMySlotInRoom(roomData, myUid) {
+            const t1 = roomData.team1Slots || [];
+            for (let i = 0; i < t1.length; i++) {
+                if (t1[i] && t1[i].uid === myUid) return { teamNum: 1, slotIdx: i, slot: t1[i] };
+            }
+            const t2 = roomData.team2Slots || [];
+            for (let i = 0; i < t2.length; i++) {
+                if (t2[i] && t2[i].uid === myUid) return { teamNum: 2, slotIdx: i, slot: t2[i] };
+            }
+            return null;
+        }
+
+        function proceedFromMultiSetupToMatchmaking() {
+            audioSystem.playSelect();
+            const cfg = getOnlineBattleConfig();
+            if (cfg.totalHumans <= 1) {
+                renderOnlineMatchmakingScreen('multi');
+                return;
+            }
+            renderOnlineMatchmakingScreen('multi');
+        }
+
+        function renderOnlineMatchmakingScreen(mode = '2p') {
+            audioSystem.playSelect();
+            cleanupOnlineLobby();
+            window.isOnlineBattleMode = true;
+            const container = document.getElementById('screen-container');
+            if (!container) return;
+
+            const is2p = mode === '2p';
+            const cfg = getOnlineBattleConfig();
+            const team2p = window.pendingOnline2pTeam || getSelectedNewBattleTeam();
+            if (is2p && team2p.filter(Boolean).length < 3) {
+                renderOnlineBattleCharSelectScreen();
+                return;
+            }
+
+            const backFn = is2p ? 'renderOnlineBattleCharSelectScreen()' : 'renderOnlineMultiSetupScreen()';
+            const backLabel = is2p ? '◀ キャラ選択' : '◀ 人数設定';
+            const title = is2p
+                ? '🌐 2人対戦 (1vs1) - マッチング選択'
+                : `👥 ${cfg.totalHumans}人対戦 (${cfg.allyHumanCount}vs${cfg.enemyHumanCount}) - マッチング選択`;
+
+            let summaryHtml = '';
+            if (is2p) {
+                summaryHtml = `
+                    <div class="pixel-box bg-slate-900/95 border border-emerald-500/70 px-3 py-2 flex flex-wrap items-center justify-center gap-2">
+                        <span class="text-[11px] font-pixel text-emerald-300 font-bold whitespace-nowrap">🛡️ あなたの出陣3体：</span>
+                        ${team2p.map((cId, i) => {
+                            const cData = CHARACTER_DATA[cId] || {};
+                            return `
+                                <div class="flex items-center gap-1.5 bg-slate-950 border border-slate-700 px-2 py-1 rounded">
+                                    <canvas id="mm-2p-cvs-${i}" width="24" height="24" class="w-6 h-6 rounded bg-slate-900 shrink-0"></canvas>
+                                    <span class="text-[11px] font-bold text-white whitespace-nowrap">${cData.name || cId}</span>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            } else {
+                const allyBot = 3 - cfg.allyHumanCount;
+                const enemyBot = 3 - cfg.enemyHumanCount;
+                summaryHtml = `
+                    <div class="pixel-box bg-slate-900/95 border border-sky-500/70 px-3 py-2 flex flex-wrap items-center justify-center gap-3 text-xs font-pixel">
+                        <span class="text-emerald-300 whitespace-nowrap">🛡️ 味方：👤人${cfg.allyHumanCount} / 🤖BOT${allyBot}</span>
+                        <span class="text-amber-400 font-bold">VS</span>
+                        <span class="text-red-300 whitespace-nowrap">⚔️ 敵：👤人${cfg.enemyHumanCount} / 🤖BOT${enemyBot}</span>
+                    </div>
+                `;
+            }
+
+            const isSoloMulti = !is2p && cfg.totalHumans <= 1;
+
+            container.innerHTML = `
+                <div class="relative w-full h-full flex flex-col justify-between p-3 sm:p-5 select-none overflow-y-auto bg-slate-950 text-white">
+                    <div class="flex items-center justify-between gap-2 w-full mb-2 shrink-0">
+                        <button onclick="${backFn}" class="pixel-btn pixel-btn-danger px-3 py-1 text-xs font-bold whitespace-nowrap shrink-0">
+                            ${backLabel}
+                        </button>
+                        <h2 class="${is2p ? 'text-emerald-300' : 'text-sky-300'} font-pixel text-xs sm:text-lg font-bold tracking-wider whitespace-nowrap truncate">${title}</h2>
+                        <div class="w-16 sm:w-20 shrink-0"></div>
+                    </div>
+
+                    <div class="max-w-3xl mx-auto w-full flex-1 flex flex-col justify-center gap-3 min-h-0">
+                        ${summaryHtml}
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <!-- カード1: クイックマッチ -->
+                            <div class="pixel-box bg-slate-900/95 border-2 border-emerald-500/80 p-4 flex flex-col justify-between gap-3 shadow-xl">
+                                <div class="space-y-1.5 text-center">
+                                    <div class="text-3xl sm:text-4xl">⚡</div>
+                                    <h3 class="font-pixel text-sm sm:text-base font-bold text-emerald-300">
+                                        ${isSoloMulti ? 'ソロ練習スタート' : 'クイックマッチ'}
+                                    </h3>
+                                    <p class="text-[11px] text-slate-300 font-mono leading-relaxed">
+                                        ${isSoloMulti
+                                            ? '設定したソロ構成（あなた1人＋BOT5体）で対戦準備画面へ進みます。'
+                                            : (is2p
+                                                ? 'オンライン中の相手と自動でマッチング！相手が見つかり次第すぐに対戦開始します。'
+                                                : '同じ人数構成のプレイヤーと自動でマッチング！全員揃ったら対戦準備へ進みます。')}
+                                    </p>
+                                </div>
+                                <button type="button" onclick="${isSoloMulti ? 'startSoloMultiReadyLobby()' : `startOnlineQuickMatch('${mode}')`}" class="pixel-btn pixel-btn-success w-full py-2.5 px-4 text-xs sm:text-sm font-bold font-pixel shadow-lg whitespace-nowrap">
+                                    ${isSoloMulti ? '🚀 対戦準備へ進む ▶' : '⚡ クイックマッチを開始 ▶'}
+                                </button>
+                            </div>
+
+                            <!-- カード2: コードでルーム作成 ＋ コード入力 -->
+                            <div class="pixel-box bg-slate-900/95 border-2 border-amber-400/80 p-4 flex flex-col justify-between gap-3 shadow-xl">
+                                <div class="space-y-1 text-center">
+                                    <div class="text-3xl sm:text-4xl">🔑</div>
+                                    <h3 class="font-pixel text-sm sm:text-base font-bold text-amber-300">ルーム作成 / コード入力</h3>
+                                    <p class="text-[10px] sm:text-[11px] text-slate-300 font-mono">
+                                        合言葉コードを発行して友達と対戦、または相手のコードを入力して参加！
+                                    </p>
+                                </div>
+
+                                <div class="space-y-2.5">
+                                    <button type="button" onclick="createOnlineCodeRoom('${mode}')" class="pixel-btn pixel-btn-primary w-full py-2 px-3 text-xs font-bold font-pixel shadow whitespace-nowrap">
+                                        🏠 コードでルームを作成
+                                    </button>
+
+                                    <div class="border-t border-slate-700/80 pt-2 space-y-1.5">
+                                        <label class="block text-[10px] font-pixel text-sky-300 text-center">🚪 相手から受け取ったコードを入力</label>
+                                        <div class="flex gap-1.5">
+                                            <input id="online-room-code-input" type="text" maxlength="6" inputmode="numeric" placeholder="6桁コード" class="pixel-box bg-slate-950 border-sky-500/80 text-amber-300 font-mono font-bold text-sm text-center tracking-widest px-2 py-1.5 flex-1 min-w-0 outline-none">
+                                            <button type="button" onclick="joinOnlineRoomByCode('${mode}')" class="pixel-btn pixel-btn-warning px-3 py-1.5 text-xs font-bold font-pixel whitespace-nowrap shrink-0">
+                                                参加 ▶
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="online-match-status-msg" class="text-xs font-mono text-center min-h-[20px] text-slate-400">
+                            「クイックマッチ」または「ルーム作成 / コード入力」を選択してください
+                        </div>
+                    </div>
+
+                    <div class="flex justify-center pt-1 pb-1 shrink-0">
+                        <button type="button" onclick="fallbackLaunchBotFromMatchmaking('${mode}')" class="text-[11px] font-mono text-slate-400 hover:text-amber-300 underline cursor-pointer">
+                            🤖 相手がいない場合はBOT相手にテスト対戦する
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            if (is2p) {
+                setTimeout(() => {
+                    team2p.forEach((cId, i) => {
+                        const cvs = document.getElementById(`mm-2p-cvs-${i}`);
+                        if (cvs) CharacterRenderer.drawCharacter(cvs, cId);
+                    });
+                }, 30);
+            }
+        }
+
+        function fallbackLaunchBotFromMatchmaking(mode) {
+            audioSystem.playSelect();
+            cleanupOnlineLobby();
+            if (mode === '2p') {
+                const team = window.pendingOnline2pTeam || getSelectedNewBattleTeam();
+                const allIds = Object.keys(CHARACTER_DATA);
+                const otherIds = allIds.filter(id => id !== team[0]);
+                const eChar = otherIds[Math.floor(Math.random() * otherIds.length)] || 'pasha';
+                startOnlineBattleMode(team, eChar, { matchMode: '2p', controlSingleAllyOnly: false, isOnlineBattleMode: true });
+            } else {
+                const cfg = getOnlineBattleConfig();
+                const charId = getSelectedOnlineMultiChar();
+                const allIds = Object.keys(CHARACTER_DATA);
+                const otherIds = allIds.filter(id => id !== charId);
+                const eChar = otherIds[Math.floor(Math.random() * otherIds.length)] || 'pasha';
+                startOnlineBattleMode(charId, eChar, { ...cfg, isOnlineBattleMode: true });
+            }
+        }
+
+        function startSoloMultiReadyLobby() {
+            audioSystem.playSelect();
+            cleanupOnlineLobby();
+            const cfg = getOnlineBattleConfig();
+            const myUid = window.getOnlineClientId();
+            const myName = playerState.playerName || '名無しファイター';
+            const myIcon = playerState.selectedIcon || 'courtney';
+            const myChar = buildOnlineCharConfig(getSelectedOnlineMultiChar());
+            const { t1, t2 } = createMultiInitialSlots(cfg.allySlots, cfg.enemySlots, myChar, myUid, myName, myIcon);
+            const roomData = {
+                roomId: 'LOCAL_SOLO',
+                roomCode: null,
+                mode: 'multi',
+                matchType: 'solo',
+                status: 'preparing',
+                hostUid: myUid,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                team1Slots: t1,
+                team2Slots: t2
+            };
+            window._onlineLobbyState.isSoloLocal = true;
+            window._onlineLobbyState.soloRoomData = roomData;
+            renderOnlineMultiReadyScreen('LOCAL_SOLO', roomData);
+        }
+
+        async function startOnlineQuickMatch(mode = '2p') {
+            audioSystem.playSelect();
+            setOnlineMatchStatus('🔄 オンラインサーバーに接続して相手を検索中...', 'text-sky-300 font-bold');
+
+            await window.initFirebaseOnline();
+            if (!window.fbDb || !window.fbCollection || !window.fbWhere || !window.fbRunTransaction) {
+                setOnlineMatchStatus('⚠️ オンライン機能に接続できませんでした。ネット接続を確認してください。', 'text-red-400 font-bold');
+                return;
+            }
+
+            const myUid = window.getOnlineClientId();
+            const myName = playerState.playerName || '名無しファイター';
+            const myIcon = playerState.selectedIcon || 'courtney';
+            const cfg = getOnlineBattleConfig();
+            const roomsCol = window.fbCollection(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms');
+
+            try {
+                const q = window.fbQuery(roomsCol, window.fbWhere('status', '==', 'waiting'));
+                const snap = await window.fbGetDocs(q);
+                const now = Date.now();
+                const candidates = [];
+                snap.forEach(docSnap => {
+                    const d = docSnap.data();
+                    if (!d || d.matchType !== 'quick' || d.mode !== mode) return;
+                    if (d.hostUid === myUid) return;
+                    if (d.updatedAt && now - d.updatedAt > 180000) return;
+                    if (mode === '2p') {
+                        const t2Slot = d.team2Slots && d.team2Slots[0];
+                        if (!t2Slot || !t2Slot.uid) {
+                            candidates.push({ id: docSnap.id, data: d });
+                        }
+                    } else {
+                        const r1Count = (d.team1Slots || []).filter(s => s && s.type === 'human').length;
+                        const r2Count = (d.team2Slots || []).filter(s => s && s.type === 'human').length;
+                        const exactMatch = (r1Count === cfg.allyHumanCount && r2Count === cfg.enemyHumanCount);
+                        const mirrorMatch = (r1Count === cfg.enemyHumanCount && r2Count === cfg.allyHumanCount);
+                        if (!exactMatch && !mirrorMatch) return;
+                        const hasOpen = [...(d.team1Slots || []), ...(d.team2Slots || [])].some(s => s && s.type === 'human' && !s.uid);
+                        if (hasOpen) {
+                            candidates.push({ id: docSnap.id, data: d, exactMatch });
+                        }
+                    }
+                });
+
+                candidates.sort((a, b) => (b.data.createdAt || 0) - (a.data.createdAt || 0));
+
+                for (const cand of candidates) {
+                    const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', cand.id);
+                    try {
+                        const joinedResult = await window.fbRunTransaction(window.fbDb, async (tx) => {
+                            const rSnap = await tx.get(roomRef);
+                            if (!rSnap.exists()) return null;
+                            const rd = rSnap.data();
+                            if (rd.status !== 'waiting') return null;
+                            if (mode === '2p') {
+                                if (rd.team2Slots && rd.team2Slots[0] && rd.team2Slots[0].uid) return null;
+                                const team2p = window.pendingOnline2pTeam || getSelectedNewBattleTeam();
+                                const t2Configs = team2p.map(cId => buildOnlineCharConfig(cId));
+                                const newT2Slots = t2Configs.map((cc, idx) => ({
+                                    type: 'human',
+                                    uid: myUid,
+                                    playerName: myName,
+                                    selectedIcon: myIcon,
+                                    charConfig: cc,
+                                    ready: true,
+                                    slotIndex: idx,
+                                    lastSeen: Date.now()
+                                }));
+                                tx.update(roomRef, {
+                                    team2Slots: newT2Slots,
+                                    status: 'matched',
+                                    updatedAt: Date.now()
+                                });
+                                return { ...rd, team2Slots: newT2Slots, status: 'matched' };
+                            } else {
+                                const t1 = [...(rd.team1Slots || [])];
+                                const t2 = [...(rd.team2Slots || [])];
+                                if (findMySlotInRoom(rd, myUid)) return rd;
+                                const myChar = buildOnlineCharConfig(getSelectedOnlineMultiChar());
+                                let placed = false;
+                                // Prefer enemy team first if mirror or open, else ally open slot
+                                for (let i = 0; i < 3 && !placed; i++) {
+                                    if (t2[i] && t2[i].type === 'human' && !t2[i].uid) {
+                                        t2[i] = { ...t2[i], uid: myUid, playerName: myName, selectedIcon: myIcon, charConfig: myChar, ready: false, lastSeen: Date.now() };
+                                        placed = true;
+                                    }
+                                }
+                                for (let i = 0; i < 3 && !placed; i++) {
+                                    if (t1[i] && t1[i].type === 'human' && !t1[i].uid) {
+                                        t1[i] = { ...t1[i], uid: myUid, playerName: myName, selectedIcon: myIcon, charConfig: myChar, ready: false, lastSeen: Date.now() };
+                                        placed = true;
+                                    }
+                                }
+                                if (!placed) return null;
+                                const allHumansJoined = [...t1, ...t2].filter(s => s && s.type === 'human').every(s => !!s.uid);
+                                const nextStatus = allHumansJoined ? 'preparing' : 'waiting';
+                                tx.update(roomRef, {
+                                    team1Slots: t1,
+                                    team2Slots: t2,
+                                    status: nextStatus,
+                                    updatedAt: Date.now()
+                                });
+                                return { ...rd, team1Slots: t1, team2Slots: t2, status: nextStatus };
+                            }
+                        });
+
+                        if (joinedResult) {
+                            if (mode === '2p') {
+                                renderOnlineWaitingRoomScreen(cand.id, joinedResult);
+                            } else {
+                                renderOnlineMultiReadyScreen(cand.id, joinedResult);
+                            }
+                            return;
+                        }
+                    } catch (txErr) {
+                        console.warn('QuickMatch join tx retry:', txErr);
+                    }
+                }
+
+                // No open room found -> Create new quick-match waiting room
+                const newRoomId = 'qm_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+                const newRoomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', newRoomId);
+                let roomPayload;
+                if (mode === '2p') {
+                    const team2p = window.pendingOnline2pTeam || getSelectedNewBattleTeam();
+                    const t1Configs = team2p.map(cId => buildOnlineCharConfig(cId));
+                    roomPayload = {
+                        roomId: newRoomId,
+                        roomCode: null,
+                        mode: '2p',
+                        matchType: 'quick',
+                        status: 'waiting',
+                        hostUid: myUid,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                        team1Slots: t1Configs.map((cc, idx) => ({
+                            type: 'human',
+                            uid: myUid,
+                            playerName: myName,
+                            selectedIcon: myIcon,
+                            charConfig: cc,
+                            ready: true,
+                            slotIndex: idx,
+                            lastSeen: Date.now()
+                        })),
+                        team2Slots: [
+                            { type: 'human', uid: null, playerName: '', selectedIcon: 'courtney', charConfig: null, ready: false, lastSeen: 0 },
+                            { type: 'human', uid: null, playerName: '', selectedIcon: 'courtney', charConfig: null, ready: false, lastSeen: 0 },
+                            { type: 'human', uid: null, playerName: '', selectedIcon: 'courtney', charConfig: null, ready: false, lastSeen: 0 }
+                        ],
+                        battleState: null,
+                        pendingAction: null
+                    };
+                    await window.fbSetDoc(newRoomRef, roomPayload);
+                    renderOnlineWaitingRoomScreen(newRoomId, roomPayload);
+                } else {
+                    const myChar = buildOnlineCharConfig(getSelectedOnlineMultiChar());
+                    const { t1, t2 } = createMultiInitialSlots(cfg.allySlots, cfg.enemySlots, myChar, myUid, myName, myIcon);
+                    roomPayload = {
+                        roomId: newRoomId,
+                        roomCode: null,
+                        mode: 'multi',
+                        matchType: 'quick',
+                        status: 'waiting',
+                        hostUid: myUid,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                        team1Slots: t1,
+                        team2Slots: t2,
+                        battleState: null,
+                        pendingAction: null
+                    };
+                    await window.fbSetDoc(newRoomRef, roomPayload);
+                    renderOnlineMultiReadyScreen(newRoomId, roomPayload);
+                }
+            } catch (err) {
+                console.error('QuickMatch error:', err);
+                setOnlineMatchStatus('⚠️ マッチング中にエラーが発生しました。もう一度お試しください。', 'text-red-400 font-bold');
+            }
+        }
+
+        async function createOnlineCodeRoom(mode = '2p') {
+            audioSystem.playSelect();
+            setOnlineMatchStatus('🔑 ルームコードを発行中...', 'text-amber-300 font-bold');
+
+            await window.initFirebaseOnline();
+            if (!window.fbDb || !window.fbSetDoc) {
+                setOnlineMatchStatus('⚠️ オンラインサーバーに接続できませんでした。', 'text-red-400 font-bold');
+                return;
+            }
+
+            const myUid = window.getOnlineClientId();
+            const myName = playerState.playerName || '名無しファイター';
+            const myIcon = playerState.selectedIcon || 'courtney';
+            const cfg = getOnlineBattleConfig();
+            const roomCode = generateSixDigitRoomCode();
+            const newRoomId = 'code_' + roomCode + '_' + Date.now().toString(36);
+            const newRoomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', newRoomId);
+
+            try {
+                let roomPayload;
+                if (mode === '2p') {
+                    const team2p = window.pendingOnline2pTeam || getSelectedNewBattleTeam();
+                    const t1Configs = team2p.map(cId => buildOnlineCharConfig(cId));
+                    roomPayload = {
+                        roomId: newRoomId,
+                        roomCode: roomCode,
+                        mode: '2p',
+                        matchType: 'code',
+                        status: 'waiting',
+                        hostUid: myUid,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                        team1Slots: t1Configs.map((cc, idx) => ({
+                            type: 'human',
+                            uid: myUid,
+                            playerName: myName,
+                            selectedIcon: myIcon,
+                            charConfig: cc,
+                            ready: true,
+                            slotIndex: idx,
+                            lastSeen: Date.now()
+                        })),
+                        team2Slots: [
+                            { type: 'human', uid: null, playerName: '', selectedIcon: 'courtney', charConfig: null, ready: false, lastSeen: 0 },
+                            { type: 'human', uid: null, playerName: '', selectedIcon: 'courtney', charConfig: null, ready: false, lastSeen: 0 },
+                            { type: 'human', uid: null, playerName: '', selectedIcon: 'courtney', charConfig: null, ready: false, lastSeen: 0 }
+                        ],
+                        battleState: null,
+                        pendingAction: null
+                    };
+                    await window.fbSetDoc(newRoomRef, roomPayload);
+                    renderOnlineWaitingRoomScreen(newRoomId, roomPayload);
+                } else {
+                    const myChar = buildOnlineCharConfig(getSelectedOnlineMultiChar());
+                    const { t1, t2 } = createMultiInitialSlots(cfg.allySlots, cfg.enemySlots, myChar, myUid, myName, myIcon);
+                    roomPayload = {
+                        roomId: newRoomId,
+                        roomCode: roomCode,
+                        mode: 'multi',
+                        matchType: 'code',
+                        status: 'waiting',
+                        hostUid: myUid,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                        team1Slots: t1,
+                        team2Slots: t2,
+                        battleState: null,
+                        pendingAction: null
+                    };
+                    await window.fbSetDoc(newRoomRef, roomPayload);
+                    renderOnlineMultiReadyScreen(newRoomId, roomPayload);
+                }
+            } catch (err) {
+                console.error('Create code room error:', err);
+                setOnlineMatchStatus('⚠️ ルーム作成に失敗しました。もう一度お試しください。', 'text-red-400 font-bold');
+            }
+        }
+
+        async function joinOnlineRoomByCode(mode = '2p') {
+            audioSystem.playSelect();
+            const input = document.getElementById('online-room-code-input');
+            const code = input ? input.value.trim() : '';
+            if (!code || code.length < 4) {
+                setOnlineMatchStatus('⚠️ 6桁のルームコードを入力してください！', 'text-red-400 font-bold');
+                return;
+            }
+            setOnlineMatchStatus(`🔍 コード「${code}」のルームを検索中...`, 'text-sky-300 font-bold');
+
+            await window.initFirebaseOnline();
+            if (!window.fbDb || !window.fbCollection || !window.fbWhere || !window.fbRunTransaction) {
+                setOnlineMatchStatus('⚠️ オンラインサーバーに接続できませんでした。', 'text-red-400 font-bold');
+                return;
+            }
+
+            const myUid = window.getOnlineClientId();
+            const myName = playerState.playerName || '名無しファイター';
+            const myIcon = playerState.selectedIcon || 'courtney';
+            const roomsCol = window.fbCollection(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms');
+
+            try {
+                const q = window.fbQuery(roomsCol, window.fbWhere('roomCode', '==', code));
+                const snap = await window.fbGetDocs(q);
+                const matches = [];
+                snap.forEach(d => {
+                    const rd = d.data();
+                    if (rd && (rd.status === 'waiting' || rd.status === 'preparing')) {
+                        matches.push({ id: d.id, data: rd });
+                    }
+                });
+                matches.sort((a, b) => (b.data.createdAt || 0) - (a.data.createdAt || 0));
+
+                if (matches.length === 0) {
+                    setOnlineMatchStatus(`⚠️ コード「${code}」の待機中ルームが見つかりませんでした。`, 'text-red-400 font-bold');
+                    return;
+                }
+
+                const target = matches[0];
+                if (target.data.mode !== mode) {
+                    setOnlineMatchStatus(
+                        target.data.mode === '2p'
+                            ? '⚠️ このコードは「2人対戦」用のルームです。2人対戦モードから参加してください。'
+                            : '⚠️ このコードは「3〜6人対戦」用のルームです。それ以上の対戦モードから参加してください。',
+                        'text-amber-300 font-bold'
+                    );
+                    return;
+                }
+
+                const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', target.id);
+                const joinRes = await window.fbRunTransaction(window.fbDb, async (tx) => {
+                    const rSnap = await tx.get(roomRef);
+                    if (!rSnap.exists()) return { error: 'ルームが存在しません。' };
+                    const rd = rSnap.data();
+                    if (rd.status === 'playing' || rd.status === 'ended') {
+                        return { error: 'このルームはすでに対戦開始または終了しています。' };
+                    }
+                    if (mode === '2p') {
+                        if (rd.hostUid === myUid) return { error: '自分が作成したルームには別プレイヤーとして参加できません。' };
+                        if (rd.team2Slots && rd.team2Slots[0] && rd.team2Slots[0].uid) {
+                            return { error: 'このルームはすでに満員です。' };
+                        }
+                        const team2p = window.pendingOnline2pTeam || getSelectedNewBattleTeam();
+                        const t2Configs = team2p.map(cId => buildOnlineCharConfig(cId));
+                        const newT2Slots = t2Configs.map((cc, idx) => ({
+                            type: 'human',
+                            uid: myUid,
+                            playerName: myName,
+                            selectedIcon: myIcon,
+                            charConfig: cc,
+                            ready: true,
+                            slotIndex: idx,
+                            lastSeen: Date.now()
+                        }));
+                        tx.update(roomRef, {
+                            team2Slots: newT2Slots,
+                            status: 'matched',
+                            updatedAt: Date.now()
+                        });
+                        return { roomData: { ...rd, team2Slots: newT2Slots, status: 'matched' } };
+                    } else {
+                        const existing = findMySlotInRoom(rd, myUid);
+                        if (existing) return { roomData: rd };
+                        const t1 = [...(rd.team1Slots || [])];
+                        const t2 = [...(rd.team2Slots || [])];
+                        const myChar = buildOnlineCharConfig(getSelectedOnlineMultiChar());
+                        let placed = false;
+                        for (let i = 0; i < 3 && !placed; i++) {
+                            if (t2[i] && t2[i].type === 'human' && !t2[i].uid) {
+                                t2[i] = { ...t2[i], uid: myUid, playerName: myName, selectedIcon: myIcon, charConfig: myChar, ready: false, lastSeen: Date.now() };
+                                placed = true;
+                            }
+                        }
+                        for (let i = 0; i < 3 && !placed; i++) {
+                            if (t1[i] && t1[i].type === 'human' && !t1[i].uid) {
+                                t1[i] = { ...t1[i], uid: myUid, playerName: myName, selectedIcon: myIcon, charConfig: myChar, ready: false, lastSeen: Date.now() };
+                                placed = true;
+                            }
+                        }
+                        if (!placed) return { error: 'このルームのプレイヤー枠は満員です。' };
+                        const allHumansJoined = [...t1, ...t2].filter(s => s && s.type === 'human').every(s => !!s.uid);
+                        const nextStatus = allHumansJoined ? 'preparing' : 'waiting';
+                        tx.update(roomRef, {
+                            team1Slots: t1,
+                            team2Slots: t2,
+                            status: nextStatus,
+                            updatedAt: Date.now()
+                        });
+                        return { roomData: { ...rd, team1Slots: t1, team2Slots: t2, status: nextStatus } };
+                    }
+                });
+
+                if (joinRes && joinRes.error) {
+                    setOnlineMatchStatus('⚠️ ' + joinRes.error, 'text-red-400 font-bold');
+                    return;
+                }
+                if (joinRes && joinRes.roomData) {
+                    if (mode === '2p') {
+                        renderOnlineWaitingRoomScreen(target.id, joinRes.roomData);
+                    } else {
+                        renderOnlineMultiReadyScreen(target.id, joinRes.roomData);
+                    }
+                }
+            } catch (err) {
+                console.error('Join by code error:', err);
+                setOnlineMatchStatus('⚠️ ルーム参加中にエラーが発生しました。', 'text-red-400 font-bold');
+            }
+        }
+
+        function copyOnlineRoomCode(code) {
+            audioSystem.playSelect();
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(code).then(() => {
+                    const el = document.getElementById('room-code-copy-toast');
+                    if (el) {
+                        el.innerText = '✓ コピーしました！';
+                        setTimeout(() => { if (el) el.innerText = ''; }, 1800);
+                    }
+                }).catch(() => {});
+            }
+        }
+
+        async function cancelOnlineRoomAndReturn(mode = '2p') {
+            audioSystem.playSelect();
+            const st = window._onlineLobbyState;
+            const roomId = st.roomId;
+            const isSolo = st.isSoloLocal;
+            cleanupOnlineLobby();
+            if (!isSolo && roomId && window.fbDb && window.fbDoc) {
+                try {
+                    const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
+                    const myUid = window.getOnlineClientId();
+                    const snap = await window.fbGetDoc(roomRef);
+                    if (snap.exists()) {
+                        const rd = snap.data();
+                        if (rd.hostUid === myUid && rd.status !== 'playing') {
+                            await window.fbUpdateDoc(roomRef, { status: 'ended', updatedAt: Date.now() });
+                        } else if (rd.mode === 'multi' && rd.status !== 'playing') {
+                            const t1 = (rd.team1Slots || []).map(s => (s && s.uid === myUid ? { ...s, uid: null, playerName: '', charConfig: null, ready: false } : s));
+                            const t2 = (rd.team2Slots || []).map(s => (s && s.uid === myUid ? { ...s, uid: null, playerName: '', charConfig: null, ready: false } : s));
+                            await window.fbUpdateDoc(roomRef, { team1Slots: t1, team2Slots: t2, status: 'waiting', updatedAt: Date.now() });
+                        }
+                    }
+                } catch (e) {}
+            }
+            renderOnlineMatchmakingScreen(mode);
+        }
+
+        function renderOnlineWaitingRoomScreen(roomId, initialData = null) {
+            cleanupOnlineLobby();
+            window._onlineLobbyState.roomId = roomId;
+            window._onlineLobbyState.waitStartAt = Date.now();
+
+            const drawWaitingView = (roomData) => {
+                const container = document.getElementById('screen-container');
+                if (!container || !roomData) return;
+
+                const myUid = window.getOnlineClientId();
+                const isHost = roomData.hostUid === myUid;
+                const mySlots = isHost ? (roomData.team1Slots || []) : (roomData.team2Slots || []);
+                const oppSlots = isHost ? (roomData.team2Slots || []) : (roomData.team1Slots || []);
+                const isMatched = (roomData.status === 'matched' || roomData.status === 'playing') && oppSlots[0] && !!oppSlots[0].uid;
+                const oppName = oppSlots[0]?.playerName || '対戦相手';
+                const elapsedSec = Math.floor((Date.now() - window._onlineLobbyState.waitStartAt) / 1000);
+
+                container.innerHTML = `
+                    <div class="relative w-full h-full flex flex-col justify-between p-3 sm:p-5 select-none overflow-y-auto bg-slate-950 text-white">
+                        <div class="flex items-center justify-between gap-2 w-full mb-2 shrink-0">
+                            <button onclick="cancelOnlineRoomAndReturn('2p')" class="pixel-btn pixel-btn-danger px-3 py-1 text-xs font-bold whitespace-nowrap">
+                                ✕ キャンセル
+                            </button>
+                            <h2 class="text-emerald-300 font-pixel text-xs sm:text-lg font-bold whitespace-nowrap">
+                                ${isMatched ? '⚡ マッチ成立！バトル開始準備中...' : (roomData.matchType === 'code' ? '🔑 ルーム待機中 (2人対戦)' : '⚡ クイックマッチ検索中...')}
+                            </h2>
+                            <div class="text-xs font-mono text-amber-300 whitespace-nowrap">${elapsedSec}秒</div>
+                        </div>
+
+                        <div class="max-w-3xl mx-auto w-full flex-1 flex flex-col justify-center gap-4">
+                            ${roomData.matchType === 'code' && roomData.roomCode ? `
+                                <div class="pixel-box-gold bg-amber-950/70 border-2 border-amber-400 p-3 text-center space-y-1.5">
+                                    <div class="text-[11px] font-pixel text-amber-200">相手に共有するルームコード</div>
+                                    <div class="flex items-center justify-center gap-3">
+                                        <span class="text-2xl sm:text-4xl font-mono font-black tracking-[0.25em] text-amber-300">${roomData.roomCode}</span>
+                                        <button type="button" onclick="copyOnlineRoomCode('${roomData.roomCode}')" class="pixel-btn pixel-btn-primary px-3 py-1.5 text-xs font-bold whitespace-nowrap">📋 コピー</button>
+                                    </div>
+                                    <div id="room-code-copy-toast" class="text-[11px] text-emerald-300 font-bold min-h-[16px]"></div>
+                                </div>
+                            ` : ''}
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch">
+                                <div class="pixel-box bg-emerald-950/40 border-2 border-emerald-500 p-3 space-y-2">
+                                    <div class="text-xs font-pixel font-bold text-emerald-300 text-center">🛡️ あなた：${playerState.playerName || 'Player'}</div>
+                                    <div class="grid grid-cols-3 gap-1.5">
+                                        ${mySlots.map((s, idx) => {
+                                            const cId = s?.charConfig?.charId || 'asaiomizu';
+                                            const cData = CHARACTER_DATA[cId] || {};
+                                            return `
+                                                <div class="bg-slate-950/90 border border-emerald-700/70 rounded p-1.5 flex flex-col items-center">
+                                                    <canvas id="wait-my-cvs-${idx}" width="44" height="44" class="w-10 h-10 rounded bg-slate-900"></canvas>
+                                                    <span class="text-[10px] font-bold text-white truncate max-w-full mt-1">${cData.name || cId}</span>
+                                                </div>
+                                            `;
+                                        }).join('')}
+                                    </div>
+                                </div>
+
+                                <div class="pixel-box ${isMatched ? 'bg-red-950/45 border-2 border-red-400' : 'bg-slate-900/90 border-2 border-slate-700 border-dashed'} p-3 flex flex-col justify-center space-y-2">
+                                    ${isMatched ? `
+                                        <div class="text-xs font-pixel font-bold text-red-300 text-center">⚔️ 相手：${oppName}</div>
+                                        <div class="grid grid-cols-3 gap-1.5">
+                                            ${oppSlots.map((s, idx) => {
+                                                const cId = s?.charConfig?.charId || 'pasha';
+                                                const cData = CHARACTER_DATA[cId] || {};
+                                                return `
+                                                    <div class="bg-slate-950/90 border border-red-700/70 rounded p-1.5 flex flex-col items-center">
+                                                        <canvas id="wait-opp-cvs-${idx}" width="44" height="44" class="w-10 h-10 rounded bg-slate-900"></canvas>
+                                                        <span class="text-[10px] font-bold text-white truncate max-w-full mt-1">${cData.name || cId}</span>
+                                                    </div>
+                                                `;
+                                            }).join('')}
+                                        </div>
+                                    ` : `
+                                        <div class="text-center space-y-2 py-4">
+                                            <div class="text-3xl animate-bounce">⏳</div>
+                                            <div class="text-xs sm:text-sm font-pixel text-amber-300 animate-pulse">対戦相手の参加を待っています...</div>
+                                            <div class="text-[10px] text-slate-400 font-mono">
+                                                ${roomData.matchType === 'code' ? '相手が上記の6桁コードを入力するとマッチします' : '別プレイヤーがクイックマッチを押すとマッチします'}
+                                            </div>
+                                        </div>
+                                    `}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-center gap-3 pt-2 shrink-0">
+                            ${!isMatched ? `
+                                <button type="button" onclick="cancelOnlineRoomAndReturn('2p'); fallbackLaunchBotFromMatchmaking('2p');" class="pixel-btn pixel-btn-warning px-4 py-2 text-xs font-bold font-pixel">
+                                    🤖 待たずにBOTと戦う
+                                </button>
+                            ` : `
+                                <div class="text-sm font-pixel font-bold text-amber-300 animate-pulse">⚔️ まもなくバトル開始！</div>
+                            `}
+                        </div>
+                    </div>
+                `;
+
+                setTimeout(() => {
+                    mySlots.forEach((s, idx) => {
+                        const cvs = document.getElementById(`wait-my-cvs-${idx}`);
+                        if (cvs && s?.charConfig?.charId) CharacterRenderer.drawCharacter(cvs, s.charConfig.charId);
+                    });
+                    if (isMatched) {
+                        oppSlots.forEach((s, idx) => {
+                            const cvs = document.getElementById(`wait-opp-cvs-${idx}`);
+                            if (cvs && s?.charConfig?.charId) CharacterRenderer.drawCharacter(cvs, s.charConfig.charId);
+                        });
+                    }
+                }, 30);
+            };
+
+            if (initialData) {
+                drawWaitingView(initialData);
+            }
+
+            if (window.fbDb && window.fbDoc && window.fbOnSnapshot) {
+                const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
+                window._onlineLobbyState.heartbeatId = setInterval(() => {
+                    if (window._onlineLobbyState.roomId !== roomId) return;
+                    window.fbUpdateDoc(roomRef, { updatedAt: Date.now() }).catch(() => {});
+                }, 5000);
+
+                window._onlineLobbyState.unsub = window.fbOnSnapshot(roomRef, (snap) => {
+                    if (!snap.exists()) return;
+                    const rd = snap.data();
+                    if (!rd || rd.status === 'ended') {
+                        cleanupOnlineLobby();
+                        showModal('ルーム終了', 'ホストがルームを解散しました。');
+                        renderOnlineMatchmakingScreen('2p');
+                        return;
+                    }
+                    drawWaitingView(rd);
+                    const oppReady = rd.team2Slots && rd.team2Slots[0] && !!rd.team2Slots[0].uid;
+                    if ((rd.status === 'matched' || rd.status === 'playing') && oppReady) {
+                        if (window._onlineLobbyState.launchedRoomId !== roomId) {
+                            window._onlineLobbyState.launchedRoomId = roomId;
+                            window._onlineLobbyState.launchTimeoutId = setTimeout(() => {
+                                launchOnlineSyncedBattle(roomId, rd);
+                            }, 900);
+                        }
+                    }
+                });
+            }
+        }
+
+        async function selectOnlineMultiLobbyChar(roomId, charId) {
+            audioSystem.playSelect();
+            if (!playerState.unlockedChars.includes(charId)) {
+                showModal('未解放キャラクター', 'このキャラクターはまだ所持していません！');
+                return;
+            }
+            if (!validateCharCustomStats(charId)) return;
+            saveSelectedOnlineMultiChar(charId);
+            const charConfig = buildOnlineCharConfig(charId);
+            const st = window._onlineLobbyState;
+            const myUid = window.getOnlineClientId();
+
+            if (st.isSoloLocal && st.soloRoomData) {
+                st.soloRoomData.team1Slots[0].charConfig = charConfig;
+                st.soloRoomData.team1Slots[0].ready = false;
+                renderOnlineMultiReadyScreen(roomId, st.soloRoomData);
+                return;
+            }
+
+            if (window.fbDb && window.fbDoc && window.fbRunTransaction) {
+                const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
+                await window.fbRunTransaction(window.fbDb, async (tx) => {
+                    const snap = await tx.get(roomRef);
+                    if (!snap.exists()) return;
+                    const rd = snap.data();
+                    if (rd.status === 'playing') return;
+                    const t1 = (rd.team1Slots || []).map(s => (s && s.uid === myUid ? { ...s, charConfig, ready: false, lastSeen: Date.now() } : s));
+                    const t2 = (rd.team2Slots || []).map(s => (s && s.uid === myUid ? { ...s, charConfig, ready: false, lastSeen: Date.now() } : s));
+                    tx.update(roomRef, { team1Slots: t1, team2Slots: t2, updatedAt: Date.now() });
+                }).catch(e => console.warn('Select lobby char error:', e));
+            }
+        }
+
+        async function toggleOnlineMultiLobbyReady(roomId) {
+            audioSystem.playSelect();
+            const st = window._onlineLobbyState;
+            const myUid = window.getOnlineClientId();
+
+            if (st.isSoloLocal && st.soloRoomData) {
+                const s0 = st.soloRoomData.team1Slots[0];
+                if (!s0.charConfig) s0.charConfig = buildOnlineCharConfig(getSelectedOnlineMultiChar());
+                s0.ready = !s0.ready;
+                if (s0.ready) {
+                    const launchedData = { ...st.soloRoomData, status: 'playing' };
+                    launchOnlineSyncedBattle(roomId, launchedData, true);
+                } else {
+                    renderOnlineMultiReadyScreen(roomId, st.soloRoomData);
+                }
+                return;
+            }
+
+            if (window.fbDb && window.fbDoc && window.fbRunTransaction) {
+                const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
+                await window.fbRunTransaction(window.fbDb, async (tx) => {
+                    const snap = await tx.get(roomRef);
+                    if (!snap.exists()) return;
+                    const rd = snap.data();
+                    if (rd.status === 'playing') return;
+                    const myChar = buildOnlineCharConfig(getSelectedOnlineMultiChar());
+                    const toggleSlot = (s) => {
+                        if (!s || s.uid !== myUid) return s;
+                        const nextChar = s.charConfig || myChar;
+                        return { ...s, charConfig: nextChar, ready: !s.ready, lastSeen: Date.now() };
+                    };
+                    const t1 = (rd.team1Slots || []).map(toggleSlot);
+                    const t2 = (rd.team2Slots || []).map(toggleSlot);
+                    tx.update(roomRef, { team1Slots: t1, team2Slots: t2, updatedAt: Date.now() });
+                }).catch(e => console.warn('Toggle ready error:', e));
+            }
+        }
+
+        async function moveOnlineMultiLobbySlot(roomId, targetTeamNum, targetSlotIdx) {
+            audioSystem.playSelect();
+            const st = window._onlineLobbyState;
+            if (st.isSoloLocal) return;
+            const myUid = window.getOnlineClientId();
+            if (!window.fbDb || !window.fbDoc || !window.fbRunTransaction) return;
+            const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
+            await window.fbRunTransaction(window.fbDb, async (tx) => {
+                const snap = await tx.get(roomRef);
+                if (!snap.exists()) return;
+                const rd = snap.data();
+                if (rd.status === 'playing') return;
+                const found = findMySlotInRoom(rd, myUid);
+                if (!found || found.slot.ready) return;
+                const t1 = [...(rd.team1Slots || [])];
+                const t2 = [...(rd.team2Slots || [])];
+                const destArr = targetTeamNum === 1 ? t1 : t2;
+                const destSlot = destArr[targetSlotIdx];
+                if (!destSlot || destSlot.type !== 'human' || destSlot.uid) return;
+                const srcArr = found.teamNum === 1 ? t1 : t2;
+                const movedData = { ...found.slot, ready: false, lastSeen: Date.now() };
+                srcArr[found.slotIdx] = { type: 'human', uid: null, playerName: '', selectedIcon: 'courtney', charConfig: null, ready: false, lastSeen: 0 };
+                destArr[targetSlotIdx] = movedData;
+                tx.update(roomRef, { team1Slots: t1, team2Slots: t2, updatedAt: Date.now() });
+            }).catch(e => console.warn('Move slot error:', e));
+        }
+
+        async function hostFillEmptySlotsWithBotsAndStart(roomId) {
+            audioSystem.playSelect();
+            const myUid = window.getOnlineClientId();
+            if (!window.fbDb || !window.fbDoc || !window.fbRunTransaction) return;
+            const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
+            await window.fbRunTransaction(window.fbDb, async (tx) => {
+                const snap = await tx.get(roomRef);
+                if (!snap.exists()) return;
+                const rd = snap.data();
+                if (rd.hostUid !== myUid || rd.status === 'playing') return;
+                const allIds = Object.keys(CHARACTER_DATA);
+                const fillFn = (teamLabel) => (s, idx) => {
+                    if (s && s.type === 'human' && !s.uid) {
+                        const botCharId = allIds[Math.floor(Math.random() * allIds.length)] || 'pasha';
+                        return { type: 'bot', uid: null, playerName: `${teamLabel}BOT ${idx + 1}`, selectedIcon: botCharId, charConfig: { charId: botCharId, customStats: null }, ready: true, lastSeen: Date.now() };
+                    }
+                    if (s && s.type === 'human' && s.uid && !s.charConfig) {
+                        return { ...s, charConfig: buildOnlineCharConfig(getSelectedOnlineMultiChar()), ready: true };
+                    }
+                    return { ...s, ready: true };
+                };
+                const t1 = (rd.team1Slots || []).map(fillFn('味方'));
+                const t2 = (rd.team2Slots || []).map(fillFn('敵'));
+                tx.update(roomRef, { team1Slots: t1, team2Slots: t2, status: 'preparing', updatedAt: Date.now() });
+            }).catch(e => console.warn('Fill bots error:', e));
+        }
+
+        function renderOnlineMultiReadyScreen(roomId, initialData = null) {
+            const prevSolo = window._onlineLobbyState.isSoloLocal;
+            const prevSoloData = window._onlineLobbyState.soloRoomData;
+            cleanupOnlineLobby();
+            window._onlineLobbyState.roomId = roomId;
+            if (prevSolo) {
+                window._onlineLobbyState.isSoloLocal = true;
+                window._onlineLobbyState.soloRoomData = prevSoloData;
+            }
+
+            const drawLobbyView = (roomData) => {
+                const container = document.getElementById('screen-container');
+                if (!container || !roomData) return;
+                const myUid = window.getOnlineClientId();
+                const isHost = roomData.hostUid === myUid;
+                const myFound = findMySlotInRoom(roomData, myUid);
+                const myTeamNum = myFound ? myFound.teamNum : 1;
+                const mySlot = myFound ? myFound.slot : null;
+                const myCharId = mySlot?.charConfig?.charId || getSelectedOnlineMultiChar();
+                const isMyReady = !!(mySlot && mySlot.ready);
+
+                const stats = countHumanSlotStats(roomData);
+                const allyTeamNum = myTeamNum;
+                const enemyTeamNum = myTeamNum === 1 ? 2 : 1;
+                const allySlots = allyTeamNum === 1 ? (roomData.team1Slots || []) : (roomData.team2Slots || []);
+                const enemySlots = enemyTeamNum === 1 ? (roomData.team1Slots || []) : (roomData.team2Slots || []);
+
+                const renderLobbySlotList = (slots, teamNum, isAllySide) => slots.map((s, idx) => {
+                    if (!s || s.type === 'bot') {
+                        return `
+                            <div class="flex items-center justify-between gap-2 px-2.5 py-2 rounded border border-amber-500/60 bg-slate-900/90">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <span class="w-7 h-7 rounded bg-amber-950 border border-amber-500 flex items-center justify-center text-sm shrink-0">🤖</span>
+                                    <div class="min-w-0">
+                                        <div class="text-xs font-bold text-amber-300 truncate">${isAllySide ? '味方BOT' : '敵BOT'} ${idx + 1}</div>
+                                        <div class="text-[10px] text-slate-400 font-mono">CPU自動参戦</div>
+                                    </div>
+                                </div>
+                                <span class="text-[10px] font-pixel px-2 py-0.5 rounded bg-amber-900/70 text-amber-200 border border-amber-500/60 shrink-0">自動OK</span>
+                            </div>
+                        `;
+                    }
+                    if (!s.uid) {
+                        return `
+                            <div class="flex items-center justify-between gap-2 px-2.5 py-2 rounded border border-dashed border-slate-600 bg-slate-950/80">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <span class="w-7 h-7 rounded bg-slate-900 border border-slate-700 flex items-center justify-center text-xs text-slate-400 shrink-0">⏳</span>
+                                    <div class="min-w-0">
+                                        <div class="text-xs font-bold text-slate-400 truncate">空きプレイヤー枠</div>
+                                        <div class="text-[10px] text-slate-500 font-mono">参加待機中...</div>
+                                    </div>
+                                </div>
+                                ${!isMyReady && !window._onlineLobbyState.isSoloLocal ? `
+                                    <button type="button" onclick="moveOnlineMultiLobbySlot('${roomId}', ${teamNum}, ${idx})" class="pixel-btn px-2 py-0.5 text-[10px] bg-slate-800 border-slate-500 text-sky-300 shrink-0">⇄ 移動</button>
+                                ` : ''}
+                            </div>
+                        `;
+                    }
+                    const isMe = s.uid === myUid;
+                    const charId = s.charConfig?.charId || 'asaiomizu';
+                    const charName = (CHARACTER_DATA[charId] && CHARACTER_DATA[charId].name) || charId;
+                    const borderColor = isMe ? 'border-emerald-400 bg-emerald-950/60' : (isAllySide ? 'border-emerald-600/80 bg-emerald-950/35' : 'border-red-500/80 bg-red-950/35');
+                    return `
+                        <div class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded border-2 ${borderColor}">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <canvas id="lobby-slot-cvs-${teamNum}-${idx}" width="32" height="32" class="w-8 h-8 rounded bg-slate-950 border border-slate-700 shrink-0"></canvas>
+                                <div class="min-w-0">
+                                    <div class="text-xs font-bold ${isMe ? 'text-emerald-300' : 'text-white'} truncate">${isMe ? '★あなた' : (s.playerName || 'プレイヤー')}</div>
+                                    <div class="text-[10px] text-amber-300 font-mono truncate">使用: ${charName}</div>
+                                </div>
+                            </div>
+                            <span class="text-[10px] font-pixel font-bold px-2 py-0.5 rounded border whitespace-nowrap shrink-0 ${s.ready ? 'bg-emerald-700 text-white border-emerald-300' : 'bg-slate-800 text-amber-300 border-amber-500/60'}">
+                                ${s.ready ? '✅ 完了' : '⏳ 準備中'}
+                            </span>
+                        </div>
+                    `;
+                }).join('');
+
+                let bannerText = '';
+                let bannerStyle = '';
+                if (!stats.allJoined) {
+                    bannerText = `⏳ マッチング待機中 (${stats.joinedHumans}/${stats.requiredHumans}人参加) — 待っている間に下のキャラを選んでおけます`;
+                    bannerStyle = 'bg-amber-950/70 border-amber-500 text-amber-200';
+                } else if (!stats.allReady) {
+                    bannerText = `🎉 マッチ成立！(${stats.joinedHumans}/${stats.requiredHumans}人) — 出陣キャラを選んで「✅ 完了」を押してください (${stats.readyHumans}/${stats.requiredHumans})`;
+                    bannerStyle = 'bg-sky-950/80 border-sky-400 text-sky-200';
+                } else {
+                    bannerText = '⚔️ 全員準備完了！まもなくバトルを開始します！';
+                    bannerStyle = 'bg-emerald-950/90 border-emerald-400 text-emerald-200 animate-pulse';
+                }
+
+                const unlockedList = Object.values(CHARACTER_DATA).filter(c => playerState.unlockedChars.includes(c.id));
+
+                container.innerHTML = `
+                    <div class="relative w-full h-full flex flex-col justify-between p-2.5 sm:p-4 select-none overflow-hidden bg-slate-950 text-white">
+                        <div class="flex items-center justify-between gap-2 w-full mb-1.5 shrink-0">
+                            <button onclick="cancelOnlineRoomAndReturn('multi')" class="pixel-btn pixel-btn-danger px-2.5 py-1 text-xs font-bold whitespace-nowrap shrink-0">
+                                ◀ 退出
+                            </button>
+                            <div class="flex items-center gap-2 min-w-0">
+                                <h2 class="text-sky-300 font-pixel text-xs sm:text-base font-bold whitespace-nowrap truncate">🛡️ 対戦準備ロビー</h2>
+                                ${roomData.roomCode ? `
+                                    <span class="bg-amber-950 border border-amber-400 text-amber-300 font-mono font-bold text-xs px-2 py-0.5 rounded whitespace-nowrap">CODE: ${roomData.roomCode}</span>
+                                    <button type="button" onclick="copyOnlineRoomCode('${roomData.roomCode}')" class="pixel-btn pixel-btn-primary px-2 py-0.5 text-[10px] font-bold whitespace-nowrap">📋</button>
+                                    <span id="room-code-copy-toast" class="text-[10px] text-emerald-300 font-bold"></span>
+                                ` : `<span class="bg-slate-900 border border-sky-500/60 text-sky-300 font-mono text-[10px] px-2 py-0.5 rounded whitespace-nowrap">${roomData.matchType === 'solo' ? 'ソロ練習' : 'クイックマッチ'}</span>`}
+                            </div>
+                            <div class="text-[11px] font-mono text-amber-300 whitespace-nowrap shrink-0">${stats.readyHumans}/${stats.requiredHumans} 完了</div>
+                        </div>
+
+                        <div class="px-3 py-1.5 rounded border text-[11px] font-mono text-center mb-2 shrink-0 ${bannerStyle}">
+                            ${bannerText}
+                        </div>
+
+                        <div class="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto pr-0.5">
+                            <!-- 上段: 味方3枠 vs 敵3枠 -->
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 shrink-0">
+                                <div class="pixel-box bg-slate-900/90 border border-emerald-700/80 p-2 space-y-1.5">
+                                    <div class="text-[11px] font-pixel font-bold text-emerald-300">🛡️ あなたのチーム (3枠)</div>
+                                    <div class="space-y-1">${renderLobbySlotList(allySlots, allyTeamNum, true)}</div>
+                                </div>
+                                <div class="pixel-box bg-slate-900/90 border border-red-700/80 p-2 space-y-1.5">
+                                    <div class="text-[11px] font-pixel font-bold text-red-300">⚔️ 相手チーム (3枠)</div>
+                                    <div class="space-y-1">${renderLobbySlotList(enemySlots, enemyTeamNum, false)}</div>
+                                </div>
+                            </div>
+
+                            <!-- 下段: 自分の出陣キャラ1体選択 -->
+                            <div class="pixel-box bg-slate-900/95 border border-slate-700 p-2 space-y-1.5">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-[11px] font-pixel font-bold text-amber-300">⚔️ あなたの出陣キャラ (1体選択)</span>
+                                    <span class="text-[10px] font-mono text-emerald-300">選択中: <b>${(CHARACTER_DATA[myCharId] || {}).name || myCharId}</b></span>
+                                </div>
+                                <div class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-1.5">
+                                    ${unlockedList.map(c => {
+                                        const selected = c.id === myCharId;
+                                        return `
+                                            <button type="button" onclick="selectOnlineMultiLobbyChar('${roomId}', '${c.id}')" class="p-1.5 rounded border-2 flex flex-col items-center gap-1 transition-all cursor-pointer ${selected ? 'border-emerald-400 bg-emerald-950/70 shadow' : 'border-slate-700 bg-slate-950 hover:border-slate-400'}">
+                                                <canvas id="lobby-pick-cvs-${c.id}" width="40" height="40" class="w-9 h-9 rounded bg-slate-900"></canvas>
+                                                <span class="text-[10px] font-bold truncate max-w-full ${selected ? 'text-emerald-300' : 'text-slate-200'}">${c.name}</span>
+                                            </button>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-center justify-center gap-2 pt-2 shrink-0">
+                            <button type="button" onclick="toggleOnlineMultiLobbyReady('${roomId}')" class="pixel-btn ${isMyReady ? 'pixel-btn-warning' : 'pixel-btn-success'} px-8 py-2 text-xs sm:text-sm font-bold font-pixel shadow-xl whitespace-nowrap">
+                                ${isMyReady ? '⏳ 準備完了を解除する' : '✅ 完了（準備OK）'}
+                            </button>
+                            ${isHost && !stats.allJoined && !window._onlineLobbyState.isSoloLocal ? `
+                                <button type="button" onclick="hostFillEmptySlotsWithBotsAndStart('${roomId}')" class="pixel-btn pixel-btn-primary px-4 py-2 text-xs font-bold font-pixel whitespace-nowrap">
+                                    🤖 空き枠をBOTにして開始
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+
+                setTimeout(() => {
+                    allySlots.forEach((s, idx) => {
+                        if (s && s.type === 'human' && s.uid) {
+                            const cvs = document.getElementById(`lobby-slot-cvs-${allyTeamNum}-${idx}`);
+                            if (cvs) CharacterRenderer.drawCharacter(cvs, s.charConfig?.charId || 'asaiomizu');
+                        }
+                    });
+                    enemySlots.forEach((s, idx) => {
+                        if (s && s.type === 'human' && s.uid) {
+                            const cvs = document.getElementById(`lobby-slot-cvs-${enemyTeamNum}-${idx}`);
+                            if (cvs) CharacterRenderer.drawCharacter(cvs, s.charConfig?.charId || 'asaiomizu');
+                        }
+                    });
+                    unlockedList.forEach(c => {
+                        const cvs = document.getElementById(`lobby-pick-cvs-${c.id}`);
+                        if (cvs) CharacterRenderer.drawCharacter(cvs, c.id);
+                    });
+                }, 30);
+            };
+
+            if (initialData) {
+                drawLobbyView(initialData);
+            }
+
+            if (window._onlineLobbyState.isSoloLocal || !window.fbDb || !window.fbDoc || !window.fbOnSnapshot) {
+                return;
+            }
+
+            const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
+            window._onlineLobbyState.heartbeatId = setInterval(() => {
+                if (window._onlineLobbyState.roomId !== roomId) return;
+                window.fbUpdateDoc(roomRef, { updatedAt: Date.now() }).catch(() => {});
+            }, 5000);
+
+            window._onlineLobbyState.unsub = window.fbOnSnapshot(roomRef, (snap) => {
+                if (!snap.exists()) return;
+                const rd = snap.data();
+                if (!rd || rd.status === 'ended') {
+                    cleanupOnlineLobby();
+                    showModal('ルーム解散', 'ホストがルームを終了しました。');
+                    renderOnlineMatchmakingScreen('multi');
+                    return;
+                }
+                drawLobbyView(rd);
+                const stats = countHumanSlotStats(rd);
+                const myUid = window.getOnlineClientId();
+                if (stats.allReady && rd.hostUid === myUid && rd.status !== 'playing') {
+                    window.fbUpdateDoc(roomRef, { status: 'playing', updatedAt: Date.now() }).catch(() => {});
+                }
+                if ((rd.status === 'playing' || stats.allReady) && window._onlineLobbyState.launchedRoomId !== roomId) {
+                    if (rd.status === 'playing') {
+                        window._onlineLobbyState.launchedRoomId = roomId;
+                        window._onlineLobbyState.launchTimeoutId = setTimeout(() => {
+                            launchOnlineSyncedBattle(roomId, rd);
+                        }, 700);
+                    }
+                }
+            });
+        }
+
+        function launchOnlineSyncedBattle(roomId, roomData, isLocalSolo = false) {
+            audioSystem.playSelect();
+            cleanupOnlineLobby();
+            window.isOnlineBattleMode = true;
+            newBattleViewMode = 'main';
+            isNewBattleSkillModalOpen = false;
+
+            if (activeNewBattle) {
+                activeNewBattle.battleEnded = true;
+                activeNewBattle.destroy();
+                activeNewBattle.stopElapsedTimer();
+                activeNewBattle = null;
+            }
+
+            const myUid = window.getOnlineClientId();
+            const isHost = isLocalSolo ? true : (roomData.hostUid === myUid);
+            const is2p = roomData.mode === '2p';
+            let myTeamNum = 1;
+            let myControlSlots = [0, 1, 2];
+
+            if (!is2p) {
+                const found = findMySlotInRoom(roomData, myUid);
+                myTeamNum = found ? found.teamNum : 1;
+                myControlSlots = found ? [found.slotIdx] : [0];
+            } else {
+                myTeamNum = isHost ? 1 : 2;
+                myControlSlots = [0, 1, 2];
+            }
+
+            const fillBotCharConfigs = (slots) => {
+                const allIds = Object.keys(CHARACTER_DATA);
+                const fallbackOrder = ['pasha', 'courtney', 'ndaihyo', 'asaiomizu', 'momo', 'iwaba'];
+                return slots.map((s, idx) => {
+                    if (s && s.charConfig && s.charConfig.charId) return s;
+                    const picked = fallbackOrder[idx % fallbackOrder.length] || allIds[idx % Math.max(1, allIds.length)] || 'pasha';
+                    return {
+                        ...(s || { type: 'bot' }),
+                        charConfig: { charId: picked, customStats: null }
+                    };
+                });
+            };
+
+            const t1Slots = fillBotCharConfigs(roomData.team1Slots || []);
+            const t2Slots = fillBotCharConfigs(roomData.team2Slots || []);
+            const myTeamConfigs = (myTeamNum === 1 ? t1Slots : t2Slots).map(s => s.charConfig.charId);
+            const oppLeadId = (myTeamNum === 1 ? t2Slots : t1Slots)[0]?.charConfig?.charId || 'pasha';
+
+            const battleOptions = {
+                isOnlineBattleMode: true,
+                isOnlineSynced: !isLocalSolo,
+                isOnlineHost: isHost,
+                onlineClientId: myUid,
+                myTeamNum: myTeamNum,
+                myControlSlots: myControlSlots,
+                matchMode: is2p ? '2p' : 'multi',
+                controlSingleAllyOnly: !is2p,
+                controlledAllyIndex: myControlSlots[0] || 0,
+                team1Slots: t1Slots,
+                team2Slots: t2Slots,
+                allySlots: (myTeamNum === 1 ? t1Slots : t2Slots).map(s => s.type),
+                enemySlots: (myTeamNum === 1 ? t2Slots : t1Slots).map(s => s.type),
+                allyHumanCount: (myTeamNum === 1 ? t1Slots : t2Slots).filter(s => s.type === 'human').length,
+                enemyHumanCount: (myTeamNum === 1 ? t2Slots : t1Slots).filter(s => s.type === 'human').length
+            };
+
+            activeNewBattle = new BattleEngine(
+                myTeamConfigs,
+                oppLeadId,
+                !isLocalSolo,
+                myTeamNum,
+                isLocalSolo ? null : roomId,
+                true,
+                battleOptions
+            );
+
+            activeNewBattle.onLogUpdate = (msg, colorClass, teamType) => {
+                appendNewBattleLog(msg, colorClass, teamType);
+            };
+            activeNewBattle.onTimerUpdate = (sec) => {
+                const timerEl = document.getElementById('new-battle-timer');
+                if (timerEl) {
+                    timerEl.innerText = sec;
+                    if (sec <= 5) timerEl.className = 'font-pixel text-xs sm:text-sm font-bold text-red-500 animate-ping';
+                    else timerEl.className = 'font-pixel text-xs sm:text-sm font-bold text-emerald-400';
+                }
+            };
+            activeNewBattle.onElapsedTimerUpdate = (sec) => {
+                const elapsedEl = document.getElementById('new-battle-elapsed-timer');
+                if (elapsedEl) {
+                    elapsedEl.innerText = formatElapsedTime(sec);
+                }
+            };
+            activeNewBattle.onStateChange = () => {
+                renderNewBattleScreen();
+            };
+            activeNewBattle.onCutin = (title, subtitle) => {
+                if (typeof triggerCutinBanner === 'function') triggerCutinBanner(title, subtitle);
+            };
+            activeNewBattle.onBattleEnd = () => {
+                updateNewBattleUIValues();
+                handleNewBattleEnd();
+            };
+
+            activeNewBattle.startBattle();
+            renderNewBattleScreen();
+        }
+
+        window.proceedFromMultiSetupToMatchmaking = proceedFromMultiSetupToMatchmaking;
+        window.renderOnlineMatchmakingScreen = renderOnlineMatchmakingScreen;
+        window.fallbackLaunchBotFromMatchmaking = fallbackLaunchBotFromMatchmaking;
+        window.startSoloMultiReadyLobby = startSoloMultiReadyLobby;
+        window.startOnlineQuickMatch = startOnlineQuickMatch;
+        window.createOnlineCodeRoom = createOnlineCodeRoom;
+        window.joinOnlineRoomByCode = joinOnlineRoomByCode;
+        window.copyOnlineRoomCode = copyOnlineRoomCode;
+        window.cancelOnlineRoomAndReturn = cancelOnlineRoomAndReturn;
+        window.renderOnlineWaitingRoomScreen = renderOnlineWaitingRoomScreen;
+        window.renderOnlineMultiReadyScreen = renderOnlineMultiReadyScreen;
+        window.selectOnlineMultiLobbyChar = selectOnlineMultiLobbyChar;
+        window.toggleOnlineMultiLobbyReady = toggleOnlineMultiLobbyReady;
+        window.moveOnlineMultiLobbySlot = moveOnlineMultiLobbySlot;
+        window.hostFillEmptySlotsWithBotsAndStart = hostFillEmptySlotsWithBotsAndStart;
+        window.launchOnlineSyncedBattle = launchOnlineSyncedBattle;
+        window.cleanupOnlineLobby = cleanupOnlineLobby;
 
         window.getOnlineBattleConfig = getOnlineBattleConfig;
         window.setOnlineMatchFormat = setOnlineMatchFormat;
@@ -2841,6 +4263,10 @@ pasha_dark: {
                 this.isNewBattle = isNewBattle;
                 const opts = battleOptions || {};
                 this.isOnlineBattleMode = !!opts.isOnlineBattleMode;
+                this.isOnlineSynced = !!(opts.isOnlineSynced && isOnline && roomId);
+                this.isOnlineHost = !!opts.isOnlineHost;
+                this.onlineClientId = opts.onlineClientId || (typeof window.getOnlineClientId === 'function' ? window.getOnlineClientId() : 'local');
+                this.myTeamNum = opts.myTeamNum || myPlayerNum || 1;
                 this.onlineMatchMode = opts.matchMode || '2p';
                 this.allySlots = Array.isArray(opts.allySlots) && opts.allySlots.length === 3 ? [...opts.allySlots] : ['human', 'human', 'human'];
                 this.enemySlots = Array.isArray(opts.enemySlots) && opts.enemySlots.length === 3 ? [...opts.enemySlots] : ['human', 'human', 'human'];
@@ -2849,11 +4275,17 @@ pasha_dark: {
                 this.allyBotCount = Math.max(0, 3 - this.allyHumanCount);
                 this.enemyBotCount = Math.max(0, 3 - this.enemyHumanCount);
                 this.controlSingleAllyOnly = !!opts.controlSingleAllyOnly;
-                this.controlledAllyIndex = 0;
+                this.myControlSlots = Array.isArray(opts.myControlSlots) && opts.myControlSlots.length > 0
+                    ? [...opts.myControlSlots]
+                    : (this.controlSingleAllyOnly ? [opts.controlledAllyIndex || 0] : [0, 1, 2]);
+                this.controlledAllyIndex = this.myControlSlots[0] || 0;
+                this.team1Slots = Array.isArray(opts.team1Slots) ? opts.team1Slots.map(s => ({ ...s })) : null;
+                this.team2Slots = Array.isArray(opts.team2Slots) ? opts.team2Slots.map(s => ({ ...s })) : null;
                 this.turn = 1;
                 this.turnTimer = 15;
                 this.timerId = null;
                 this._autoActionTimeoutId = null;
+                this._hostRemoteWaitTimeout = null;
                 this._stepGen = 0;
                 this.battleEnded = false;
                 this.isSuddenDeath = false;
@@ -2861,6 +4293,21 @@ pasha_dark: {
                 this.isProcessing = false;
                 this.currentAttacker = null;
                 this.turnJustStarted = true;
+
+                this.onlineStepSeq = 0;
+                this.lastAppliedOnlineSeq = -1;
+                this.lastAppliedOnlineEventSeq = 0;
+                this._onlineEventSeq = 0;
+                this._onlineEventBuffer = [];
+                this.onlineAwaitingTeam = null;
+                this.onlineAwaitingSlot = null;
+                this.onlineAwaitingUid = null;
+                this.firstStrikerTeam = 1;
+                this.turnCanonicalPhase = 0;
+                this.turnCanonicalSlot = 0;
+                this.turnCanonicalOrder = [1, 2];
+                this._processingRemoteAction = false;
+                this._lastRemotePromptKey = null;
 
                 const isTeamArray = Array.isArray(p1CharId);
                 const ally1Id = isTeamArray ? (p1CharId[0] || 'asaiomizu') : (p1CharId || 'asaiomizu');
@@ -2871,7 +4318,68 @@ pasha_dark: {
                 this.waitingForChoice = false;
                 this.battleData = { pashaRollUsedCount: 0, pashaRollReviveCount: 0 };
 
-                if (this.isNewBattle) {
+                if (this.isNewBattle && this.team1Slots && this.team2Slots) {
+                    const buildTeamFromSlots = (slots, teamNum) => slots.map((slot, idx) => {
+                        const cId = (slot && slot.charConfig && slot.charConfig.charId && CHARACTER_DATA[slot.charConfig.charId])
+                            ? slot.charConfig.charId
+                            : 'asaiomizu';
+                        const cStats = (slot && slot.charConfig && slot.charConfig.customStats) ? slot.charConfig.customStats : null;
+                        const isMyTeam = (teamNum === this.myTeamNum);
+                        const isSlotBot = !slot || slot.type === 'bot' || !slot.uid;
+                        const defaultName = isMyTeam
+                            ? (isSlotBot ? `味方BOT${idx + 1}` : (slot.playerName || `味方${idx + 1}`))
+                            : (isSlotBot ? `敵BOT${idx + 1}` : (slot.playerName || `敵${idx + 1}`));
+                        const fighter = this.createBattlePlayer(cId, defaultName, isMyTeam ? 1 : 2, cStats);
+                        fighter.canonicalTeam = teamNum;
+                        fighter.canonicalSlot = idx;
+                        fighter.ownerUid = slot ? (slot.uid || null) : null;
+                        fighter.ownerName = slot ? (slot.playerName || '') : '';
+                        if (isMyTeam) {
+                            if (!this.controlSingleAllyOnly) {
+                                fighter.roleType = 'you';
+                                fighter.roleBadge = idx === 0 ? 'LEADER' : `${idx + 1}体目`;
+                                fighter.isBot = false;
+                            } else if (this.myControlSlots.includes(idx)) {
+                                fighter.roleType = 'you';
+                                fighter.roleBadge = 'YOU';
+                                fighter.isBot = false;
+                            } else if (isSlotBot) {
+                                fighter.roleType = 'bot';
+                                fighter.roleBadge = 'BOT';
+                                fighter.isBot = true;
+                            } else {
+                                fighter.roleType = 'ally_player';
+                                fighter.roleBadge = slot.playerName ? slot.playerName.slice(0, 6) : `味方P${idx + 1}`;
+                                fighter.isBot = false;
+                            }
+                        } else {
+                            if (!this.controlSingleAllyOnly) {
+                                fighter.roleType = (this.isOnlineSynced || this.isOnlineBattleMode) ? 'enemy_player' : 'bot';
+                                fighter.roleBadge = idx === 0 ? 'BOSS' : ((this.isOnlineSynced || this.isOnlineBattleMode) ? `敵${idx + 1}` : 'BOT');
+                                fighter.isBot = !(this.isOnlineSynced || this.isOnlineBattleMode);
+                            } else if (isSlotBot) {
+                                fighter.roleType = 'bot';
+                                fighter.roleBadge = 'BOT';
+                                fighter.isBot = true;
+                            } else {
+                                fighter.roleType = 'enemy_player';
+                                fighter.roleBadge = slot.playerName ? slot.playerName.slice(0, 6) : `敵P${idx + 1}`;
+                                fighter.isBot = false;
+                            }
+                        }
+                        return fighter;
+                    });
+
+                    this.team1Fighters = buildTeamFromSlots(this.team1Slots, 1);
+                    this.team2Fighters = buildTeamFromSlots(this.team2Slots, 2);
+                    this.allies = this.myTeamNum === 1 ? this.team1Fighters : this.team2Fighters;
+                    this.enemies = this.myTeamNum === 1 ? this.team2Fighters : this.team1Fighters;
+                    this.activeAllyIndex = this.myControlSlots[0] || 0;
+                    this.currentControllingAllyIndex = this.myControlSlots[0] || 0;
+                    this.controlledAllyIndex = this.myControlSlots[0] || 0;
+                    this.p1 = this.allies[this.activeAllyIndex] || this.allies[0];
+                    this.p2 = this.enemies[0];
+                } else if (this.isNewBattle) {
                     const allIds = Object.keys(CHARACTER_DATA);
                     const selectedTeam = isTeamArray ? p1CharId.filter(id => id && CHARACTER_DATA[id]) : [];
                     const otherAllyIds = allIds.filter(id => id !== ally1Id);
@@ -2891,9 +4399,13 @@ pasha_dark: {
                         this.createBattlePlayer(enemy2Id, '敵2', 2),
                         this.createBattlePlayer(enemy3Id, '敵3', 2)
                     ];
+                    this.team1Fighters = this.allies;
+                    this.team2Fighters = this.enemies;
 
                     if (this.isOnlineBattleMode && this.controlSingleAllyOnly) {
                         this.allies.forEach((a, idx) => {
+                            a.canonicalTeam = 1;
+                            a.canonicalSlot = idx;
                             if (idx === 0) {
                                 a.roleType = 'you';
                                 a.roleBadge = 'YOU';
@@ -2909,6 +4421,8 @@ pasha_dark: {
                             }
                         });
                         this.enemies.forEach((e, idx) => {
+                            e.canonicalTeam = 2;
+                            e.canonicalSlot = idx;
                             if (this.enemySlots[idx] === 'human') {
                                 e.roleType = 'enemy_player';
                                 e.roleBadge = `敵P${idx + 1}`;
@@ -2921,11 +4435,15 @@ pasha_dark: {
                         });
                     } else {
                         this.allies.forEach((a, idx) => {
+                            a.canonicalTeam = 1;
+                            a.canonicalSlot = idx;
                             a.roleType = 'you';
                             a.roleBadge = idx === 0 ? 'LEADER' : `${idx + 1}体目`;
                             a.isBot = false;
                         });
                         this.enemies.forEach((e, idx) => {
+                            e.canonicalTeam = 2;
+                            e.canonicalSlot = idx;
                             e.roleType = this.isOnlineBattleMode ? 'enemy_player' : 'bot';
                             e.roleBadge = idx === 0 ? 'BOSS' : (this.isOnlineBattleMode ? `敵${idx + 1}` : 'BOT');
                             e.isBot = !this.isOnlineBattleMode;
@@ -2942,9 +4460,9 @@ pasha_dark: {
                 this.p1TargetChar = null;
                 this.allyActions = this.isNewBattle ? new Array(this.allies.length).fill(null) : [null];
                 this.allyTargets = this.isNewBattle ? new Array(this.allies.length).fill(null) : [null];
-                this.currentControllingAllyIndex = 0;
+                this.currentControllingAllyIndex = this.myControlSlots[0] || 0;
 
-                this.botAdapter = isOnline ? null : new BotInputAdapter();
+                this.botAdapter = new BotInputAdapter();
 
                 this.onLogUpdate = null;
                 this.onTimerUpdate = null;
@@ -2966,6 +4484,15 @@ pasha_dark: {
                 this.onElapsedTimerUpdate = null;
             }
 
+            isMyTurnOnline() {
+                if (this.battleEnded || this.isProcessing || this.waitingForOpponent) return false;
+                if (!this.p1 || this.p1.hp <= 0 || this.p1.isResting) return false;
+                if (this.isOnlineSynced && this.isNewBattle) {
+                    return this.onlineAwaitingTeam === this.myTeamNum && this.myControlSlots.includes(this.onlineAwaitingSlot);
+                }
+                return this.p1Action === null;
+            }
+
             startElapsedTimer() {
                 this.stopElapsedTimer();
                 this.elapsedSeconds = 0;
@@ -2985,6 +4512,7 @@ pasha_dark: {
             }
 
             checkActiveAllyStatus() {
+                if (this.isOnlineSynced) return false;
                 if (!this.isNewBattle || this.battleEnded || this.waitingForChoice) return false;
                 if (this.isProcessing) return false;
                 const currentActiveAlly = this.allies[this.activeAllyIndex || 0];
@@ -3015,8 +4543,6 @@ pasha_dark: {
                 return 'system';
             }
 
-
-
             logTeam(actor, msg, colorClass = 'text-slate-200') {
                 const teamType = this.getCharacterTeam(actor);
                 const prefix = teamType === 'ally' ? '【味方】' : (teamType === 'enemy' ? '【敵】' : '');
@@ -3036,6 +4562,22 @@ pasha_dark: {
                 if (this.battleLogs) {
                     this.battleLogs.push({ msg, colorClass, teamType });
                 }
+                if (this.isOnlineSynced && this.isOnlineHost) {
+                    const oppTeamNum = this.myTeamNum === 1 ? 2 : 1;
+                    const canonicalTeam = teamType === 'ally' ? this.myTeamNum : (teamType === 'enemy' ? oppTeamNum : 0);
+                    this._onlineEventSeq = (this._onlineEventSeq || 0) + 1;
+                    this._onlineEventBuffer.push({
+                        seq: this._onlineEventSeq,
+                        type: 'log',
+                        msg,
+                        colorClass,
+                        canonicalTeam,
+                        hostTeamNum: this.myTeamNum
+                    });
+                    if (this._onlineEventBuffer.length > 45) {
+                        this._onlineEventBuffer = this._onlineEventBuffer.slice(-45);
+                    }
+                }
                 if (this.onLogUpdate) {
                     this.onLogUpdate(msg, colorClass, teamType);
                 }
@@ -3053,7 +4595,7 @@ pasha_dark: {
 
 
 
-            createBattlePlayer(charId, displayName, playerNum = 1) {
+            createBattlePlayer(charId, displayName, playerNum = 1, customStatsOverride = null) {
                 const master = CHARACTER_DATA[charId] || CHARACTER_DATA.pasha;
 
                 let hp = master.hp;
@@ -3062,7 +4604,13 @@ pasha_dark: {
                 let critRate = master.critRate || 0.05;
                 let eva = master.eva;
 
-                if (this.isNewBattle && playerNum === 1 && !['dopagaking', 'courtney', 'pasha_dark'].includes(charId)) {
+                if (customStatsOverride && !['dopagaking', 'courtney', 'pasha_dark'].includes(charId)) {
+                    hp = customStatsOverride.hp;
+                    atk = customStatsOverride.atk;
+                    def = customStatsOverride.def;
+                    critRate = customStatsOverride.critRate > 1 ? (customStatsOverride.critRate / 100) : customStatsOverride.critRate;
+                    eva = customStatsOverride.eva;
+                } else if (this.isNewBattle && playerNum === 1 && !this.isOnlineSynced && !['dopagaking', 'courtney', 'pasha_dark'].includes(charId)) {
                     const custom = playerState.newBattleCustomStats && playerState.newBattleCustomStats[charId];
                     if (custom) {
                         hp = custom.hp;
@@ -3205,6 +4753,14 @@ pasha_dark: {
             }
 
             startBattle() {
+                if (this.isNewBattle && this.isOnlineSynced) {
+                    this.checkPashaPassive();
+                    this.initOnline3v3Sync();
+                    this.startElapsedTimer();
+                    if (this.onStateChange) this.onStateChange(this);
+                    return;
+                }
+
                 if (this.isNewBattle) {
                     const alliesList = this.allies || [this.p1];
                     const enemiesList = this.enemies || [this.p2];
@@ -3280,6 +4836,566 @@ pasha_dark: {
                     this.startElapsedTimer();
                     if (this.onStateChange) this.onStateChange(this);
                 }
+            }
+
+            async initOnline3v3Sync() {
+                if (this.onlineSyncStarted || !this.roomId || !window.fbDb) return;
+                this.onlineSyncStarted = true;
+                const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', this.roomId);
+
+                this.heartbeatTimer = setInterval(() => {
+                    if (this.battleEnded || !this.isOnlineSynced) return;
+                    const hbPayload = { [`battleHeartbeats.${this.onlineClientId}`]: Date.now() };
+                    if (this.isOnlineHost) hbPayload.hostLastSeen = Date.now();
+                    window.fbUpdateDoc(roomRef, hbPayload).catch(() => {});
+                }, 4000);
+
+                this.firestoreUnsub = window.fbOnSnapshot(roomRef, (snapshot) => {
+                    const data = snapshot.data ? snapshot.data() : null;
+                    if (!data) return;
+                    this.latestRoomData = data;
+
+                    if (this.isOnlineHost) {
+                        const pa = data.pendingAction;
+                        if (
+                            pa &&
+                            pa.stepSeq === this.onlineStepSeq &&
+                            this.onlineAwaitingTeam !== null &&
+                            pa.uid === this.onlineAwaitingUid &&
+                            !this._processingRemoteAction &&
+                            !this.battleEnded
+                        ) {
+                            this._processingRemoteAction = true;
+                            this.processOnlineHostHumanAction(pa).finally(() => {
+                                this._processingRemoteAction = false;
+                            });
+                        }
+                    } else {
+                        if (data.hostLastSeen && (Date.now() - data.hostLastSeen > 28000) && !this.battleEnded && this.isOnlineSynced) {
+                            this.log('⚠️ ホストとの接続が切断されたため、BOT戦へ切り替えます。', 'text-amber-400 font-bold');
+                            this.fallbackToBotMode();
+                            return;
+                        }
+                        if (data.battleState && typeof data.battleState.seq === 'number' && data.battleState.seq > this.lastAppliedOnlineSeq) {
+                            this.applyOnlineBattleState(data.battleState, data);
+                        }
+                    }
+                }, (err) => {
+                    console.error('Online 3v3 listener error:', err);
+                    this.fallbackToBotMode();
+                });
+
+                if (this.isOnlineHost) {
+                    const t1Total = (this.team1Fighters || []).reduce((sum, c) => sum + (c ? (c.maxHp || c.hp || 0) : 0), 0);
+                    const t2Total = (this.team2Fighters || []).reduce((sum, c) => sum + (c ? (c.maxHp || c.hp || 0) : 0), 0);
+                    const myTotal = this.myTeamNum === 1 ? t1Total : t2Total;
+                    const oppTotal = this.myTeamNum === 1 ? t2Total : t1Total;
+
+                    if (t1Total < t2Total) {
+                        this.firstStrikerTeam = 1;
+                    } else if (t2Total < t1Total) {
+                        this.firstStrikerTeam = 2;
+                    } else {
+                        this.firstStrikerTeam = Math.random() < 0.5 ? 1 : 2;
+                    }
+                    this.firstStrikerPlayerNum = (this.firstStrikerTeam === this.myTeamNum) ? 1 : 2;
+
+                    if (this.controlSingleAllyOnly) {
+                        this.log(`🌐 オンラインマルチ対戦 開始！（操作キャラ: ${this.p1.charName}）`, 'text-emerald-300 font-bold');
+                    } else {
+                        this.log(`🌐 オンライン2人対戦（3体操作）開始！`, 'text-emerald-300 font-bold');
+                    }
+                    this.log(`⚔️ バトル開始！ 味方チーム (合計HP: ${myTotal}) VS 敵チーム (合計HP: ${oppTotal})`, 'text-amber-300 font-bold');
+                    const firstIsMyTeam = this.firstStrikerTeam === this.myTeamNum;
+                    this.log(`❤️ 3体合計HP比較により、【${firstIsMyTeam ? '味方チーム' : '敵チーム'}】が先攻！（以降は先攻→後攻の交代制）`, firstIsMyTeam ? 'text-emerald-300 font-bold' : 'text-red-300 font-bold');
+
+                    await this.startOnlineHostTurn();
+                }
+            }
+
+            async publishOnlineBattleState(roomRef, extraFields = null) {
+                if (!this.isOnlineSynced || !this.isOnlineHost) return;
+                this._onlinePublishSeq = (this._onlinePublishSeq || 0) + 1;
+                const payload = {
+                    battleState: {
+                        seq: this._onlinePublishSeq,
+                        stepSeq: this.onlineStepSeq,
+                        turn: this.turn,
+                        isSuddenDeath: !!this.isSuddenDeath,
+                        firstStrikerTeam: this.firstStrikerTeam,
+                        turnCanonicalPhase: this.turnCanonicalPhase,
+                        turnCanonicalSlot: this.turnCanonicalSlot,
+                        awaitingTeam: this.onlineAwaitingTeam,
+                        awaitingSlot: this.onlineAwaitingSlot,
+                        awaitingUid: this.onlineAwaitingUid,
+                        isProcessing: !!this.isProcessing,
+                        currentAttackerTeam: this.currentAttacker ? this.currentAttacker.canonicalTeam : null,
+                        currentAttackerSlot: (this.currentAttacker && typeof this.currentAttacker.canonicalSlot === 'number') ? this.currentAttacker.canonicalSlot : null,
+                        battleEnded: !!this.battleEnded,
+                        winningTeam: this.winningTeam !== undefined ? this.winningTeam : null,
+                        winnerText: this.winnerText || '',
+                        team1Chars: (this.team1Fighters || []).map(f => this.serializePlayer(f)),
+                        team2Chars: (this.team2Fighters || []).map(f => this.serializePlayer(f)),
+                        events: [...(this._onlineEventBuffer || [])],
+                        updatedAt: Date.now()
+                    },
+                    hostLastSeen: Date.now()
+                };
+                if (extraFields && typeof extraFields === 'object') {
+                    Object.assign(payload, extraFields);
+                }
+                try {
+                    await window.fbUpdateDoc(roomRef, payload);
+                } catch (e) {
+                    console.error('publishOnlineBattleState error:', e);
+                }
+            }
+
+            async startOnlineHostTurn() {
+                if (!this.isOnlineSynced || !this.isOnlineHost || this.battleEnded) return;
+                this.currentTurnLogs = [];
+
+                const allFighters = [...(this.team1Fighters || []), ...(this.team2Fighters || [])];
+                allFighters.forEach(p => {
+                    if (p && p.hp > 0) this.checkPashaDarkMode(p);
+                });
+                this.checkPashaPassive();
+
+                if (this.isSuddenDeath) {
+                    this.log(`--- [ ターン ${this.turn} (🔥サドンデス) ] ---`, 'text-red-400 font-bold text-center');
+                } else {
+                    this.log(`--- [ ターン ${this.turn} ] ---`, 'text-slate-400 font-bold text-center');
+                }
+
+                this.turnCanonicalOrder = this.firstStrikerTeam === 1 ? [1, 2] : [2, 1];
+                this.turnCanonicalPhase = 0;
+                this.turnCanonicalSlot = 0;
+
+                const firstIsMyTeam = this.turnCanonicalOrder[0] === this.myTeamNum;
+                this.log(
+                    `⚡ ターン ${this.turn}：${firstIsMyTeam ? '【味方チーム】' : '【敵チーム】'}から1体ずつ行動し、続いて${firstIsMyTeam ? '【敵チーム】' : '【味方チーム】'}が行動します！`,
+                    firstIsMyTeam ? 'text-emerald-300 font-bold' : 'text-red-300 font-bold'
+                );
+
+                await this.advanceOnlineHostStep();
+            }
+
+            async advanceOnlineHostStep() {
+                if (!this.isOnlineSynced || !this.isOnlineHost || this.battleEnded) return;
+                if (!this.botAdapter) this.botAdapter = new BotInputAdapter();
+                const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', this.roomId);
+                this._stepGen = (this._stepGen || 0) + 1;
+                const myGen = this._stepGen;
+
+                if (this._hostRemoteWaitTimeout) {
+                    clearTimeout(this._hostRemoteWaitTimeout);
+                    this._hostRemoteWaitTimeout = null;
+                }
+
+                while (this.turnCanonicalPhase < 2) {
+                    if (this.battleEnded || myGen !== this._stepGen) return;
+                    const teamNum = this.turnCanonicalOrder[this.turnCanonicalPhase];
+                    const teamArr = teamNum === 1 ? this.team1Fighters : this.team2Fighters;
+                    const slotsArr = teamNum === 1 ? this.team1Slots : this.team2Slots;
+
+                    while (this.turnCanonicalSlot < teamArr.length && (!teamArr[this.turnCanonicalSlot] || teamArr[this.turnCanonicalSlot].hp <= 0)) {
+                        this.turnCanonicalSlot++;
+                    }
+
+                    if (this.turnCanonicalSlot >= teamArr.length) {
+                        this.turnCanonicalPhase++;
+                        this.turnCanonicalSlot = 0;
+                        if (this.turnCanonicalPhase < 2) {
+                            const nextTeam = this.turnCanonicalOrder[this.turnCanonicalPhase];
+                            const nextIsMy = nextTeam === this.myTeamNum;
+                            this.log(
+                                `🔄 続いて ${nextIsMy ? '【味方チーム】' : '【敵チーム】'}の行動フェーズへ！`,
+                                nextIsMy ? 'text-emerald-300 font-bold' : 'text-red-300 font-bold'
+                            );
+                        }
+                        continue;
+                    }
+
+                    const actor = teamArr[this.turnCanonicalSlot];
+                    const slotMeta = (slotsArr && slotsArr[this.turnCanonicalSlot]) || { type: 'bot' };
+                    const isHumanSlot = slotMeta.type === 'human' && !!slotMeta.uid && !actor.isBot;
+
+                    if (isHumanSlot && (actor.isResting || actor.eggplantReady)) {
+                        this.onlineAwaitingTeam = null;
+                        this.onlineAwaitingSlot = null;
+                        this.onlineAwaitingUid = null;
+                        this.waitingForOpponent = false;
+                        this.isProcessing = true;
+                        this.currentAttacker = actor;
+                        this.onlineStepSeq++;
+                        await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                        if (this.onStateChange) this.onStateChange(this);
+
+                        await new Promise(resolve => setTimeout(resolve, 450));
+                        if (this.battleEnded || myGen !== this._stepGen) return;
+
+                        const oppArr = teamNum === 1 ? this.team2Fighters : this.team1Fighters;
+                        const livingOpp = oppArr.filter(o => o && o.hp > 0);
+                        const forcedSkill = actor.eggplantReady ? 'momo_eggplant_burst' : 'rest';
+                        this.executePlayerAction(actor, livingOpp[0] || actor, forcedSkill);
+                        this.onlineStepSeq++;
+                        if (await this.checkWinner() || myGen !== this._stepGen) {
+                            await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                            if (this.onStateChange) this.onStateChange(this);
+                            return;
+                        }
+                        await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                        if (this.onStateChange) this.onStateChange(this);
+                        this.turnCanonicalSlot++;
+                        continue;
+                    }
+
+                    if (isHumanSlot) {
+                        const isMine = (teamNum === this.myTeamNum && this.myControlSlots.includes(this.turnCanonicalSlot));
+                        this.stopTimer();
+                        this.isProcessing = false;
+                        this.currentAttacker = null;
+                        this.onlineAwaitingTeam = teamNum;
+                        this.onlineAwaitingSlot = this.turnCanonicalSlot;
+                        this.onlineAwaitingUid = slotMeta.uid;
+                        this.waitingForOpponent = !isMine;
+                        this.p1Action = null;
+                        this.p1TargetIndex = null;
+                        this.p1TargetChar = null;
+
+                        if (isMine) {
+                            this.activeAllyIndex = this.turnCanonicalSlot;
+                            this.currentControllingAllyIndex = this.turnCanonicalSlot;
+                            this.p1 = actor;
+                            if (typeof newBattleViewMode !== 'undefined') newBattleViewMode = 'main';
+                            if (typeof isNewBattleSkillModalOpen !== 'undefined') isNewBattleSkillModalOpen = false;
+                            if (typeof newBattleTargetSelectSkillId !== 'undefined') newBattleTargetSelectSkillId = null;
+                            if (typeof newBattleTargetSelectType !== 'undefined') newBattleTargetSelectType = null;
+                            this.log(`👉 【味方 ${actor.charName}】のコマンドを選択してください！`, 'text-emerald-300 font-bold');
+                        } else {
+                            this.p1 = this.allies[this.myControlSlots[0] || 0] || this.allies[0];
+                            const actorLabel = slotMeta.playerName || actor.charName;
+                            this.log(`⏳ ${actorLabel} (${actor.charName}) の行動を待っています...`, 'text-slate-300');
+                        }
+
+                        this.onlineStepSeq++;
+                        await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                        if (this.onStateChange) this.onStateChange(this);
+
+                        if (isMine) {
+                            if (this.onCutin) {
+                                this.onCutin('🟢 自分のターン！', `ターン ${this.turn} - ${actor.charName} の行動を選択してください`);
+                            }
+                            this.startTimer();
+                        } else {
+                            const waitSeq = this.onlineStepSeq;
+                            const waitTeam = teamNum;
+                            const waitSlot = this.turnCanonicalSlot;
+                            this._hostRemoteWaitTimeout = setTimeout(async () => {
+                                this._hostRemoteWaitTimeout = null;
+                                if (this.battleEnded || myGen !== this._stepGen || this.onlineStepSeq !== waitSeq) return;
+                                if (this.onlineAwaitingTeam !== waitTeam || this.onlineAwaitingSlot !== waitSlot) return;
+                                const oppArr = waitTeam === 1 ? this.team2Fighters : this.team1Fighters;
+                                const livingOpp = oppArr.filter(o => o && o.hp > 0);
+                                const defTarget = livingOpp[Math.floor(Math.random() * Math.max(1, livingOpp.length))] || oppArr[0];
+                                const fallbackSkill = this.botAdapter.getDecision(actor, defTarget);
+                                this.log(`⏰ ${actor.charName} の応答がないため自動選択を実行します！`, 'text-amber-300');
+                                await this.processOnlineHostHumanAction({
+                                    stepSeq: waitSeq,
+                                    uid: slotMeta.uid,
+                                    teamNum: waitTeam,
+                                    slotIdx: waitSlot,
+                                    skillId: fallbackSkill,
+                                    targetTeam: waitTeam === 1 ? 2 : 1,
+                                    targetSlot: oppArr.indexOf(defTarget) >= 0 ? oppArr.indexOf(defTarget) : 0
+                                });
+                            }, 24000);
+                        }
+                        return;
+                    }
+
+                    // BOT スロットの行動
+                    this.onlineAwaitingTeam = null;
+                    this.onlineAwaitingSlot = null;
+                    this.onlineAwaitingUid = null;
+                    this.waitingForOpponent = false;
+                    this.isProcessing = true;
+                    this.currentAttacker = actor;
+                    this.onlineStepSeq++;
+                    await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                    if (this.onStateChange) this.onStateChange(this);
+
+                    await new Promise(resolve => setTimeout(resolve, BOT_ACTION_DELAY));
+                    if (this.battleEnded || myGen !== this._stepGen) return;
+                    if (!actor || actor.hp <= 0) {
+                        this.turnCanonicalSlot++;
+                        continue;
+                    }
+
+                    const opposingTeam = teamNum === 1 ? this.team2Fighters : this.team1Fighters;
+                    const ownTeam = teamArr;
+                    const livingOpposing = opposingTeam.filter(o => o && o.hp > 0);
+                    if (livingOpposing.length > 0) {
+                        const skillId = this.botAdapter.getDecision(actor, livingOpposing[0]);
+                        const skill = actor.skills.find(s => s.id === skillId) || actor.skills[0];
+                        const targetPool = (skill && skill.targetType === 'single_ally')
+                            ? ownTeam.filter(a => a && a.hp > 0)
+                            : livingOpposing;
+                        if (targetPool.length > 0) {
+                            let defender = targetPool[Math.floor(Math.random() * targetPool.length)];
+                            if (skill && skill.targetType === 'single_ally') {
+                                const unbuffed = targetPool.filter(a => !a.darknessPowerTurns || a.darknessPowerTurns <= 0);
+                                defender = unbuffed.length > 0 ? unbuffed[Math.floor(Math.random() * unbuffed.length)] : defender;
+                            }
+                            this.executePlayerAction(actor, defender, skillId);
+                            this.onlineStepSeq++;
+                            if (await this.checkWinner() || myGen !== this._stepGen) {
+                                await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                                if (this.onStateChange) this.onStateChange(this);
+                                return;
+                            }
+                            await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                            if (this.onStateChange) this.onStateChange(this);
+                        }
+                    }
+
+                    this.turnCanonicalSlot++;
+                }
+
+                if (!this.battleEnded && myGen === this._stepGen) {
+                    this.p1TargetIndex = null;
+                    this.p1TargetChar = null;
+                    this.currentAttacker = null;
+                    this.endTurnPhase();
+                    this.onlineStepSeq++;
+                    await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                    await this.startOnlineHostTurn();
+                }
+            }
+
+            async processOnlineHostHumanAction(actionObj) {
+                if (!this.isOnlineSynced || !this.isOnlineHost || this.battleEnded || !actionObj) return;
+                if (this._hostRemoteWaitTimeout) {
+                    clearTimeout(this._hostRemoteWaitTimeout);
+                    this._hostRemoteWaitTimeout = null;
+                }
+                const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', this.roomId);
+                const teamNum = actionObj.teamNum;
+                const slotIdx = actionObj.slotIdx;
+                const skillId = actionObj.skillId;
+                const teamArr = teamNum === 1 ? this.team1Fighters : this.team2Fighters;
+                const oppArr = teamNum === 1 ? this.team2Fighters : this.team1Fighters;
+                const attacker = teamArr[slotIdx];
+
+                if (!attacker || attacker.hp <= 0) {
+                    this.turnCanonicalSlot++;
+                    await this.advanceOnlineHostStep();
+                    return;
+                }
+
+                this.stopTimer();
+                this.onlineAwaitingTeam = null;
+                this.onlineAwaitingSlot = null;
+                this.onlineAwaitingUid = null;
+                this.waitingForOpponent = false;
+                this.isProcessing = true;
+                this.turnJustStarted = false;
+                this.currentAttacker = attacker;
+                if (this.onStateChange) this.onStateChange(this);
+
+                if (skillId === 'dopa_obey_copy' && actionObj.copiedObeySkill) {
+                    window.newBattleTargetSelectCopiedSkill = { ...actionObj.copiedObeySkill };
+                }
+
+                const livingOpp = oppArr.filter(o => o && o.hp > 0);
+                if (livingOpp.length > 0) {
+                    const recordedRec = (attacker.id === 'asaiomizu') ? attacker.recordedSkill : null;
+                    let skill = null;
+                    if (skillId === 'dopa_obey_copy' && window.newBattleTargetSelectCopiedSkill) {
+                        skill = { ...window.newBattleTargetSelectCopiedSkill, id: 'dopa_obey_copy' };
+                    } else if (attacker.id === 'asaiomizu' && skillId === 'asaiomizu_copied' && recordedRec) {
+                        skill = { targetType: recordedRec.targetType || 'single_enemy', ...recordedRec };
+                    } else {
+                        skill = attacker.skills.find(s => s.id === skillId) || attacker.skills[0];
+                    }
+
+                    const isAllyTarget = skill && skill.targetType === 'single_ally';
+                    const targetPool = isAllyTarget ? teamArr.filter(a => a && a.hp > 0) : livingOpp;
+                    const canonicalTargetTeam = actionObj.targetTeam === 1 ? this.team1Fighters : this.team2Fighters;
+                    const chosenByCoord = (canonicalTargetTeam && typeof actionObj.targetSlot === 'number')
+                        ? canonicalTargetTeam[actionObj.targetSlot]
+                        : null;
+                    const defender = (chosenByCoord && chosenByCoord.hp > 0 && targetPool.includes(chosenByCoord))
+                        ? chosenByCoord
+                        : (targetPool[0] || livingOpp[0]);
+
+                    this.executePlayerAction(attacker, defender, skillId);
+                }
+
+                if (skillId === 'dopa_obey_copy') {
+                    window.newBattleTargetSelectCopiedSkill = null;
+                }
+                this.p1Action = null;
+                this.p1TargetIndex = null;
+                this.p1TargetChar = null;
+                this.onlineStepSeq++;
+
+                if (await this.checkWinner()) {
+                    await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                    if (this.onStateChange) this.onStateChange(this);
+                    return;
+                }
+
+                await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                if (this.onStateChange) this.onStateChange(this);
+
+                const actionGen = this._stepGen || 0;
+                await new Promise(resolve => setTimeout(resolve, 650));
+                if (this.battleEnded || actionGen !== (this._stepGen || 0)) return;
+
+                this.turnCanonicalSlot++;
+                await this.advanceOnlineHostStep();
+            }
+
+            async applyOnlineBattleState(bs, roomData) {
+                if (!bs) return;
+                this.latestRoomData = roomData || this.latestRoomData;
+                this.lastAppliedOnlineSeq = bs.seq;
+                this.onlineStepSeq = bs.stepSeq || 0;
+                this.turn = bs.turn || 1;
+                this.isSuddenDeath = !!bs.isSuddenDeath;
+                this.firstStrikerTeam = bs.firstStrikerTeam || 1;
+                this.turnCanonicalPhase = bs.turnCanonicalPhase || 0;
+                this.turnCanonicalSlot = bs.turnCanonicalSlot || 0;
+                this.onlineAwaitingTeam = bs.awaitingTeam !== undefined ? bs.awaitingTeam : null;
+                this.onlineAwaitingSlot = bs.awaitingSlot !== undefined ? bs.awaitingSlot : null;
+                this.onlineAwaitingUid = bs.awaitingUid || null;
+                this.isProcessing = !!bs.isProcessing;
+
+                if (Array.isArray(bs.team1Chars) && this.team1Fighters) {
+                    bs.team1Chars.forEach((st, idx) => {
+                        if (this.team1Fighters[idx]) this.deserializePlayer(this.team1Fighters[idx], st);
+                    });
+                }
+                if (Array.isArray(bs.team2Chars) && this.team2Fighters) {
+                    bs.team2Chars.forEach((st, idx) => {
+                        if (this.team2Fighters[idx]) this.deserializePlayer(this.team2Fighters[idx], st);
+                    });
+                }
+
+                if (bs.currentAttackerTeam === 1 && typeof bs.currentAttackerSlot === 'number') {
+                    this.currentAttacker = this.team1Fighters[bs.currentAttackerSlot] || null;
+                } else if (bs.currentAttackerTeam === 2 && typeof bs.currentAttackerSlot === 'number') {
+                    this.currentAttacker = this.team2Fighters[bs.currentAttackerSlot] || null;
+                } else {
+                    this.currentAttacker = null;
+                }
+
+                if (this.onlineAwaitingTeam === this.myTeamNum && this.myControlSlots.includes(this.onlineAwaitingSlot)) {
+                    this.activeAllyIndex = this.onlineAwaitingSlot;
+                    this.currentControllingAllyIndex = this.onlineAwaitingSlot;
+                    this.p1 = this.allies[this.onlineAwaitingSlot] || this.allies[0];
+                } else {
+                    const fallbackIdx = this.myControlSlots[0] || 0;
+                    this.p1 = this.allies[fallbackIdx] || this.allies[0];
+                }
+
+                if (Array.isArray(bs.events)) {
+                    bs.events.forEach(ev => {
+                        if (!ev || typeof ev.seq !== 'number' || ev.seq <= this.lastAppliedOnlineEventSeq) return;
+                        this.lastAppliedOnlineEventSeq = ev.seq;
+
+                        if (ev.type === 'log') {
+                            const localTeamType = ev.canonicalTeam === 0
+                                ? 'system'
+                                : (ev.canonicalTeam === this.myTeamNum ? 'ally' : 'enemy');
+                            let msgText = ev.msg || '';
+                            if (ev.hostTeamNum && ev.hostTeamNum !== this.myTeamNum) {
+                                msgText = msgText
+                                    .replace(/【味方】/g, '[[TMP_ENEMY]]')
+                                    .replace(/【敵】/g, '【味方】')
+                                    .replace(/\[\[TMP_ENEMY\]\]/g, '【敵】')
+                                    .replace(/【味方チーム】/g, '[[TMP_ENEMY_T]]')
+                                    .replace(/【敵チーム】/g, '【味方チーム】')
+                                    .replace(/\[\[TMP_ENEMY_T\]\]/g, '【敵チーム】')
+                                    .replace(/味方チーム/g, '[[TMP_E_PLAIN]]')
+                                    .replace(/敵チーム/g, '味方チーム')
+                                    .replace(/\[\[TMP_E_PLAIN\]\]/g, '敵チーム');
+                            }
+                            if (this.battleLogs) {
+                                this.battleLogs.push({ msg: msgText, colorClass: ev.colorClass, teamType: localTeamType });
+                            }
+                            if (this.onLogUpdate) this.onLogUpdate(msgText, ev.colorClass, localTeamType);
+                        } else if (ev.type === 'effect') {
+                            const targetChar = ev.canonicalTeam === 1
+                                ? this.team1Fighters?.[ev.canonicalSlot]
+                                : (ev.canonicalTeam === 2 ? this.team2Fighters?.[ev.canonicalSlot] : null);
+                            if (targetChar && typeof triggerCharacterEffect === 'function') {
+                                triggerCharacterEffect(targetChar, ev.effectType, ev.text);
+                            }
+                            if (this.onVisualEffect) {
+                                const sideLabel = ev.canonicalTeam === this.myTeamNum ? 'Player' : 'Enemy';
+                                this.onVisualEffect(sideLabel, ev.effectType, ev.text);
+                            }
+                        } else if (ev.type === 'cutin') {
+                            if (this.onCutin) this.onCutin(ev.title, ev.subtitle);
+                        }
+                    });
+                }
+
+                if (bs.battleEnded) {
+                    this.stopTimer();
+                    this.stopElapsedTimer();
+                    this.waitingForOpponent = false;
+                    this.battleEnded = true;
+                    const livingAllies = (this.allies || []).filter(a => a && a.hp > 0);
+                    const livingEnemies = (this.enemies || []).filter(e => e && e.hp > 0);
+                    let result = 'draw';
+                    if (typeof bs.winningTeam === 'number') {
+                        if (bs.winningTeam === 0) result = 'draw';
+                        else result = (bs.winningTeam === this.myTeamNum) ? 'win' : 'lose';
+                    } else if (livingAllies.length > 0 && livingEnemies.length === 0) {
+                        result = 'win';
+                    } else if (livingAllies.length === 0 && livingEnemies.length > 0) {
+                        result = 'lose';
+                    }
+                    if (!this.statsRecorded) {
+                        this.statsRecorded = true;
+                        const myLead = this.allies?.[this.myControlSlots[0] || 0] || this.p1;
+                        const oppLead = this.enemies?.[0] || this.p2;
+                        if (typeof recordBattleResult === 'function') {
+                            recordBattleResult(result, myLead?.id || 'asaiomizu', oppLead?.ownerName || oppLead?.charName || '対戦相手', oppLead?.id || 'pasha', false, 'online_3v3', null, oppLead?.id || 'pasha');
+                        }
+                    }
+                    this.winnerText = result === 'win' ? '🎉 味方チームの勝利！' : (result === 'lose' ? '💀 敵チームの勝利！' : '⚔️ 引き分け！');
+                    if (this.onBattleEnd) this.onBattleEnd(this.winnerText);
+                    if (this.onStateChange) this.onStateChange(this);
+                    return;
+                }
+
+                const myTurnNow = (this.onlineAwaitingTeam === this.myTeamNum && this.myControlSlots.includes(this.onlineAwaitingSlot));
+                const promptKey = `${this.onlineStepSeq}_${this.onlineAwaitingTeam}_${this.onlineAwaitingSlot}`;
+                if (myTurnNow) {
+                    this.waitingForOpponent = false;
+                    this.p1Action = null;
+                    if (this._lastRemotePromptKey !== promptKey) {
+                        this._lastRemotePromptKey = promptKey;
+                        if (typeof newBattleViewMode !== 'undefined') newBattleViewMode = 'main';
+                        if (typeof isNewBattleSkillModalOpen !== 'undefined') isNewBattleSkillModalOpen = false;
+                        if (typeof newBattleTargetSelectSkillId !== 'undefined') newBattleTargetSelectSkillId = null;
+                        if (typeof newBattleTargetSelectType !== 'undefined') newBattleTargetSelectType = null;
+                        const actor = this.allies[this.onlineAwaitingSlot] || this.p1;
+                        if (this.onCutin && actor) {
+                            this.onCutin('🟢 自分のターン！', `ターン ${this.turn} - ${actor.charName} の行動を選択してください`);
+                        }
+                        this.startTimer();
+                    }
+                } else {
+                    this.stopTimer();
+                    this.waitingForOpponent = (this.onlineAwaitingUid !== null && this.onlineAwaitingUid !== this.onlineClientId);
+                }
+
+                if (this.onStateChange) this.onStateChange(this);
             }
 
             async initOnlineSync() {
@@ -3398,7 +5514,12 @@ pasha_dark: {
 
             fallbackToBotMode() {
                 this.isOnline = false;
+                this.isOnlineSynced = false;
                 this.botAdapter = new BotInputAdapter();
+                if (this._hostRemoteWaitTimeout) {
+                    clearTimeout(this._hostRemoteWaitTimeout);
+                    this._hostRemoteWaitTimeout = null;
+                }
                 if (this.firestoreUnsub) {
                     this.firestoreUnsub();
                     this.firestoreUnsub = null;
@@ -3408,41 +5529,78 @@ pasha_dark: {
                     this.heartbeatTimer = null;
                 }
                 this.waitingForOpponent = false;
-                this.startTimer();
+                if (this.isNewBattle) {
+                    this.onlineAwaitingTeam = null;
+                    this.onlineAwaitingSlot = null;
+                    this.onlineAwaitingUid = null;
+                    this.enemies.forEach(e => { if (e) e.isBot = true; });
+                    this.allies.forEach((a, i) => {
+                        if (a) a.isBot = (this.controlSingleAllyOnly && !this.myControlSlots.includes(i));
+                    });
+                    if (!this.battleEnded) {
+                        this.startNewBattleTurn();
+                    }
+                } else {
+                    this.startTimer();
+                }
                 if (this.onStateChange) this.onStateChange(this);
             }
 
             serializePlayer(p) {
-    return {
-        hp: p.hp,
-        maxHp: p.maxHp,
-        atk: p.atk,
-        def: p.def,
-        critRate: p.critRate !== undefined ? p.critRate : 0.05,
-        eva: p.eva,
-        buffAtk: p.buffAtk,
-        buffDef: p.buffDef,
-        buffAtkTurns: p.buffAtkTurns || 0,
-        cooldowns: { ...p.cooldowns },
-        courtneyChargeCount: p.courtneyChargeCount !== undefined ? p.courtneyChargeCount : 0,
-        dopaChargeCount: p.dopaChargeCount !== undefined ? p.dopaChargeCount : 0,
-        selectedInheritChar: p.selectedInheritChar || null,
-        tempEvadeNext: p.tempEvadeNext,
-        pashaKillerUsed: p.pashaKillerUsed,
-        isResting: p.isResting,
-        digActive: p.digActive,
-        digUsedTurn: p.digUsedTurn,
-        recordedSkill: p.recordedSkill ? { ...p.recordedSkill } : null,
-        eggplantReady: p.eggplantReady,
-        isMiniZou: p.isMiniZou,
-        momoRevived: p.momoRevived,
-        isDarkMode: p.isDarkMode,
-        defendBuffTurns: p.defendBuffTurns,
-        crimeDefDownTurns: p.crimeDefDownTurns || 0,
-        nightmareDefTurns: p.nightmareDefTurns || 0,
-        nightmareAtkActive: !!p.nightmareAtkActive
-    };
-}
+                return {
+                    id: p.id,
+                    hp: p.hp,
+                    maxHp: p.maxHp,
+                    atk: p.atk,
+                    def: p.def,
+                    critRate: p.critRate !== undefined ? p.critRate : 0.05,
+                    eva: p.eva,
+                    buffAtk: p.buffAtk,
+                    buffDef: p.buffDef,
+                    buffAtkTurns: p.buffAtkTurns || 0,
+                    cooldowns: { ...(p.cooldowns || {}) },
+                    courtneyChargeCount: p.courtneyChargeCount !== undefined ? p.courtneyChargeCount : 0,
+                    dopaChargeCount: p.dopaChargeCount !== undefined ? p.dopaChargeCount : 0,
+                    selectedInheritChar: p.selectedInheritChar || null,
+                    tempEvadeNext: !!p.tempEvadeNext,
+                    pashaKillerUsed: !!p.pashaKillerUsed,
+                    isResting: !!p.isResting,
+                    digActive: !!p.digActive,
+                    digUsedTurn: p.digUsedTurn || 0,
+                    recordedSkill: p.recordedSkill ? { ...p.recordedSkill } : null,
+                    eggplantReady: !!p.eggplantReady,
+                    isMiniZou: !!p.isMiniZou,
+                    momoRevived: !!p.momoRevived,
+                    isDarkMode: !!p.isDarkMode,
+                    defendBuffTurns: p.defendBuffTurns || 0,
+                    crimeDefDownTurns: p.crimeDefDownTurns || 0,
+                    nightmareDefTurns: p.nightmareDefTurns || 0,
+                    yoseruZeroDefTurns: p.yoseruZeroDefTurns || 0,
+                    nightmareAtkActive: !!p.nightmareAtkActive,
+                    critRateBonus: p.critRateBonus || 0,
+                    critBuffTurns: p.critBuffTurns || 0,
+                    evaDebuff: p.evaDebuff || 0,
+                    enemyEvaTurns: p.enemyEvaTurns || 0,
+                    momoEvaTurns: p.momoEvaTurns || 0,
+                    asaiomizuCritTurns: p.asaiomizuCritTurns || 0,
+                    pashaPassiveActive: !!p.pashaPassiveActive,
+                    stunTurns: p.stunTurns || 0,
+                    darknessPowerTurns: p.darknessPowerTurns || 0,
+                    darknessAppliedTurn: p.darknessAppliedTurn || 0,
+                    pashaRollUsedCount: p.pashaRollUsedCount || 0,
+                    pashaRollReviveCount: p.pashaRollReviveCount || 0,
+                    iwabaBathTurns: p.iwabaBathTurns || 0,
+                    iwabaEvaBonus: p.iwabaEvaBonus || 0,
+                    ndaihyoTacticsTurns: p.ndaihyoTacticsTurns || 0,
+                    pashaDarkEvaBonus: p.pashaDarkEvaBonus || 0,
+                    image: p.image || null,
+                    allImage: p.allImage || null,
+                    dieImage: p.dieImage || null,
+                    roleType: p.roleType || null,
+                    roleBadge: p.roleBadge || null,
+                    isBot: !!p.isBot
+                };
+            }
 
             deserializePlayer(p, state) {
                 if (!state) return;
@@ -3455,24 +5613,45 @@ pasha_dark: {
                 p.buffAtk = state.buffAtk;
                 p.buffDef = state.buffDef;
                 p.buffAtkTurns = state.buffAtkTurns || 0;
-                p.cooldowns = { ...state.cooldowns };
-                p.courtneyChargeCount = state.courtneyChargeCount;
+                p.cooldowns = { ...(state.cooldowns || {}) };
+                p.courtneyChargeCount = state.courtneyChargeCount || 0;
                 p.dopaChargeCount = state.dopaChargeCount !== undefined ? state.dopaChargeCount : 0;
                 p.selectedInheritChar = state.selectedInheritChar || null;
-                p.tempEvadeNext = state.tempEvadeNext;
-                p.pashaKillerUsed = state.pashaKillerUsed;
-                p.isResting = state.isResting;
-                p.digActive = state.digActive;
-                p.digUsedTurn = state.digUsedTurn;
+                p.tempEvadeNext = !!state.tempEvadeNext;
+                p.pashaKillerUsed = !!state.pashaKillerUsed;
+                p.isResting = !!state.isResting;
+                p.digActive = !!state.digActive;
+                p.digUsedTurn = state.digUsedTurn || 0;
                 p.recordedSkill = state.recordedSkill ? { ...state.recordedSkill } : null;
-                p.eggplantReady = state.eggplantReady;
-                p.isMiniZou = state.isMiniZou;
-                p.momoRevived = state.momoRevived;
-                p.isDarkMode = state.isDarkMode;
-                p.defendBuffTurns = state.defendBuffTurns;
+                p.eggplantReady = !!state.eggplantReady;
+                p.isMiniZou = !!state.isMiniZou;
+                p.momoRevived = !!state.momoRevived;
+                p.isDarkMode = !!state.isDarkMode;
+                p.defendBuffTurns = state.defendBuffTurns || 0;
                 p.crimeDefDownTurns = state.crimeDefDownTurns || 0;
                 p.nightmareDefTurns = state.nightmareDefTurns || 0;
+                p.yoseruZeroDefTurns = state.yoseruZeroDefTurns || 0;
                 p.nightmareAtkActive = !!state.nightmareAtkActive;
+                p.critRateBonus = state.critRateBonus || 0;
+                p.critBuffTurns = state.critBuffTurns || 0;
+                p.evaDebuff = state.evaDebuff || 0;
+                p.enemyEvaTurns = state.enemyEvaTurns || 0;
+                p.momoEvaTurns = state.momoEvaTurns || 0;
+                p.asaiomizuCritTurns = state.asaiomizuCritTurns || 0;
+                p.pashaPassiveActive = !!state.pashaPassiveActive;
+                p.stunTurns = state.stunTurns || 0;
+                p.darknessPowerTurns = state.darknessPowerTurns || 0;
+                p.darknessAppliedTurn = state.darknessAppliedTurn || 0;
+                p.pashaRollUsedCount = state.pashaRollUsedCount || 0;
+                p.pashaRollReviveCount = state.pashaRollReviveCount || 0;
+                p.iwabaBathTurns = state.iwabaBathTurns || 0;
+                p.iwabaEvaBonus = state.iwabaEvaBonus || 0;
+                p.ndaihyoTacticsTurns = state.ndaihyoTacticsTurns || 0;
+                p.pashaDarkEvaBonus = state.pashaDarkEvaBonus || 0;
+                if (state.image) p.image = state.image;
+                if (state.allImage) p.allImage = state.allImage;
+                if (state.dieImage) p.dieImage = state.dieImage;
+                if (state.isBot !== undefined) p.isBot = !!state.isBot;
             }
 
             startTimer() {
@@ -3538,6 +5717,7 @@ pasha_dark: {
 
             handleTimeOut() {
                 if (this.battleEnded || this.isProcessing || this.waitingForOpponent) return;
+                if (this.isOnlineSynced && this.isNewBattle && !this.isMyTurnOnline()) return;
                 this.resetBattleUIAndModals();
                 this.log('⏰ 制限時間切れ！自動選択します。', 'text-amber-400 font-bold');
 
@@ -3570,7 +5750,9 @@ pasha_dark: {
                     p2Default = normalSkill ? normalSkill.id : (this.p2.skills && this.p2.skills[0] ? this.p2.skills[0].id : 'momo_attack');
                 }
 
-                if (this.isOnline) {
+                if (this.isOnlineSynced && this.isNewBattle) {
+                    if (this.isMyTurnOnline()) this.submitAction(1, p1Default);
+                } else if (this.isOnline) {
                     if (this.myPlayerNum === 1 && !this.p1Action) this.submitAction(1, p1Default);
                     if (this.myPlayerNum === 2 && !this.p2Action) this.submitAction(2, p2Default);
                 } else if (this.isNewBattle) {
@@ -3588,25 +5770,80 @@ pasha_dark: {
 
             async submitAction(pNum, skillId) {
                 if (this.battleEnded) return;
+                if (this.isOnlineSynced && this.isNewBattle) {
+                    if (!this.isMyTurnOnline()) return;
+
+                    const activeSlotIdx = (typeof this.onlineAwaitingSlot === 'number')
+                        ? this.onlineAwaitingSlot
+                        : (this.myControlSlots[0] || 0);
+                    const tgtIdx = this.p1TargetIndex;
+                    const tgtChar = this.p1TargetChar;
+                    const copiedObeySkill = (skillId === 'dopa_obey_copy' && window.newBattleTargetSelectCopiedSkill)
+                        ? { ...window.newBattleTargetSelectCopiedSkill }
+                        : null;
+
+                    let targetTeam = this.myTeamNum === 1 ? 2 : 1;
+                    let targetSlot = 0;
+                    if (tgtChar && typeof tgtChar.canonicalTeam === 'number' && typeof tgtChar.canonicalSlot === 'number') {
+                        targetTeam = tgtChar.canonicalTeam;
+                        targetSlot = tgtChar.canonicalSlot;
+                    } else if (typeof tgtIdx === 'number' && this.enemies && this.enemies[tgtIdx]) {
+                        targetTeam = this.enemies[tgtIdx].canonicalTeam || (this.myTeamNum === 1 ? 2 : 1);
+                        targetSlot = tgtIdx;
+                    } else {
+                        const firstLivingOpp = (this.enemies || []).findIndex(e => e && e.hp > 0);
+                        targetSlot = firstLivingOpp >= 0 ? firstLivingOpp : 0;
+                    }
+
+                    this.p1TargetIndex = null;
+                    this.p1TargetChar = null;
+                    if (skillId === 'dopa_obey_copy') {
+                        window.newBattleTargetSelectCopiedSkill = null;
+                    }
+
+                    const actionObj = {
+                        stepSeq: this.onlineStepSeq,
+                        uid: this.onlineClientId,
+                        teamNum: this.myTeamNum,
+                        slotIdx: activeSlotIdx,
+                        skillId: skillId,
+                        targetTeam: targetTeam,
+                        targetSlot: targetSlot,
+                        copiedObeySkill: copiedObeySkill,
+                        submittedAt: Date.now()
+                    };
+
+                    if (this.isOnlineHost) {
+                        await this.processOnlineHostHumanAction(actionObj);
+                    } else {
+                        this.stopTimer();
+                        this.waitingForOpponent = true;
+                        this.p1Action = skillId;
+                        if (this.onStateChange) this.onStateChange(this);
+                        const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', this.roomId);
+                        try {
+                            await window.fbUpdateDoc(roomRef, { pendingAction: actionObj });
+                        } catch (e) {
+                            console.error('Online 3v3 pendingAction submit error:', e);
+                            this.fallbackToBotMode();
+                        }
+                    }
+                    return;
+                }
+
                 if (pNum === 1 && this.p1Action) return;
                 if (pNum === 2 && this.p2Action) return;
                 if (this.waitingForOpponent) return;
 
-
-
-
-
-
-
                 if (this.isOnline) {
-    if (pNum !== this.myPlayerNum) return;
-    this.waitingForOpponent = true;
-    if (this.onStateChange) this.onStateChange(this);
+                    if (pNum !== this.myPlayerNum) return;
+                    this.waitingForOpponent = true;
+                    if (this.onStateChange) this.onStateChange(this);
 
-    const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', this.roomId);
-    const updateObj = pNum === 1 
-        ? { p1Action: skillId, p1ActionTurn: this.turn }
-        : { p2Action: skillId, p2ActionTurn: this.turn };
+                    const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', this.roomId);
+                    const updateObj = pNum === 1 
+                        ? { p1Action: skillId, p1ActionTurn: this.turn }
+                        : { p2Action: skillId, p2ActionTurn: this.turn };
 
                     try {
                         await window.fbUpdateDoc(roomRef, updateObj);
@@ -5127,18 +7364,21 @@ pasha_dark: {
 
                 const livingAllies = this.allies ? this.allies.filter(a => a.hp > 0) : [this.p1].filter(a => a.hp > 0);
                 const livingEnemies = this.enemies ? this.enemies.filter(e => e.hp > 0) : [this.p2].filter(e => e.hp > 0);
+                const isOwnPerspective = !(this.isOnline && !this.isOnlineSynced && this.myPlayerNum === 2);
 
                 if (livingAllies.length === 0 && livingEnemies.length === 0) {
                     winnerText = '⚔️ 引き分け！相討ちとなりました！';
                     isEnded = true;
+                    this.winningTeam = 0;
                     this.log(winnerText, 'text-yellow-400 font-bold text-center text-sm');
                     this.log(`🤝 引き分けとなりました。`, 'text-yellow-400 font-bold text-center');
                 } else if (livingEnemies.length === 0) {
                     winnerText = `🎉 【${(this.allies && this.allies[0]) ? this.allies[0].charName : this.p1.charName}】チームの勝利！`;
                     isEnded = true;
+                    this.winningTeam = this.myTeamNum || 1;
                     this.log(winnerText, 'text-emerald-400 font-bold text-center text-sm');
                     audioSystem.playVictory();
-                    if (!this.isOnline || this.myPlayerNum === 1) {
+                    if (!this.isOnline || isOwnPerspective || this.myPlayerNum === 1) {
                         const earnedDopa = 150;
                         await addDopa(earnedDopa);
                         this.log(`🎁 勝利報酬: +${formatDopa(earnedDopa)} DOPA 獲得！`, 'text-amber-300 font-bold text-center');
@@ -5146,10 +7386,11 @@ pasha_dark: {
                 } else if (livingAllies.length === 0) {
                     winnerText = `💀 敵チームの勝利！`;
                     isEnded = true;
+                    this.winningTeam = (this.myTeamNum === 1) ? 2 : 1;
                     this.log(winnerText, 'text-red-400 font-bold text-center text-sm');
                     audioSystem.playDefeat();
                     this.log(`💀 敗北… 次回は勝利を目指そう！`, 'text-red-400 font-bold text-center');
-                    if (this.isOnline && this.myPlayerNum === 2) {
+                    if (this.isOnline && !this.isOnlineSynced && this.myPlayerNum === 2) {
                         const earnedDopa = 150;
                         await addDopa(earnedDopa);
                         this.log(`🎁 勝利報酬: +${formatDopa(earnedDopa)} DOPA 獲得！`, 'text-amber-300 font-bold text-center');
@@ -5166,9 +7407,9 @@ pasha_dark: {
                     let result = 'draw';
                     if (this.isNewBattle) {
                         if (livingAllies.length > 0 && livingEnemies.length === 0) {
-                            result = (this.isOnline && this.myPlayerNum === 2) ? 'lose' : 'win';
+                            result = (this.isOnline && !this.isOnlineSynced && this.myPlayerNum === 2) ? 'lose' : 'win';
                         } else if (livingAllies.length === 0 && livingEnemies.length > 0) {
-                            result = (this.isOnline && this.myPlayerNum === 2) ? 'win' : 'lose';
+                            result = (this.isOnline && !this.isOnlineSynced && this.myPlayerNum === 2) ? 'win' : 'lose';
                         }
                     } else if (this.p1.hp > 0 && this.p2.hp <= 0) {
                         result = (this.isOnline && this.myPlayerNum === 2) ? 'lose' : 'win';
@@ -5178,11 +7419,12 @@ pasha_dark: {
                         result = 'draw';
                     }
 
-                    const myCharId = (this.isOnline && this.myPlayerNum === 2) ? this.p2.id : this.p1.id;
-                    const oppChar = (this.isOnline && this.myPlayerNum === 2) ? this.p1 : this.p2;
+                    const useLegacySwap = (this.isOnline && !this.isOnlineSynced && this.myPlayerNum === 2);
+                    const myCharId = useLegacySwap ? this.p2.id : this.p1.id;
+                    const oppChar = useLegacySwap ? this.p1 : this.p2;
                     const oppCharId = oppChar.id;
                     const oppProfile = this.latestRoomData ? (this.myPlayerNum === 1 ? this.latestRoomData.p2Profile : this.latestRoomData.p1Profile) : null;
-                    const oppName = oppProfile?.playerName || oppChar.charName || '対戦相手';
+                    const oppName = oppProfile?.playerName || oppChar.ownerName || oppChar.charName || '対戦相手';
                     const oppIcon = oppProfile?.selectedIcon || oppChar.id;
                     const isBot = !this.isOnline;
 
@@ -5308,6 +7550,20 @@ pasha_dark: {
                         targetChar = this.currentAttacker && this.getCharacterTeam && this.getCharacterTeam(this.currentAttacker) === 'enemy' ? this.currentAttacker : (this.p1TargetChar && this.p1TargetChar.hp > 0 ? this.p1TargetChar : (this.p2 || (this.enemies ? this.enemies.find(e => e.hp > 0) || this.enemies[0] : null)));
                     }
                 }
+                if (this.isOnlineSynced && this.isOnlineHost && targetChar && typeof targetChar.canonicalTeam === 'number') {
+                    this._onlineEventSeq = (this._onlineEventSeq || 0) + 1;
+                    this._onlineEventBuffer.push({
+                        seq: this._onlineEventSeq,
+                        type: 'effect',
+                        canonicalTeam: targetChar.canonicalTeam,
+                        canonicalSlot: targetChar.canonicalSlot || 0,
+                        effectType: type,
+                        text
+                    });
+                    if (this._onlineEventBuffer.length > 45) {
+                        this._onlineEventBuffer = this._onlineEventBuffer.slice(-45);
+                    }
+                }
                 if (targetChar && typeof triggerCharacterEffect === 'function') {
                     triggerCharacterEffect(targetChar, type, text);
                 }
@@ -5317,11 +7573,27 @@ pasha_dark: {
                 if (this.currentTurnLogs && this.currentTurnLogs.length > 0) {
                     this.currentTurnLogs[this.currentTurnLogs.length - 1].cutin = { title, subtitle };
                 }
+                if (this.isOnlineSynced && this.isOnlineHost) {
+                    this._onlineEventSeq = (this._onlineEventSeq || 0) + 1;
+                    this._onlineEventBuffer.push({
+                        seq: this._onlineEventSeq,
+                        type: 'cutin',
+                        title,
+                        subtitle
+                    });
+                    if (this._onlineEventBuffer.length > 45) {
+                        this._onlineEventBuffer = this._onlineEventBuffer.slice(-45);
+                    }
+                }
                 if (this.onCutin) this.onCutin(title, subtitle);
             }
 
             destroy() {
                 this.stopTimer();
+                if (this._hostRemoteWaitTimeout) {
+                    clearTimeout(this._hostRemoteWaitTimeout);
+                    this._hostRemoteWaitTimeout = null;
+                }
                 if (this.firestoreUnsub) {
                     this.firestoreUnsub();
                     this.firestoreUnsub = null;
@@ -6002,7 +8274,7 @@ pasha_dark: {
                         </button>
                         ` : `
                         <button onclick="startSelectedNewBattleTeam(${isOnline})" class="pixel-btn ${selectedCount === 3 ? (isOnline ? 'pixel-btn-success' : 'pixel-btn-primary') : 'bg-slate-800 border-slate-600 text-slate-300'} px-8 py-2 sm:py-2.5 text-xs sm:text-sm font-bold font-pixel shadow-lg">
-                            ${selectedCount === 3 ? 'この3体で出陣！ ▶' : `あと${3 - selectedCount}体選択してください (${selectedCount}/3)`}
+                            ${selectedCount === 3 ? (isOnline ? 'この3体でマッチングへ ▶' : 'この3体で出陣！ ▶') : `あと${3 - selectedCount}体選択してください (${selectedCount}/3)`}
                         </button>
                         `}
                     </div>
@@ -6265,8 +8537,8 @@ pasha_dark: {
                     </div>
 
                     <div class="flex justify-center pt-2 pb-1 shrink-0">
-                        <button onclick="renderOnlineBattleCharSelectScreen()" class="pixel-btn pixel-btn-success px-8 py-2.5 sm:py-3 text-xs sm:text-sm font-bold font-pixel shadow-xl whitespace-nowrap">
-                            🚀 ルーム作成 / 対戦準備へ ▶
+                        <button onclick="proceedFromMultiSetupToMatchmaking()" class="pixel-btn pixel-btn-success px-8 py-2.5 sm:py-3 text-xs sm:text-sm font-bold font-pixel shadow-xl whitespace-nowrap">
+                            🚀 クイックマッチ / ルーム作成へ ▶
                         </button>
                     </div>
                 </div>
@@ -6297,7 +8569,7 @@ pasha_dark: {
         window.toggleNewCharSelectOwnedFilter = toggleNewCharSelectOwnedFilter;
 
         function executeNewBattleCourtneyCharge() {
-            if (!activeNewBattle || activeNewBattle.battleEnded || activeNewBattle.isProcessing || activeNewBattle.p1Action !== null || activeNewBattle.waitingForOpponent || activeNewBattle.p1.isResting) return;
+            if (!activeNewBattle || !activeNewBattle.isMyTurnOnline()) return;
             if (activeNewBattle.p1.id !== 'courtney') return;
             if ((activeNewBattle.p1.courtneyChargeCount || 0) < 8) {
                 activeNewBattle.submitAction(1, 'courtney_charge_only');
@@ -6373,6 +8645,28 @@ pasha_dark: {
             renderNewBattleScreen();
         }
 
+        function returnFromNewBattle() {
+            audioSystem.playSelect();
+            const existing = document.getElementById('battle-result-overlay');
+            if (existing) existing.remove();
+            const wasOnline = (window.isOnlineBattleMode || (activeNewBattle && activeNewBattle.isOnlineBattleMode));
+            if (activeNewBattle) {
+                activeNewBattle.battleEnded = true;
+                activeNewBattle.destroy();
+                activeNewBattle.stopElapsedTimer();
+                activeNewBattle = null;
+            }
+            if (typeof cleanupOnlineLobby === 'function') {
+                cleanupOnlineLobby();
+            }
+            if (wasOnline) {
+                renderOnlineModesScreen();
+            } else {
+                renderNewBattleCharSelectScreen();
+            }
+        }
+        window.returnFromNewBattle = returnFromNewBattle;
+
         function handleNewBattleEnd() {
             if (!activeNewBattle) return;
             const p1 = activeNewBattle.p1;
@@ -6380,7 +8674,7 @@ pasha_dark: {
             const allAlliesDead = (activeNewBattle.isNewBattle && activeNewBattle.allies) ? activeNewBattle.allies.every(a => a.hp <= 0) : (p1.hp <= 0);
             const allEnemiesDead = (activeNewBattle.isNewBattle && activeNewBattle.enemies) ? activeNewBattle.enemies.every(e => e.hp <= 0) : (p2.hp <= 0);
             const isOnline = (window.isOnlineBattleMode || (activeNewBattle && activeNewBattle.isOnlineBattleMode));
-            const returnFn = isOnline ? 'renderOnlineBattleCharSelectScreen()' : 'renderNewBattleCharSelectScreen()';
+            const backBtnLabel = isOnline ? 'オンライン対戦選択へ戻る ▶' : 'バトル選択画面へ戻る ▶';
 
             setTimeout(() => {
                 const existing = document.getElementById('battle-result-overlay');
@@ -6393,8 +8687,8 @@ pasha_dark: {
                             <div class="pixel-box-dark p-6 sm:p-8 bg-slate-950/95 border-red-500 shadow-2xl max-w-md w-full flex flex-col items-center">
                                 <div class="text-4xl sm:text-6xl font-pixel font-black text-red-500 mb-3 animate-pulse">LOSE</div>
                                 <p class="text-xs sm:text-sm text-slate-300 font-mono mb-6">力尽きてしまいました……次こそは勝利を掴ろう！</p>
-                                <button onclick="${returnFn}" class="pixel-btn pixel-btn-primary px-8 py-3 text-sm font-bold font-pixel shadow-xl">
-                                    バトル選択画面へ戻る ▶
+                                <button onclick="returnFromNewBattle()" class="pixel-btn pixel-btn-primary px-8 py-3 text-sm font-bold font-pixel shadow-xl">
+                                    ${backBtnLabel}
                                 </button>
                             </div>
                         </div>
@@ -6412,8 +8706,8 @@ pasha_dark: {
                             <div class="pixel-box-gold p-6 sm:p-8 bg-amber-950/95 border-amber-400 shadow-2xl max-w-md w-full flex flex-col items-center">
                                 <div class="text-4xl sm:text-6xl font-pixel font-black text-amber-300 mb-2 animate-bounce">WIN</div>
                                 <p class="text-xs sm:text-sm text-amber-200 font-mono mb-4">お見事！見事に勝利を収めました！<br><b class="text-amber-400">+150 DOPA</b> を獲得！</p>
-                                <button onclick="${returnFn}" class="pixel-btn pixel-btn-primary px-8 py-3 text-sm font-bold font-pixel shadow-xl">
-                                    バトル選択画面へ戻る ▶
+                                <button onclick="returnFromNewBattle()" class="pixel-btn pixel-btn-primary px-8 py-3 text-sm font-bold font-pixel shadow-xl">
+                                    ${backBtnLabel}
                                 </button>
                             </div>
                         </div>
@@ -6425,8 +8719,8 @@ pasha_dark: {
                             <div class="pixel-box p-6 sm:p-8 bg-slate-900 border-yellow-400 shadow-2xl max-w-md w-full flex flex-col items-center">
                                 <div class="text-2xl sm:text-4xl font-pixel font-black text-yellow-300 mb-2">DRAW</div>
                                 <p class="text-xs sm:text-sm text-slate-300 font-mono mb-4">相討ちとなりました！</p>
-                                <button onclick="${returnFn}" class="pixel-btn pixel-btn-primary px-8 py-3 text-sm font-bold font-pixel shadow-xl">
-                                    バトル選択画面へ戻る ▶
+                                <button onclick="returnFromNewBattle()" class="pixel-btn pixel-btn-primary px-8 py-3 text-sm font-bold font-pixel shadow-xl">
+                                    ${backBtnLabel}
                                 </button>
                             </div>
                         </div>
@@ -6579,7 +8873,8 @@ pasha_dark: {
             const p1IsCharging = (p1.id === 'courtney' && (p1.courtneyChargeCount || 0) > 0 && p1.hp > 0) || (p1.id === 'dopagaking' && (p1.dopaChargeCount || 0) > 0 && (p1.dopaChargeCount || 0) < 6 && p1.hp > 0);
             const p2IsCharging = (p2.id === 'courtney' && (p2.courtneyChargeCount || 0) > 0 && p2.hp > 0) || (p2.id === 'dopagaking' && (p2.dopaChargeCount || 0) > 0 && (p2.dopaChargeCount || 0) < 6 && p2.hp > 0);
 
-            const isMyTurn = !activeNewBattle.battleEnded && !activeNewBattle.isProcessing && activeNewBattle.p1Action === null && !activeNewBattle.waitingForOpponent && !p1.isResting;
+            const isMyTurn = activeNewBattle.isMyTurnOnline();
+            const isSpectatingMulti = activeNewBattle.controlSingleAllyOnly && activeNewBattle.allies?.[activeNewBattle.controlledAllyIndex || 0]?.hp <= 0 && !activeNewBattle.battleEnded;
 
             let actorIndicator = '';
             if (activeNewBattle.isProcessing && activeNewBattle.currentAttacker) {
@@ -6601,6 +8896,12 @@ pasha_dark: {
                 actorIndicator = `
                     <div class="px-2 py-0.5 rounded border border-emerald-400 bg-emerald-950/90 text-emerald-300 text-[10px] sm:text-xs font-bold font-pixel animate-pulse shadow">
                         ${turnLabel}
+                    </div>
+                `;
+            } else if (isSpectatingMulti) {
+                actorIndicator = `
+                    <div class="px-2 py-0.5 rounded border border-slate-600 bg-slate-900 text-slate-300 text-[10px] sm:text-xs font-bold font-pixel">
+                        👻 戦闘不能・観戦中
                     </div>
                 `;
             } else {
@@ -6631,6 +8932,18 @@ pasha_dark: {
                         </button>
                         <button onclick="executeNewBattleAction('back_to_main')" class="pixel-btn pixel-btn-warning py-1 px-2 text-[10px] font-bold font-pixel">
                             ◀ 戻る
+                        </button>
+                    </div>
+                `;
+            } else if (isSpectatingMulti) {
+                commandAreaContent = `
+                    <div class="grid grid-cols-2 gap-1 w-full h-full relative z-20">
+                        <div class="col-span-2 text-center text-[10px] font-pixel text-slate-300 flex items-center justify-center">👻 観戦中（残りの味方が戦闘中）</div>
+                        <button onclick="executeNewBattleAction('run')" class="pixel-btn pixel-btn-danger py-1 px-1 text-[11px] font-bold flex items-center justify-center text-center shadow cursor-pointer">
+                            <span>🚪 退出</span>
+                        </button>
+                        <button onclick="executeNewBattleAction('setting')" class="pixel-btn pixel-btn-warning py-1 px-1 text-[11px] font-bold flex items-center justify-center text-center shadow cursor-pointer">
+                            <span>⚙️ 設定</span>
                         </button>
                     </div>
                 `;
@@ -6726,17 +9039,22 @@ pasha_dark: {
 
             let choicePopupHtml = '';
             if (activeNewBattle && (activeNewBattle.waitingForChoice || activeNewBattle.isRunModalOpen)) {
+                const isOnlineSyncedRun = !!(activeNewBattle.isOnlineSynced);
                 const isRun = activeNewBattle.isRunModalOpen && !activeNewBattle.waitingForChoice;
                 const livingAlliesCount = activeNewBattle.allies ? activeNewBattle.allies.filter(a => a.hp > 0).length : 1;
                 const hasOtherAlly = activeNewBattle.allies 
                     ? activeNewBattle.allies.some(a => a.hp > 0 && a !== activeNewBattle.p1) 
                     : false;
-                const canSwitch = hasOtherAlly || (isRun && livingAlliesCount > 0);
+                const canSwitch = !isOnlineSyncedRun && (hasOtherAlly || (isRun && livingAlliesCount > 0));
 
-                const titleText = isRun ? '🏃 戦闘離脱・選択' : '⚠️ 操作キャラクター戦闘不能！';
-                const bodyText = isRun 
-                    ? '逃げ出しますか？ バトルをスキップして結果を見るか、残っているキャラクターで戦い続けるか選択できます。' 
-                    : '現在の操作キャラクターが倒れました。<br>どう行動しますか？';
+                const titleText = isOnlineSyncedRun
+                    ? '🚪 オンライン対戦から退出'
+                    : (isRun ? '🏃 戦闘離脱・選択' : '⚠️ 操作キャラクター戦闘不能！');
+                const bodyText = isOnlineSyncedRun
+                    ? '現在のオンライン対戦を退出してモード選択へ戻りますか？'
+                    : (isRun
+                        ? '逃げ出しますか？ バトルをスキップして結果を見るか、残っているキャラクターで戦い続けるか選択できます。'
+                        : '現在の操作キャラクターが倒れました。<br>どう行動しますか？');
 
                 choicePopupHtml = `
                     <div class="fixed inset-0 bg-black/85 z-[999] flex items-center justify-center p-4 animate-fadeIn">
@@ -6744,9 +9062,15 @@ pasha_dark: {
                             <div class="text-xl sm:text-2xl font-pixel font-black text-red-500 animate-bounce">${titleText}</div>
                             <p class="text-xs sm:text-sm text-slate-200 font-mono leading-relaxed">${bodyText}</p>
                             <div class="flex flex-col gap-3 w-full mt-2">
+                                ${isOnlineSyncedRun ? `
+                                <button onclick="returnFromNewBattle()" class="pixel-btn pixel-btn-danger py-3 px-4 text-xs sm:text-sm font-bold font-pixel flex items-center justify-center gap-2 shadow-lg cursor-pointer">
+                                    <span>🚪 退出してモード選択へ戻る</span>
+                                </button>
+                                ` : `
                                 <button onclick="handleNewBattleContinueChoice('skip')" class="pixel-btn pixel-btn-danger py-3 px-4 text-xs sm:text-sm font-bold font-pixel flex items-center justify-center gap-2 shadow-lg cursor-pointer">
                                     <span>🏁 結果を見る（バトルをスキップ）</span>
                                 </button>
+                                `}
                                 ${canSwitch ? `
                                 <button onclick="handleNewBattleContinueChoice('switch')" class="pixel-btn pixel-btn-primary py-3 px-4 text-xs sm:text-sm font-bold font-pixel flex items-center justify-center gap-2 shadow-lg cursor-pointer">
                                     <span>🔄 残っているキャラを使用し戦い続ける</span>
@@ -7132,7 +9456,7 @@ pasha_dark: {
                 renderNewBattleScreen();
                 return;
             }
-            if (!activeNewBattle || activeNewBattle.battleEnded || activeNewBattle.isProcessing || activeNewBattle.p1Action !== null || activeNewBattle.waitingForOpponent || activeNewBattle.p1.isResting) return;
+            if (!activeNewBattle || !activeNewBattle.isMyTurnOnline()) return;
             audioSystem.playSelect();
 
             if (actionType === 'normal_attack_click') {
