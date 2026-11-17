@@ -1153,6 +1153,363 @@ static drawDopagaking(p, isCharged) {
         window.saveLastSelectedChar = saveLastSelectedChar;
         window.getLastSelectedChar = getLastSelectedChar;
 
+        function getSelectedNewBattleTeam() {
+            if (Array.isArray(window.selectedNewBattleTeam) && window.selectedNewBattleTeam.length === 3) {
+                return [...window.selectedNewBattleTeam];
+            }
+            let raw = null;
+            try {
+                const stored = localStorage.getItem('dopa_last_selected_team');
+                if (stored) raw = JSON.parse(stored);
+            } catch(e) {}
+            if (!Array.isArray(raw) && Array.isArray(playerState.lastSelectedTeam)) {
+                raw = playerState.lastSelectedTeam;
+            }
+            const team = [null, null, null];
+            if (Array.isArray(raw)) {
+                const seen = new Set();
+                for (let i = 0; i < 3; i++) {
+                    const id = raw[i];
+                    if (id && typeof CHARACTER_DATA !== 'undefined' && CHARACTER_DATA[id] && !seen.has(id)) {
+                        team[i] = id;
+                        seen.add(id);
+                    }
+                }
+            }
+            if (!team[0] && !team[1] && !team[2]) {
+                const lastChar = getLastSelectedChar();
+                if (playerState.unlockedChars && playerState.unlockedChars.length > 0) {
+                    team[0] = playerState.unlockedChars.includes(lastChar) ? lastChar : playerState.unlockedChars[0];
+                } else if (lastChar && (typeof CHARACTER_DATA === 'undefined' || CHARACTER_DATA[lastChar])) {
+                    team[0] = lastChar;
+                }
+            }
+            window.selectedNewBattleTeam = team;
+            return [...team];
+        }
+
+        function saveSelectedNewBattleTeam(team) {
+            const seen = new Set();
+            const normalized = [0, 1, 2].map(i => {
+                const id = Array.isArray(team) ? team[i] : null;
+                if (id && (typeof CHARACTER_DATA === 'undefined' || CHARACTER_DATA[id]) && !seen.has(id)) {
+                    seen.add(id);
+                    return id;
+                }
+                return null;
+            });
+            window.selectedNewBattleTeam = normalized;
+            playerState.lastSelectedTeam = [...normalized];
+            if (normalized[0]) {
+                window.selectedNewBattleChar = normalized[0];
+                playerState.selectedPlayerChar = normalized[0];
+                playerState.lastSelectedChar = normalized[0];
+                try {
+                    localStorage.setItem('dopa_last_selected_char', normalized[0]);
+                } catch(e) {}
+            }
+            try {
+                localStorage.setItem('dopa_last_selected_team', JSON.stringify(normalized));
+            } catch(e) {}
+            if (typeof savePlayerState === 'function') {
+                savePlayerState();
+            }
+            return normalized;
+        }
+
+        function getActiveTeamSlotIndex() {
+            const team = getSelectedNewBattleTeam();
+            if (typeof window.activeTeamSlotIndex === 'number' && window.activeTeamSlotIndex >= 0 && window.activeTeamSlotIndex < 3) {
+                return window.activeTeamSlotIndex;
+            }
+            const firstEmpty = team.indexOf(null);
+            window.activeTeamSlotIndex = firstEmpty !== -1 ? firstEmpty : 0;
+            return window.activeTeamSlotIndex;
+        }
+
+        function validateCharCustomStats(charId) {
+            if (['dopagaking', 'courtney', 'pasha_dark'].includes(charId)) return true;
+            if (typeof getNewBattleCustomStats !== 'function') return true;
+            const cust = getNewBattleCustomStats(charId);
+            const total = cust.hp + cust.atk + cust.def + cust.critRate + cust.eva;
+            const cName = (typeof CHARACTER_DATA !== 'undefined' && CHARACTER_DATA[charId]) ? CHARACTER_DATA[charId].name : charId;
+            if (cust.atk > 45) {
+                showModal('攻撃力オーバー', `${cName} の攻撃力は最大45までです（現在: ${cust.atk}）。詳細画面で45以下に調整してください！`);
+                return false;
+            }
+            if (total > 240) {
+                showModal('ポイント超過', `${cName} のステータスポイント合計が240ポイントを超えています（現在: ${total}Pt）。詳細画面で240ポイント以下に調整してください！`);
+                return false;
+            }
+            return true;
+        }
+
+        function setActiveTeamSlotIndex(slotIdx, sortOrder = 'default', sortDir = 'desc', onlyOwned = false, isOnline = false) {
+            audioSystem.playSelect();
+            window.activeTeamSlotIndex = Math.max(0, Math.min(2, slotIdx));
+            renderNewBattleCharSelectScreen(sortOrder, sortDir, onlyOwned, isOnline);
+        }
+
+        function assignNewBattleTeamSlot(slotIdx, charId) {
+            const team = getSelectedNewBattleTeam();
+            const targetIdx = (typeof slotIdx === 'number' && slotIdx >= 0 && slotIdx < 3) ? slotIdx : getActiveTeamSlotIndex();
+            const existingIdx = team.indexOf(charId);
+            if (existingIdx !== -1 && existingIdx !== targetIdx) {
+                team[existingIdx] = team[targetIdx];
+            }
+            team[targetIdx] = charId;
+            const saved = saveSelectedNewBattleTeam(team);
+            const nextEmpty = saved.indexOf(null);
+            window.activeTeamSlotIndex = nextEmpty !== -1 ? nextEmpty : targetIdx;
+            return saved;
+        }
+
+        function clearNewBattleTeamSlot(slotIdx, sortOrder = 'default', sortDir = 'desc', onlyOwned = false, isOnline = false) {
+            audioSystem.playSelect();
+            const team = getSelectedNewBattleTeam();
+            if (slotIdx >= 0 && slotIdx < 3) {
+                team[slotIdx] = null;
+                saveSelectedNewBattleTeam(team);
+                window.activeTeamSlotIndex = slotIdx;
+            }
+            renderNewBattleCharSelectScreen(sortOrder, sortDir, onlyOwned, isOnline);
+        }
+
+        function clearAllNewBattleTeam(sortOrder = 'default', sortDir = 'desc', onlyOwned = false, isOnline = false) {
+            audioSystem.playSelect();
+            saveSelectedNewBattleTeam([null, null, null]);
+            window.activeTeamSlotIndex = 0;
+            renderNewBattleCharSelectScreen(sortOrder, sortDir, onlyOwned, isOnline);
+        }
+
+        function toggleNewBattleTeamChar(charId, sortOrder = 'default', sortDir = 'desc', onlyOwned = false, isOnline = false) {
+            audioSystem.playSelect();
+            if (!playerState.unlockedChars.includes(charId)) {
+                showModal('未解放キャラクター', 'このキャラクターはまだ所持していません。ガチャで解放してください！');
+                return;
+            }
+            const team = getSelectedNewBattleTeam();
+            const existingIdx = team.indexOf(charId);
+            if (existingIdx !== -1) {
+                team[existingIdx] = null;
+                saveSelectedNewBattleTeam(team);
+                window.activeTeamSlotIndex = existingIdx;
+            } else {
+                if (!validateCharCustomStats(charId)) return;
+                const activeSlot = getActiveTeamSlotIndex();
+                assignNewBattleTeamSlot(activeSlot, charId);
+            }
+            renderNewBattleCharSelectScreen(sortOrder, sortDir, onlyOwned, isOnline);
+        }
+
+        function autoFillNewBattleTeam(sortOrder = 'default', sortDir = 'desc', onlyOwned = false, isOnline = false) {
+            audioSystem.playSelect();
+            const team = getSelectedNewBattleTeam();
+            const unlocked = Array.isArray(playerState.unlockedChars) ? [...playerState.unlockedChars] : [];
+            const allIds = typeof CHARACTER_DATA !== 'undefined' ? Object.keys(CHARACTER_DATA) : [];
+            const allFull = team.every(Boolean);
+            const nextTeam = allFull ? [null, null, null] : [...team];
+
+            const pickRandomFrom = (pool, excludeSet) => {
+                const candidates = pool.filter(id => !excludeSet.has(id));
+                if (candidates.length === 0) return null;
+                return candidates[Math.floor(Math.random() * candidates.length)];
+            };
+
+            const used = new Set(nextTeam.filter(Boolean));
+            for (let i = 0; i < 3; i++) {
+                if (!nextTeam[i]) {
+                    let chosen = pickRandomFrom(unlocked, used);
+                    if (!chosen) {
+                        chosen = pickRandomFrom(allIds, used);
+                    }
+                    if (chosen) {
+                        nextTeam[i] = chosen;
+                        used.add(chosen);
+                    }
+                }
+            }
+            saveSelectedNewBattleTeam(nextTeam);
+            window.activeTeamSlotIndex = 0;
+            renderNewBattleCharSelectScreen(sortOrder, sortDir, onlyOwned, isOnline);
+        }
+
+        function startSelectedNewBattleTeam(isOnline = false) {
+            audioSystem.playSelect();
+            const team = getSelectedNewBattleTeam();
+            const selectedCount = team.filter(Boolean).length;
+            if (selectedCount < 3) {
+                showModal('味方チーム未完了', `味方チームのキャラクターを3体選択してください！（現在 ${selectedCount}/3 体選択中）\n\n各キャラクターの「+ 編成」ボタン、詳細画面、または上部の「🎲 おまかせ」から3体を選べます。`);
+                return;
+            }
+            for (let i = 0; i < 3; i++) {
+                if (!validateCharCustomStats(team[i])) return;
+            }
+            const allIds = Object.keys(CHARACTER_DATA);
+            const otherIds = allIds.filter(id => id !== team[0]);
+            const eChar = otherIds[Math.floor(Math.random() * otherIds.length)] || 'pasha';
+            if (isOnline) {
+                startOnlineBattleMode(team, eChar);
+            } else {
+                startNewBattleMode(team, eChar);
+            }
+        }
+
+        window.getSelectedNewBattleTeam = getSelectedNewBattleTeam;
+        window.saveSelectedNewBattleTeam = saveSelectedNewBattleTeam;
+        window.getActiveTeamSlotIndex = getActiveTeamSlotIndex;
+        window.setActiveTeamSlotIndex = setActiveTeamSlotIndex;
+        window.assignNewBattleTeamSlot = assignNewBattleTeamSlot;
+        window.clearNewBattleTeamSlot = clearNewBattleTeamSlot;
+        window.clearAllNewBattleTeam = clearAllNewBattleTeam;
+        window.toggleNewBattleTeamChar = toggleNewBattleTeamChar;
+        window.autoFillNewBattleTeam = autoFillNewBattleTeam;
+        window.startSelectedNewBattleTeam = startSelectedNewBattleTeam;
+        window.validateCharCustomStats = validateCharCustomStats;
+
+        window.onlineBattleConfig = window.onlineBattleConfig || {
+            matchMode: '2p',
+            allyHumanCount: 1,
+            enemyHumanCount: 1
+        };
+
+        function getOnlineBattleConfig() {
+            const raw = window.onlineBattleConfig || {};
+            const matchMode = raw.matchMode === 'multi' ? 'multi' : '2p';
+            if (matchMode === '2p') {
+                return {
+                    matchMode: '2p',
+                    allyHumanCount: 1,
+                    enemyHumanCount: 1,
+                    allyBotCount: 0,
+                    enemyBotCount: 0,
+                    totalHumans: 2,
+                    controlSingleAllyOnly: false,
+                    isOnlineBattleMode: true
+                };
+            }
+            let allyHumanCount = Math.max(1, Math.min(3, parseInt(raw.allyHumanCount, 10) || 2));
+            let enemyHumanCount = Math.max(1, Math.min(3, parseInt(raw.enemyHumanCount, 10) || 2));
+            if (allyHumanCount + enemyHumanCount < 3) {
+                allyHumanCount = 2;
+                enemyHumanCount = 1;
+            }
+            return {
+                matchMode: 'multi',
+                allyHumanCount,
+                enemyHumanCount,
+                allyBotCount: Math.max(0, 3 - allyHumanCount),
+                enemyBotCount: Math.max(0, 3 - enemyHumanCount),
+                totalHumans: allyHumanCount + enemyHumanCount,
+                controlSingleAllyOnly: true,
+                isOnlineBattleMode: true
+            };
+        }
+
+        function setOnlineMatchFormat(matchMode, allyHumanCount, enemyHumanCount) {
+            audioSystem.playSelect();
+            window.onlineBattleConfig = {
+                matchMode: matchMode === 'multi' ? 'multi' : '2p',
+                allyHumanCount: Math.max(1, Math.min(3, allyHumanCount)),
+                enemyHumanCount: Math.max(1, Math.min(3, enemyHumanCount))
+            };
+            if (matchMode === '2p') {
+                renderOnlineBattleCharSelectScreen();
+            } else {
+                renderOnlineMultiSetupScreen();
+            }
+        }
+
+        function adjustOnlinePlayerCount(side, delta) {
+            audioSystem.playSelect();
+            const cfg = getOnlineBattleConfig();
+            let a = cfg.allyHumanCount;
+            let e = cfg.enemyHumanCount;
+            if (side === 'ally') a = Math.max(1, Math.min(3, a + delta));
+            else e = Math.max(1, Math.min(3, e + delta));
+            if (a + e < 3) {
+                showModal('人数設定', '「それ以上の対戦」では合計3人以上になるよう設定してください！（2人対戦は前の画面で選べます）');
+                return;
+            }
+            window.onlineBattleConfig = {
+                matchMode: 'multi',
+                allyHumanCount: a,
+                enemyHumanCount: e
+            };
+            renderOnlineMultiSetupScreen();
+        }
+
+        function getSelectedOnlineMultiChar() {
+            let charId = window.selectedOnlineMultiChar;
+            if (!charId) {
+                try {
+                    charId = localStorage.getItem('dopa_online_multi_char');
+                } catch(e) {}
+            }
+            if (!charId || (typeof CHARACTER_DATA !== 'undefined' && !CHARACTER_DATA[charId])) {
+                const last = getLastSelectedChar();
+                if (playerState.unlockedChars && playerState.unlockedChars.length > 0) {
+                    charId = playerState.unlockedChars.includes(last) ? last : playerState.unlockedChars[0];
+                } else {
+                    charId = last || 'asaiomizu';
+                }
+            }
+            if (playerState.unlockedChars && playerState.unlockedChars.length > 0 && !playerState.unlockedChars.includes(charId)) {
+                charId = playerState.unlockedChars[0];
+            }
+            window.selectedOnlineMultiChar = charId;
+            return charId;
+        }
+
+        function saveSelectedOnlineMultiChar(charId) {
+            if (!charId || (typeof CHARACTER_DATA !== 'undefined' && !CHARACTER_DATA[charId])) return null;
+            window.selectedOnlineMultiChar = charId;
+            saveLastSelectedChar(charId);
+            try {
+                localStorage.setItem('dopa_online_multi_char', charId);
+            } catch(e) {}
+            return charId;
+        }
+
+        function selectOnlineMultiChar(charId, sortOrder = 'default', sortDir = 'desc', onlyOwned = false) {
+            audioSystem.playSelect();
+            if (!playerState.unlockedChars.includes(charId)) {
+                showModal('未解放キャラクター', 'このキャラクターはまだ所持していません。ガチャで解放してください！');
+                return false;
+            }
+            if (!validateCharCustomStats(charId)) return false;
+            saveSelectedOnlineMultiChar(charId);
+            renderNewBattleCharSelectScreen(sortOrder, sortDir, onlyOwned, true);
+            return true;
+        }
+
+        function startSelectedOnlineMultiChar() {
+            audioSystem.playSelect();
+            const selectedCharId = getSelectedOnlineMultiChar();
+            if (!selectedCharId || !CHARACTER_DATA[selectedCharId]) {
+                showModal('キャラクター未選択', 'バトルで操作するキャラクターを1体選択してください！');
+                return;
+            }
+            if (!playerState.unlockedChars.includes(selectedCharId)) {
+                showModal('未解放キャラクター', '所持しているキャラクターから1体選択してください！');
+                return;
+            }
+            if (!validateCharCustomStats(selectedCharId)) return;
+            const cfg = getOnlineBattleConfig();
+            const allIds = Object.keys(CHARACTER_DATA);
+            const otherIds = allIds.filter(id => id !== selectedCharId);
+            const eChar = otherIds[Math.floor(Math.random() * otherIds.length)] || 'pasha';
+            startOnlineBattleMode(selectedCharId, eChar, cfg);
+        }
+
+        window.getOnlineBattleConfig = getOnlineBattleConfig;
+        window.setOnlineMatchFormat = setOnlineMatchFormat;
+        window.adjustOnlinePlayerCount = adjustOnlinePlayerCount;
+        window.getSelectedOnlineMultiChar = getSelectedOnlineMultiChar;
+        window.saveSelectedOnlineMultiChar = saveSelectedOnlineMultiChar;
+        window.selectOnlineMultiChar = selectOnlineMultiChar;
+        window.startSelectedOnlineMultiChar = startSelectedOnlineMultiChar;
+
         function getMyProfileSnapshot() {
             const winRate = playerState.totalBattles > 0 ? ((playerState.wins / playerState.totalBattles) * 100).toFixed(1) : 0;
             return {
@@ -1847,7 +2204,7 @@ static drawDopagaking(p, isCharged) {
             stats[statKey] = newVal;
             savePlayerState();
 
-            renderZukanDetailScreen(charId, 'new_select', sortOrder, sortDir, onlyOwned);
+            renderZukanDetailScreen(charId, 'new_select', sortOrder, sortDir, onlyOwned, !!window.isOnlineBattleMode);
         }
 
         function resetNewBattleStats(charId, sortOrder, sortDir, onlyOwned) {
@@ -1856,7 +2213,7 @@ static drawDopagaking(p, isCharged) {
             }
             getNewBattleCustomStats(charId);
             savePlayerState();
-            renderZukanDetailScreen(charId, 'new_select', sortOrder, sortDir, onlyOwned);
+            renderZukanDetailScreen(charId, 'new_select', sortOrder, sortDir, onlyOwned, !!window.isOnlineBattleMode);
         }
 
         function renderZukanDetailScreen(charId, returnSource = 'zukan', arg1 = 'default', arg2 = 'desc', arg3 = 'desc', arg4 = false) {
@@ -1878,10 +2235,11 @@ static drawDopagaking(p, isCharged) {
             } else if (returnSource === 'gacha_summary') {
                 backAction = `document.getElementById('modal-overlay').classList.remove('hidden'); document.body.classList.add('modal-open'); showGachaSummaryModal(window._currentGachaResults || [])`;
             } else if (returnSource === 'select' || returnSource === 'new_select') {
-                const sortOrder = arg1 || arg2 || 'default';
-                const sortDir = arg2 || arg3 || 'desc';
-                const onlyOwned = !!arg3 || !!arg4;
-                backAction = `renderNewBattleCharSelectScreen('${sortOrder}', '${sortDir}', ${onlyOwned})`;
+                const sortOrder = arg1 || 'default';
+                const sortDir = arg2 || 'desc';
+                const onlyOwned = (arg3 === true || arg3 === 'true');
+                const isOnline = (arg4 === true || arg4 === 'true' || !!window.isOnlineBattleMode);
+                backAction = `renderNewBattleCharSelectScreen('${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline})`;
             } else {
                 const sortOrder = arg1 || 'default';
                 const sortDir = arg2 || 'desc';
@@ -1915,34 +2273,55 @@ static drawDopagaking(p, isCharged) {
             if ((returnSource === 'select' || returnSource === 'new_select') && !isExtra) {
                 const sortOrder = arg1 || 'default';
                 const sortDir = arg2 || 'desc';
-                const onlyOwned = !!arg3;
+                const onlyOwned = (arg3 === true || arg3 === 'true');
+                const isOnline = (arg4 === true || arg4 === 'true' || !!window.isOnlineBattleMode);
+                const onlineCfg = typeof getOnlineBattleConfig === 'function' ? getOnlineBattleConfig() : { matchMode: '2p' };
+                const isOnlineMultiSingle = isOnline && onlineCfg.matchMode === 'multi';
                 if (isUnlocked) {
-                    const isSelected = window.selectedNewBattleChar === c.id;
                     const isEligibleCustom = !['dopagaking', 'courtney', 'pasha_dark'].includes(c.id);
-                    if (isEligibleCustom) {
+                    if (isOnlineMultiSingle) {
+                        const currentSingle = typeof getSelectedOnlineMultiChar === 'function' ? getSelectedOnlineMultiChar() : null;
+                        const isCurrentlyChosen = currentSingle === c.id;
                         html += `
                             <button onclick="
-                                const cust = getNewBattleCustomStats('${c.id}');
-                                const total = cust.hp + cust.atk + cust.def + cust.critRate + cust.eva;
-                                if (cust.atk > 45) {
-                                    showModal('攻撃力オーバー', '攻撃力は最大45までです（現在: ' + cust.atk + '）。45以下に調整してください！');
-                                } else if (total > 240) {
-                                    showModal('ポイント超過', 'ステータスポイントの合計が240ポイントを超えています（現在: ' + total + 'Pt）。240ポイント以下に調整してください！');
-                                } else {
-                                    if (typeof saveLastSelectedChar === 'function') saveLastSelectedChar('${c.id}');
-                                    else window.selectedNewBattleChar = '${c.id}';
-                                    renderNewBattleCharSelectScreen('${sortOrder}', '${sortDir}', ${onlyOwned});
-                                }
-                            " class="pixel-btn ${isSelected ? 'pixel-btn-success' : 'pixel-btn-primary'} w-full py-2.5 font-bold text-xs sm:text-sm shadow-lg mt-auto">
-                                ${isSelected ? '✨ 選択中 (戻る)' : '⚔ このキャラで出陣'}
+                                ${isEligibleCustom ? `if (validateCharCustomStats('${c.id}')) { saveSelectedOnlineMultiChar('${c.id}'); renderNewBattleCharSelectScreen('${sortOrder}', '${sortDir}', ${onlyOwned}, true); }` : `saveSelectedOnlineMultiChar('${c.id}'); renderNewBattleCharSelectScreen('${sortOrder}', '${sortDir}', ${onlyOwned}, true);`}
+                            " class="pixel-btn ${isCurrentlyChosen ? 'pixel-btn-success' : 'pixel-btn-primary'} w-full py-2.5 font-bold text-xs sm:text-sm shadow-lg mt-auto">
+                                ${isCurrentlyChosen ? '✓ 操作キャラに設定中 (戻る)' : '⚔ この1体を操作キャラにする'}
                             </button>
                         `;
                     } else {
-                        html += `
-                            <button onclick="if(typeof saveLastSelectedChar==='function') saveLastSelectedChar('${c.id}'); else window.selectedNewBattleChar = '${c.id}'; renderNewBattleCharSelectScreen('${sortOrder}', '${sortDir}', ${onlyOwned});" class="pixel-btn ${isSelected ? 'pixel-btn-success' : 'pixel-btn-primary'} w-full py-2.5 font-bold text-xs sm:text-sm shadow-lg mt-auto">
-                                ${isSelected ? '✨ 選択中 (戻る)' : '⚔ このキャラで出陣'}
-                            </button>
-                        `;
+                        const team = typeof getSelectedNewBattleTeam === 'function' ? getSelectedNewBattleTeam() : [window.selectedNewBattleChar || null, null, null];
+                        const existingSlotIdx = team.indexOf(c.id);
+                        const targetSlotIdx = existingSlotIdx !== -1 ? existingSlotIdx : (typeof getActiveTeamSlotIndex === 'function' ? getActiveTeamSlotIndex() : 0);
+                        if (existingSlotIdx !== -1) {
+                            html += `
+                                <div class="w-full flex flex-col gap-1.5 mt-auto">
+                                    <button onclick="${isEligibleCustom ? `if (validateCharCustomStats('${c.id}')) { renderNewBattleCharSelectScreen('${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline}); }` : `renderNewBattleCharSelectScreen('${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline});`}" class="pixel-btn pixel-btn-success w-full py-2.5 font-bold text-xs sm:text-sm shadow-lg">
+                                        ✓ ${existingSlotIdx + 1}体目に編成中 (戻る)
+                                    </button>
+                                    <button onclick="clearNewBattleTeamSlot(${existingSlotIdx}, '${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline});" class="pixel-btn pixel-btn-danger w-full py-1.5 font-bold text-xs shadow">
+                                        ✕ チームから外す
+                                    </button>
+                                </div>
+                            `;
+                        } else if (isEligibleCustom) {
+                            html += `
+                                <button onclick="
+                                    if (validateCharCustomStats('${c.id}')) {
+                                        assignNewBattleTeamSlot(${targetSlotIdx}, '${c.id}');
+                                        renderNewBattleCharSelectScreen('${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline});
+                                    }
+                                " class="pixel-btn pixel-btn-primary w-full py-2.5 font-bold text-xs sm:text-sm shadow-lg mt-auto">
+                                    ⚔ ${targetSlotIdx + 1}体目に編成する
+                                </button>
+                            `;
+                        } else {
+                            html += `
+                                <button onclick="assignNewBattleTeamSlot(${targetSlotIdx}, '${c.id}'); renderNewBattleCharSelectScreen('${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline});" class="pixel-btn pixel-btn-primary w-full py-2.5 font-bold text-xs sm:text-sm shadow-lg mt-auto">
+                                    ⚔ ${targetSlotIdx + 1}体目に編成する
+                                </button>
+                            `;
+                        }
                     }
                 } else {
                     html += `
@@ -1968,7 +2347,7 @@ static drawDopagaking(p, isCharged) {
                     const remPts = 240 - totalUsed;
                     const sortOrder = arg1 || 'default';
                     const sortDir = arg2 || 'desc';
-                    const onlyOwned = !!arg3;
+                    const onlyOwned = (arg3 === true || arg3 === 'true');
 
                     const hpMin = 50, hpMax = 300;
                     const atkMin = 5, atkMax = 45;
@@ -2433,11 +2812,20 @@ pasha_dark: {
         }
 
         class BattleEngine {
-            constructor(p1CharId, p2CharId, isOnline = false, myPlayerNum = 1, roomId = null, isNewBattle = false) {
+            constructor(p1CharId, p2CharId, isOnline = false, myPlayerNum = 1, roomId = null, isNewBattle = false, battleOptions = null) {
                 this.isOnline = isOnline;
                 this.myPlayerNum = myPlayerNum;
                 this.roomId = roomId;
                 this.isNewBattle = isNewBattle;
+                const opts = battleOptions || {};
+                this.isOnlineBattleMode = !!opts.isOnlineBattleMode;
+                this.onlineMatchMode = opts.matchMode || '2p';
+                this.allyHumanCount = typeof opts.allyHumanCount === 'number' ? opts.allyHumanCount : 1;
+                this.enemyHumanCount = typeof opts.enemyHumanCount === 'number' ? opts.enemyHumanCount : 1;
+                this.allyBotCount = Math.max(0, 3 - this.allyHumanCount);
+                this.enemyBotCount = Math.max(0, 3 - this.enemyHumanCount);
+                this.controlSingleAllyOnly = !!opts.controlSingleAllyOnly;
+                this.controlledAllyIndex = 0;
                 this.turn = 1;
                 this.turnTimer = 15;
                 this.timerId = null;
@@ -2448,7 +2836,10 @@ pasha_dark: {
                 this.currentAttacker = null;
                 this.turnJustStarted = true;
 
-                this.p1 = this.createBattlePlayer(p1CharId, isOnline ? 'Player 1' : 'Player 1', 1);
+                const isTeamArray = Array.isArray(p1CharId);
+                const ally1Id = isTeamArray ? (p1CharId[0] || 'asaiomizu') : (p1CharId || 'asaiomizu');
+
+                this.p1 = this.createBattlePlayer(ally1Id, isOnline ? 'Player 1' : 'Player 1', 1);
                 this.p2 = this.createBattlePlayer(p2CharId, isOnline ? 'Player 2' : 'BOT (CPU)', 2);
                 this.activeAllyIndex = 0;
                 this.waitingForChoice = false;
@@ -2456,9 +2847,10 @@ pasha_dark: {
 
                 if (this.isNewBattle) {
                     const allIds = Object.keys(CHARACTER_DATA);
-                    const otherAllyIds = allIds.filter(id => id !== p1CharId);
-                    const ally2Id = otherAllyIds[Math.floor(Math.random() * otherAllyIds.length)] || 'courtney';
-                    const ally3Id = otherAllyIds.filter(id => id !== ally2Id)[Math.floor(Math.random() * (otherAllyIds.length - 1))] || 'ndaihyo';
+                    const selectedTeam = isTeamArray ? p1CharId.filter(id => id && CHARACTER_DATA[id]) : [];
+                    const otherAllyIds = allIds.filter(id => id !== ally1Id);
+                    const ally2Id = selectedTeam[1] || otherAllyIds[Math.floor(Math.random() * otherAllyIds.length)] || 'courtney';
+                    const ally3Id = selectedTeam[2] || otherAllyIds.filter(id => id !== ally2Id)[Math.floor(Math.random() * Math.max(1, otherAllyIds.length - 1))] || 'ndaihyo';
 
                     const enemy2Id = allIds[Math.floor(Math.random() * allIds.length)];
                     const enemy3Id = allIds[Math.floor(Math.random() * allIds.length)];
@@ -2473,6 +2865,46 @@ pasha_dark: {
                         this.createBattlePlayer(enemy2Id, '敵2', 2),
                         this.createBattlePlayer(enemy3Id, '敵3', 2)
                     ];
+
+                    if (this.isOnlineBattleMode && this.controlSingleAllyOnly) {
+                        this.allies.forEach((a, idx) => {
+                            if (idx === 0) {
+                                a.roleType = 'you';
+                                a.roleBadge = 'YOU';
+                                a.isBot = false;
+                            } else if (idx < this.allyHumanCount) {
+                                a.roleType = 'ally_player';
+                                a.roleBadge = `味方P${idx + 1}`;
+                                a.isBot = false;
+                            } else {
+                                a.roleType = 'bot';
+                                a.roleBadge = 'BOT';
+                                a.isBot = true;
+                            }
+                        });
+                        this.enemies.forEach((e, idx) => {
+                            if (idx < this.enemyHumanCount) {
+                                e.roleType = 'enemy_player';
+                                e.roleBadge = `敵P${idx + 1}`;
+                                e.isBot = false;
+                            } else {
+                                e.roleType = 'bot';
+                                e.roleBadge = 'BOT';
+                                e.isBot = true;
+                            }
+                        });
+                    } else {
+                        this.allies.forEach((a, idx) => {
+                            a.roleType = 'you';
+                            a.roleBadge = idx === 0 ? 'LEADER' : `${idx + 1}体目`;
+                            a.isBot = false;
+                        });
+                        this.enemies.forEach((e, idx) => {
+                            e.roleType = this.isOnlineBattleMode ? 'enemy_player' : 'bot';
+                            e.roleBadge = idx === 0 ? 'BOSS' : (this.isOnlineBattleMode ? `敵${idx + 1}` : 'BOT');
+                            e.isBot = !this.isOnlineBattleMode;
+                        });
+                    }
                 } else {
                     this.allies = [this.p1];
                     this.enemies = [this.p2];
@@ -2747,29 +3179,56 @@ pasha_dark: {
             }
 
             startBattle() {
-                this.log(`⚔️ バトル開始！ 【${this.p1.charName}】 VS 【${this.p2.charName}】`, 'text-amber-300 font-bold');
-                this.checkPashaPassive();
-                
-                // 先攻決定ロジック (所持DOPAが多い方が先攻。同額の場合およびBOT戦では50%のランダム判定)
-                let firstStrikerNum = 1;
-                if (!this.isOnline) {
-                    firstStrikerNum = Math.random() < 0.5 ? 1 : 2;
-                    this.log(`🎲 BOT戦のため、50%のランダム判定により【${firstStrikerNum === 1 ? this.p1.charName : this.p2.charName}】が先攻を獲得！`, 'text-amber-300 font-bold');
-                } else {
-                    const p1Dopa = (this.myPlayerNum === 1) ? playerState.dopa : (this.latestRoomData?.p1Profile?.dopa ?? 1000);
-                    const p2Dopa = (this.myPlayerNum === 2) ? playerState.dopa : (this.latestRoomData?.p2Profile?.dopa ?? 1000);
-                    if (p1Dopa > p2Dopa) {
+                if (this.isNewBattle) {
+                    const alliesList = this.allies || [this.p1];
+                    const enemiesList = this.enemies || [this.p2];
+                    const alliesTotalHp = alliesList.reduce((sum, c) => sum + (c ? (c.maxHp || c.hp || 0) : 0), 0);
+                    const enemiesTotalHp = enemiesList.reduce((sum, c) => sum + (c ? (c.maxHp || c.hp || 0) : 0), 0);
+                    if (this.isOnlineBattleMode && this.controlSingleAllyOnly) {
+                        this.log(`🌐 オンラインマルチ対戦 (${this.allyHumanCount}vs${this.enemyHumanCount}) 開始！ 味方BOT:${this.allyBotCount}体 / 敵BOT:${this.enemyBotCount}体（操作キャラ: ${this.p1.charName}）`, 'text-emerald-300 font-bold');
+                    } else if (this.isOnlineBattleMode) {
+                        this.log(`🌐 オンライン2人対戦（3体操作）開始！`, 'text-emerald-300 font-bold');
+                    }
+                    this.log(`⚔️ バトル開始！ 味方チーム (合計HP: ${alliesTotalHp}) VS 敵チーム (合計HP: ${enemiesTotalHp})`, 'text-amber-300 font-bold');
+                    this.checkPashaPassive();
+
+                    let firstStrikerNum = 1;
+                    if (alliesTotalHp < enemiesTotalHp) {
                         firstStrikerNum = 1;
-                        this.log(`💰 所持DOPA比較 (自分:${formatDopa(p1Dopa)} vs 相手:${formatDopa(p2Dopa)}) により、【${this.p1.charName}】が先攻を獲得！`, 'text-amber-300 font-bold');
-                    } else if (p2Dopa > p1Dopa) {
+                        this.log(`❤️ 3体合計HP比較 (味方:${alliesTotalHp} vs 敵:${enemiesTotalHp}) により、合計HPが低い【味方チーム】が先攻！（以降は交代制）`, 'text-emerald-300 font-bold');
+                    } else if (enemiesTotalHp < alliesTotalHp) {
                         firstStrikerNum = 2;
-                        this.log(`💰 所持DOPA比較 (自分:${formatDopa(p1Dopa)} vs 相手:${formatDopa(p2Dopa)}) により、【${this.p2.charName}】が先攻を獲得！`, 'text-amber-300 font-bold');
+                        this.log(`❤️ 3体合計HP比較 (味方:${alliesTotalHp} vs 敵:${enemiesTotalHp}) により、合計HPが低い【敵チーム】が先攻！（以降は交代制）`, 'text-red-300 font-bold');
                     } else {
                         firstStrikerNum = Math.random() < 0.5 ? 1 : 2;
-                        this.log(`💰 所持DOPA同額のため、50%のランダム判定により【${firstStrikerNum === 1 ? this.p1.charName : this.p2.charName}】が先攻を獲得！`, 'text-amber-300 font-bold');
+                        this.log(`❤️ 3体合計HP同値 (${alliesTotalHp}) のため、ランダム判定により【${firstStrikerNum === 1 ? '味方チーム' : '敵チーム'}】が先攻！（以降は交代制）`, 'text-amber-300 font-bold');
                     }
+                    this.firstStrikerPlayerNum = firstStrikerNum;
+                } else {
+                    this.log(`⚔️ バトル開始！ 【${this.p1.charName}】 VS 【${this.p2.charName}】`, 'text-amber-300 font-bold');
+                    this.checkPashaPassive();
+                    
+                    // 先攻決定ロジック (所持DOPAが多い方が先攻。同額の場合およびBOT戦では50%のランダム判定)
+                    let firstStrikerNum = 1;
+                    if (!this.isOnline) {
+                        firstStrikerNum = Math.random() < 0.5 ? 1 : 2;
+                        this.log(`🎲 BOT戦のため、50%のランダム判定により【${firstStrikerNum === 1 ? this.p1.charName : this.p2.charName}】が先攻を獲得！`, 'text-amber-300 font-bold');
+                    } else {
+                        const p1Dopa = (this.myPlayerNum === 1) ? playerState.dopa : (this.latestRoomData?.p1Profile?.dopa ?? 1000);
+                        const p2Dopa = (this.myPlayerNum === 2) ? playerState.dopa : (this.latestRoomData?.p2Profile?.dopa ?? 1000);
+                        if (p1Dopa > p2Dopa) {
+                            firstStrikerNum = 1;
+                            this.log(`💰 所持DOPA比較 (自分:${formatDopa(p1Dopa)} vs 相手:${formatDopa(p2Dopa)}) により、【${this.p1.charName}】が先攻を獲得！`, 'text-amber-300 font-bold');
+                        } else if (p2Dopa > p1Dopa) {
+                            firstStrikerNum = 2;
+                            this.log(`💰 所持DOPA比較 (自分:${formatDopa(p1Dopa)} vs 相手:${formatDopa(p2Dopa)}) により、【${this.p2.charName}】が先攻を獲得！`, 'text-amber-300 font-bold');
+                        } else {
+                            firstStrikerNum = Math.random() < 0.5 ? 1 : 2;
+                            this.log(`💰 所持DOPA同額のため、50%のランダム判定により【${firstStrikerNum === 1 ? this.p1.charName : this.p2.charName}】が先攻を獲得！`, 'text-amber-300 font-bold');
+                        }
+                    }
+                    this.firstStrikerPlayerNum = firstStrikerNum;
                 }
-                this.firstStrikerPlayerNum = firstStrikerNum;
 
                 const myChar = (this.isOnline && this.myPlayerNum === 2) ? this.p2 : this.p1;
                 if (myChar.id === 'dopagaking') {
@@ -3122,7 +3581,7 @@ pasha_dark: {
                     if (pNum === 1) {
                         this.p1Action = skillId;
                         if (this.isNewBattle) {
-                            const idx = this.currentControllingAllyIndex || 0;
+                            const idx = this.controlSingleAllyOnly ? (this.controlledAllyIndex || 0) : (this.currentControllingAllyIndex || 0);
                             if (!this.allyActions) this.allyActions = new Array(this.allies.length).fill(null);
                             if (!this.allyTargets) this.allyTargets = new Array(this.allies.length).fill(null);
                             this.allyActions[idx] = skillId;
@@ -3138,36 +3597,38 @@ pasha_dark: {
                             }
                             this.stopTimer();
 
-                            let nextIdx = -1;
-                            for (let i = idx + 1; i < this.allies.length; i++) {
-                                if (this.allies[i] && this.allies[i].hp > 0 && this.allyActions[i] === null) {
-                                    nextIdx = i;
-                                    break;
-                                }
-                            }
-                            if (nextIdx === -1) {
-                                for (let i = 0; i <= idx; i++) {
+                            if (!this.controlSingleAllyOnly) {
+                                let nextIdx = -1;
+                                for (let i = idx + 1; i < this.allies.length; i++) {
                                     if (this.allies[i] && this.allies[i].hp > 0 && this.allyActions[i] === null) {
                                         nextIdx = i;
                                         break;
                                     }
                                 }
-                            }
+                                if (nextIdx === -1) {
+                                    for (let i = 0; i <= idx; i++) {
+                                        if (this.allies[i] && this.allies[i].hp > 0 && this.allyActions[i] === null) {
+                                            nextIdx = i;
+                                            break;
+                                        }
+                                    }
+                                }
 
-                            if (nextIdx !== -1) {
-                                this.currentControllingAllyIndex = nextIdx;
-                                this.activeAllyIndex = nextIdx;
-                                this.p1 = this.allies[nextIdx];
-                                this.p1Action = null;
-                                this.isProcessing = false;
-                                if (typeof newBattleViewMode !== 'undefined') newBattleViewMode = 'main';
-                                if (typeof isNewBattleSkillModalOpen !== 'undefined') isNewBattleSkillModalOpen = false;
-                                if (typeof newBattleTargetSelectSkillId !== 'undefined') newBattleTargetSelectSkillId = null;
-                                if (typeof newBattleTargetSelectType !== 'undefined') newBattleTargetSelectType = null;
-                                this.log(`👉 続いて ${this.p1.charName} の行動を選択してください！`, 'text-amber-300 font-bold');
-                                if (this.onStateChange) this.onStateChange(this);
-                                this.startTimer();
-                                return;
+                                if (nextIdx !== -1) {
+                                    this.currentControllingAllyIndex = nextIdx;
+                                    this.activeAllyIndex = nextIdx;
+                                    this.p1 = this.allies[nextIdx];
+                                    this.p1Action = null;
+                                    this.isProcessing = false;
+                                    if (typeof newBattleViewMode !== 'undefined') newBattleViewMode = 'main';
+                                    if (typeof isNewBattleSkillModalOpen !== 'undefined') isNewBattleSkillModalOpen = false;
+                                    if (typeof newBattleTargetSelectSkillId !== 'undefined') newBattleTargetSelectSkillId = null;
+                                    if (typeof newBattleTargetSelectType !== 'undefined') newBattleTargetSelectType = null;
+                                    this.log(`👉 続いて ${this.p1.charName} の行動を選択してください！`, 'text-amber-300 font-bold');
+                                    if (this.onStateChange) this.onStateChange(this);
+                                    this.startTimer();
+                                    return;
+                                }
                             }
 
                             this.isProcessing = true;
@@ -3213,13 +3674,13 @@ pasha_dark: {
                 }
 
                 if (this.isNewBattle) {
+                    if (!this.botAdapter) this.botAdapter = new BotInputAdapter();
                     const executeAlliesTurn = async () => {
                         for (let i = 0; i < this.allies.length; i++) {
                             const attacker = this.allies[i];
                             if (!attacker || attacker.hp <= 0) continue;
 
-                            const allyAction = (this.allyActions && this.allyActions[i]) || (attacker.isResting ? 'rest' : attacker.skills[0].id);
-                            const savedTarget = (this.allyTargets && this.allyTargets[i]) ? this.allyTargets[i] : null;
+                            const isHumanControlled = !this.controlSingleAllyOnly || (i === (this.controlledAllyIndex || 0));
                             this.currentAttacker = attacker;
                             if (this.onStateChange) this.onStateChange(this);
 
@@ -3229,6 +3690,26 @@ pasha_dark: {
 
                             const opponents = this.enemies.filter(e => e.hp > 0);
                             if (opponents.length > 0) {
+                                if (!isHumanControlled) {
+                                    const defaultOpponent = opponents[0] || this.enemies[0];
+                                    const autoSkillId = this.botAdapter.getDecision(attacker, defaultOpponent);
+                                    const autoSkill = attacker.skills.find(s => s.id === autoSkillId) || attacker.skills[0];
+                                    const autoOpponents = (autoSkill && autoSkill.targetType === 'single_ally') ? this.allies.filter(a => a.hp > 0) : opponents;
+                                    if (autoOpponents.length > 0) {
+                                        let autoDefender = autoOpponents[Math.floor(Math.random() * autoOpponents.length)];
+                                        if (autoSkill && autoSkill.targetType === 'single_ally') {
+                                            const unbuffed = autoOpponents.filter(a => !a.darknessPowerTurns || a.darknessPowerTurns <= 0);
+                                            autoDefender = unbuffed.length > 0 ? unbuffed[Math.floor(Math.random() * unbuffed.length)] : autoOpponents[Math.floor(Math.random() * autoOpponents.length)];
+                                        }
+                                        this.executePlayerAction(attacker, autoDefender, autoSkillId);
+                                        if (this.onStateChange) this.onStateChange(this);
+                                        if (await this.checkWinner()) return true;
+                                    }
+                                    continue;
+                                }
+
+                                const allyAction = (this.allyActions && this.allyActions[i]) || (attacker.isResting ? 'rest' : attacker.skills[0].id);
+                                const savedTarget = (this.allyTargets && this.allyTargets[i]) ? this.allyTargets[i] : null;
                                 const recordedRec = (attacker.id === 'asaiomizu') ? attacker.recordedSkill : null;
                                 const copiedObeySkill = (savedTarget && savedTarget.copiedObeySkill) ? savedTarget.copiedObeySkill : window.newBattleTargetSelectCopiedSkill;
                                 if (copiedObeySkill && allyAction === 'dopa_obey_copy') {
@@ -3365,16 +3846,23 @@ pasha_dark: {
                 if (this.isNewBattle && this.allies) {
                     this.allyActions = new Array(this.allies.length).fill(null);
                     this.allyTargets = new Array(this.allies.length).fill(null);
-                    let firstLiving = 0;
-                    for (let i = 0; i < this.allies.length; i++) {
-                        if (this.allies[i] && this.allies[i].hp > 0) {
-                            firstLiving = i;
-                            break;
+                    if (this.controlSingleAllyOnly) {
+                        const cIdx = this.controlledAllyIndex || 0;
+                        this.activeAllyIndex = cIdx;
+                        this.currentControllingAllyIndex = cIdx;
+                        this.p1 = this.allies[cIdx];
+                    } else {
+                        let firstLiving = 0;
+                        for (let i = 0; i < this.allies.length; i++) {
+                            if (this.allies[i] && this.allies[i].hp > 0) {
+                                firstLiving = i;
+                                break;
+                            }
                         }
+                        this.activeAllyIndex = firstLiving;
+                        this.currentControllingAllyIndex = firstLiving;
+                        this.p1 = this.allies[firstLiving];
                     }
-                    this.activeAllyIndex = firstLiving;
-                    this.currentControllingAllyIndex = firstLiving;
-                    this.p1 = this.allies[firstLiving];
                 }
                 this.p1Action = null;
                 this.p2Action = null;
@@ -3382,11 +3870,18 @@ pasha_dark: {
                 this.p1TargetChar = null;
                 this.waitingForOpponent = false;
 
+                if (this.isNewBattle && this.controlSingleAllyOnly && !this.battleEnded && this.p1 && this.p1.hp <= 0) {
+                    if (this.checkActiveAllyStatus()) return;
+                }
+
                 if (this.onStateChange) this.onStateChange(this);
                 if (!this.battleEnded) {
                     this.startTimer();
                     if (this.isNewBattle && this.onCutin) {
-                        this.onCutin("🟢 自分のターンです！", `ターン ${this.turn} - 味方 ${this.p1.charName} の行動を選択してください`);
+                        const turnSub = this.controlSingleAllyOnly
+                            ? `ターン ${this.turn} - あなたの操作キャラ ${this.p1.charName} の行動を選択してください`
+                            : `ターン ${this.turn} - 味方 ${this.p1.charName} の行動を選択してください`;
+                        this.onCutin("🟢 自分のターンです！", turnSub);
                     }
                 }
             }
@@ -5066,7 +5561,13 @@ pasha_dark: {
             if (!container) return;
             container.scrollTop = 0;
 
-            const selected = (typeof getLastSelectedChar === 'function' ? getLastSelectedChar() : (window.selectedNewBattleChar || 'asaiomizu'));
+            const onlineCfg = (isOnline && typeof getOnlineBattleConfig === 'function') ? getOnlineBattleConfig() : { matchMode: '2p', allyHumanCount: 1, enemyHumanCount: 1, allyBotCount: 0, enemyBotCount: 0, totalHumans: 2, controlSingleAllyOnly: false };
+            const isOnlineMultiSingle = !!(isOnline && onlineCfg.matchMode === 'multi');
+
+            const team = getSelectedNewBattleTeam();
+            const activeSlot = getActiveTeamSlotIndex();
+            const selectedCount = team.filter(Boolean).length;
+            const selectedMultiCharId = isOnlineMultiSingle && typeof getSelectedOnlineMultiChar === 'function' ? getSelectedOnlineMultiChar() : null;
             let chars = Object.values(CHARACTER_DATA);
 
             if (onlyOwned) {
@@ -5106,22 +5607,125 @@ pasha_dark: {
             const unlockedCount = playerState.unlockedChars.length;
             const totalCount = Object.keys(CHARACTER_DATA).length;
 
+            let teamSlotsHtml = '';
+            if (isOnlineMultiSingle) {
+                const chosenData = selectedMultiCharId ? CHARACTER_DATA[selectedMultiCharId] : null;
+                teamSlotsHtml = [0, 1, 2].map(idx => {
+                    if (idx === 0) {
+                        if (chosenData) {
+                            return `
+                                <div class="flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1 rounded border-2 border-emerald-400 bg-emerald-950/60 shadow-[0_0_8px_rgba(52,211,153,0.45)]">
+                                    <canvas id="team-slot-cvs-0" width="36" height="36" class="w-7 h-7 sm:w-9 sm:h-9 rounded bg-slate-950 border border-emerald-500 shrink-0"></canvas>
+                                    <div class="min-w-0 flex-1 text-left leading-tight">
+                                        <div class="text-[8px] sm:text-[9px] font-pixel text-emerald-300 font-bold truncate">★あなた (操作1体)</div>
+                                        <div class="text-[10px] sm:text-xs font-bold text-white truncate">${chosenData.name}</div>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                        return `
+                            <div class="flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1 rounded border-2 border-emerald-400 border-dashed bg-emerald-950/40">
+                                <div class="w-7 h-7 sm:w-9 sm:h-9 rounded bg-slate-900 flex items-center justify-center text-emerald-400 text-xs font-bold shrink-0">?</div>
+                                <div class="min-w-0 flex-1 text-left leading-tight">
+                                    <div class="text-[8px] sm:text-[9px] font-pixel text-emerald-300 font-bold truncate">★あなた (操作1体)</div>
+                                    <div class="text-[9px] sm:text-[10px] text-slate-400 font-mono truncate">1体選択...</div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    const isHumanAlly = idx < onlineCfg.allyHumanCount;
+                    return `
+                        <div class="flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1 rounded border ${isHumanAlly ? 'border-sky-500/70 bg-sky-950/40' : 'border-amber-500/60 bg-slate-900/90'}">
+                            <div class="w-7 h-7 sm:w-9 sm:h-9 rounded bg-slate-950 border border-slate-700 flex items-center justify-center text-sm shrink-0">${isHumanAlly ? '🤝' : '🤖'}</div>
+                            <div class="min-w-0 flex-1 text-left leading-tight">
+                                <div class="text-[8px] sm:text-[9px] font-pixel ${isHumanAlly ? 'text-sky-300' : 'text-amber-300'} font-bold truncate">${isHumanAlly ? `味方プレイヤー${idx + 1}` : '味方BOT'}</div>
+                                <div class="text-[9px] sm:text-[10px] text-slate-400 font-mono truncate">${isHumanAlly ? '別プレイヤー自動' : '人数不足を自動補充'}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                teamSlotsHtml = [0, 1, 2].map(idx => {
+                    const cId = team[idx];
+                    const cData = cId ? CHARACTER_DATA[cId] : null;
+                    const isFocused = activeSlot === idx;
+                    const slotLabel = idx === 0 ? '★1体目(L)' : `${idx + 1}体目`;
+                    const slotBorderClass = isFocused
+                        ? 'border-emerald-400 bg-emerald-950/60 shadow-[0_0_8px_rgba(52,211,153,0.45)]'
+                        : (cData ? 'border-amber-500/80 bg-slate-900 hover:border-amber-300' : 'border-slate-700 border-dashed bg-slate-950/80 hover:border-slate-500');
+
+                    if (cData) {
+                        return `
+                            <div onclick="setActiveTeamSlotIndex(${idx}, '${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline})" class="flex-1 min-w-0 flex items-center gap-1.5 px-1.5 py-1 rounded border-2 cursor-pointer transition-all ${slotBorderClass}">
+                                <canvas id="team-slot-cvs-${idx}" width="36" height="36" class="w-7 h-7 sm:w-9 sm:h-9 rounded bg-slate-950 border border-slate-700 shrink-0"></canvas>
+                                <div class="min-w-0 flex-1 text-left leading-tight">
+                                    <div class="text-[8px] sm:text-[9px] font-pixel ${isFocused ? 'text-emerald-300' : 'text-amber-300'} font-bold truncate">${slotLabel}</div>
+                                    <div class="text-[10px] sm:text-xs font-bold text-white truncate">${cData.name}</div>
+                                </div>
+                                <button onclick="event.stopPropagation(); clearNewBattleTeamSlot(${idx}, '${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline})" class="text-[10px] text-slate-400 hover:text-red-400 px-1 font-bold shrink-0" title="外す">✕</button>
+                            </div>
+                        `;
+                    }
+                    return `
+                        <div onclick="setActiveTeamSlotIndex(${idx}, '${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline})" class="flex-1 min-w-0 flex items-center gap-1.5 px-1.5 py-1 rounded border-2 cursor-pointer transition-all ${slotBorderClass}">
+                            <div class="w-7 h-7 sm:w-9 sm:h-9 rounded bg-slate-900 border border-dashed border-slate-600 flex items-center justify-center text-slate-400 text-xs font-bold shrink-0">+</div>
+                            <div class="min-w-0 flex-1 text-left leading-tight">
+                                <div class="text-[8px] sm:text-[9px] font-pixel ${isFocused ? 'text-emerald-300' : 'text-slate-400'} font-bold truncate">${slotLabel}</div>
+                                <div class="text-[9px] sm:text-[10px] text-slate-500 font-mono truncate">${isFocused ? '選択中...' : '未選択'}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            const headerBackBtn = isOnlineMultiSingle ? 'renderOnlineMultiSetupScreen()' : (isOnline ? 'renderOnlineModesScreen()' : 'renderBotModesScreen()');
+            const headerBackLabel = isOnlineMultiSingle ? '◀ 人数設定' : '◀ モード選択';
+            const headerTitle = isOnlineMultiSingle
+                ? `🌐 オンライン${onlineCfg.totalHumans}人戦 (${onlineCfg.allyHumanCount}vs${onlineCfg.enemyHumanCount}) - 1体選択`
+                : (isOnline ? '🌐 オンライン2人戦 (3体操作) - 3体編成' : '✨ 3v3バトルモード - 3体チーム編成');
+            const headerSub = isOnlineMultiSingle
+                ? `操作する1体を選択せよ！（残り枠は味方BOT:${onlineCfg.allyBotCount}体・敵BOT:${onlineCfg.enemyBotCount}体が自動参戦）`
+                : '出陣する味方3体を選択せよ！（カードで詳細・能力調整 / ボタンで編成）';
+            const headerCountText = isOnlineMultiSingle
+                ? (selectedMultiCharId ? '1/1 体' : '0/1 体')
+                : `${selectedCount}/3 体`;
+            const headerCountDone = isOnlineMultiSingle ? !!selectedMultiCharId : (selectedCount === 3);
+
             let html = `
                 <div class="w-full h-full flex flex-col items-center justify-between max-w-4xl mx-auto py-1 px-2 overflow-hidden select-none bg-slate-950 text-white">
-                    <div class="pixel-box-gold p-1.5 sm:p-2 bg-amber-950/90 w-full text-center space-y-0.5 ${isOnline ? 'border-emerald-500' : 'border-amber-400'} mb-1.5 flex-shrink-0">
+                    <div class="pixel-box-gold p-1.5 sm:p-2 bg-amber-950/90 w-full text-center space-y-0.5 ${isOnline ? 'border-emerald-500' : 'border-amber-400'} mb-1 flex-shrink-0">
                         <div class="flex items-center justify-between">
-                            <button onclick="${isOnline ? 'renderOnlineModesScreen()' : 'renderBotModesScreen()'}" class="pixel-btn pixel-btn-danger px-2.5 py-0.5 text-xs font-bold">
-                                ◀ モード選択
+                            <button onclick="${headerBackBtn}" class="pixel-btn pixel-btn-danger px-2.5 py-0.5 text-xs font-bold">
+                                ${headerBackLabel}
                             </button>
-                            <h2 class="text-xs sm:text-base font-bold ${isOnline ? 'text-emerald-300' : 'text-amber-300'} font-pixel">
-                                 ${isOnline ? '🌐 オンライン対戦 - キャラ選択' : '✨ 3v3バトルモード - キャラ選択'}
+                            <h2 class="text-xs sm:text-base font-bold ${isOnline ? 'text-emerald-300' : 'text-amber-300'} font-pixel truncate px-2">
+                                 ${headerTitle}
                             </h2>
-                            <div class="w-16"></div>
+                            <div class="text-[10px] font-mono font-bold ${headerCountDone ? 'text-emerald-300' : 'text-amber-300'} shrink-0">
+                                ${headerCountText}
+                            </div>
                         </div>
-                        <p class="text-[9px] sm:text-[11px] ${isOnline ? 'text-emerald-200' : 'text-amber-200'} font-mono">アイコンをタップして詳細確認・出陣ファイターを選択せよ！</p>
+                        <p class="text-[9px] sm:text-[11px] ${isOnline ? 'text-emerald-200' : 'text-amber-200'} font-mono">${headerSub}</p>
                     </div>
 
-                    <div class="flex items-center justify-between w-full mb-1.5 px-1 gap-2 flex-wrap flex-shrink-0">
+                    <!-- 味方チーム編成スロット -->
+                    <div class="w-full flex items-center gap-1.5 mb-1 px-0.5 flex-shrink-0">
+                        <div class="flex-1 flex items-center gap-1.5 min-w-0">
+                            ${teamSlotsHtml}
+                        </div>
+                        ${isOnlineMultiSingle ? '' : `
+                        <div class="flex flex-col sm:flex-row gap-1 shrink-0">
+                            <button onclick="autoFillNewBattleTeam('${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline})" class="pixel-btn pixel-btn-warning px-2 py-1 text-[10px] font-bold" title="空きスロットを自動編成">
+                                🎲 おまかせ
+                            </button>
+                            <button onclick="clearAllNewBattleTeam('${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline})" class="pixel-btn bg-slate-800 border-slate-600 px-2 py-1 text-[10px] font-bold text-slate-300" title="編成をクリア">
+                                🗑️
+                            </button>
+                        </div>
+                        `}
+                    </div>
+
+                    <div class="flex items-center justify-between w-full mb-1 px-1 gap-2 flex-wrap flex-shrink-0">
                         <div class="flex items-center gap-1.5 text-xs">
                             <span class="text-slate-400 font-bold">並び替え:</span>
                             <select id="new-char-select-sort-order" onchange="onNewCharSelectSortChange('${sortDir}', ${onlyOwned}, ${isOnline})" class="pixel-box bg-slate-900 text-amber-300 px-2 py-1 text-xs outline-none border-amber-600">
@@ -5149,7 +5753,8 @@ pasha_dark: {
 
             chars.forEach(c => {
                 const isUnlocked = playerState.unlockedChars.includes(c.id);
-                const isSelected = selected === c.id;
+                const slotIdx = isOnlineMultiSingle ? (selectedMultiCharId === c.id ? 0 : -1) : team.indexOf(c.id);
+                const isSelected = slotIdx !== -1;
 
                 let statDisplay = '';
                 if (c.id === 'dopagaking') {
@@ -5166,14 +5771,26 @@ pasha_dark: {
                     else if (sortOrder === 'eva') statDisplay = `<span class="text-[9px] sm:text-[10px] text-blue-400 font-bold">避: ${c.eva}%</span>`;
                 }
 
+                let quickActionBtn = '';
+                if (!isUnlocked) {
+                    quickActionBtn = `<span class="text-[9px] text-red-400 font-bold mt-1">🔒 未解放</span>`;
+                } else if (isOnlineMultiSingle) {
+                    quickActionBtn = `<button onclick="event.stopPropagation(); selectOnlineMultiChar('${c.id}', '${sortOrder}', '${sortDir}', ${onlyOwned})" class="pixel-btn ${isSelected ? 'pixel-btn-success' : 'pixel-btn-primary'} w-full py-0.5 px-1 text-[9px] sm:text-[10px] font-bold mt-1">${isSelected ? '✓ 操作キャラ中' : '⚔ この1体を選ぶ'}</button>`;
+                } else {
+                    quickActionBtn = `<button onclick="event.stopPropagation(); toggleNewBattleTeamChar('${c.id}', '${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline})" class="pixel-btn ${isSelected ? 'pixel-btn-success' : 'pixel-btn-primary'} w-full py-0.5 px-1 text-[9px] sm:text-[10px] font-bold mt-1">${isSelected ? `✓ ${slotIdx + 1}体目 (外す)` : `+ ${activeSlot + 1}体目に編成`}</button>`;
+                }
+
+                const badgeText = isOnlineMultiSingle ? 'YOU' : `${slotIdx + 1}体目`;
+
                 html += `
-                    <div onclick="openCharDetail('${c.id}', 'new_select', '${sortOrder}', '${sortDir}', ${onlyOwned})" 
-                         class="pixel-box p-2 sm:p-3 bg-slate-900 cursor-pointer flex flex-col items-center justify-between border-2 transition-all ${isSelected ? 'border-amber-400 bg-amber-950/40 scale-105 shadow-lg' : 'border-slate-700 hover:border-slate-400'} ${!isUnlocked ? 'opacity-60 grayscale' : ''}">
-                        <canvas id="new-select-cvs-${c.id}" width="95" height="95" class="pixel-box bg-slate-950 mb-1 w-16 h-16 sm:w-24 sm:h-24"></canvas>
-                        <span class="text-[11px] sm:text-xs font-bold ${isSelected ? 'text-amber-300 font-pixel' : 'text-slate-200'} truncate max-w-full">${c.name}</span>
+                    <div onclick="openCharDetail('${c.id}', 'new_select', '${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline})" 
+                         class="pixel-box p-2 sm:p-2.5 bg-slate-900 cursor-pointer flex flex-col items-center justify-between border-2 transition-all relative ${isSelected ? 'border-emerald-400 bg-emerald-950/35 shadow-lg' : 'border-slate-700 hover:border-slate-400'} ${!isUnlocked ? 'opacity-60 grayscale' : ''}">
+                        ${isSelected ? `<div class="absolute top-1 left-1 bg-emerald-600 text-white px-1 py-0.5 rounded text-[8px] font-pixel font-bold z-10 shadow">${badgeText}</div>` : ''}
+                        <canvas id="new-select-cvs-${c.id}" width="95" height="95" class="pixel-box bg-slate-950 mb-1 w-14 h-14 sm:w-20 sm:h-20"></canvas>
+                        <span class="text-[11px] sm:text-xs font-bold ${isSelected ? 'text-emerald-300 font-pixel' : 'text-slate-200'} truncate max-w-full">${c.name}</span>
                         <span class="text-[9px] text-slate-400 truncate max-w-full">${c.title}</span>
                         ${statDisplay}
-                        ${!isUnlocked ? '<span class="text-[9px] text-red-400 font-bold mt-0.5">🔒 未解放</span>' : (isSelected ? '<span class="text-[9px] text-amber-400 font-pixel font-bold mt-0.5">✨ 選択中</span>' : '<span class="text-[9px] text-slate-400 font-bold mt-0.5">タップで詳細</span>')}
+                        ${quickActionBtn}
                     </div>
                 `;
             });
@@ -5181,14 +5798,15 @@ pasha_dark: {
             html += `
                     </div>
                     <div class="flex gap-3 w-full justify-center pb-1 flex-shrink-0">
-                        <button onclick="
-                            const pChar = window.selectedNewBattleChar || 'asaiomizu';
-                            const otherIds = Object.keys(CHARACTER_DATA).filter(id => id !== pChar);
-                            const eChar = otherIds[Math.floor(Math.random() * otherIds.length)] || 'pasha';
-                            ${isOnline ? 'startOnlineBattleMode(pChar, eChar)' : 'startNewBattleMode(pChar, eChar)'};
-                        " class="pixel-btn ${isOnline ? 'pixel-btn-success' : 'pixel-btn-primary'} px-8 py-2.5 sm:py-3 text-xs sm:text-sm font-bold font-pixel shadow-lg">
-                            このキャラクターで出陣！ ▶
+                        ${isOnlineMultiSingle ? `
+                        <button onclick="startSelectedOnlineMultiChar()" class="pixel-btn ${selectedMultiCharId ? 'pixel-btn-success' : 'bg-slate-800 border-slate-600 text-slate-300'} px-8 py-2 sm:py-2.5 text-xs sm:text-sm font-bold font-pixel shadow-lg">
+                            ${selectedMultiCharId ? `この1体で出陣！ (${onlineCfg.allyHumanCount}vs${onlineCfg.enemyHumanCount}) ▶` : '操作するキャラクターを1体選んでください'}
                         </button>
+                        ` : `
+                        <button onclick="startSelectedNewBattleTeam(${isOnline})" class="pixel-btn ${selectedCount === 3 ? (isOnline ? 'pixel-btn-success' : 'pixel-btn-primary') : 'bg-slate-800 border-slate-600 text-slate-300'} px-8 py-2 sm:py-2.5 text-xs sm:text-sm font-bold font-pixel shadow-lg">
+                            ${selectedCount === 3 ? 'この3体で出陣！ ▶' : `あと${3 - selectedCount}体選択してください (${selectedCount}/3)`}
+                        </button>
+                        `}
                     </div>
                 </div>
             `;
@@ -5196,6 +5814,20 @@ pasha_dark: {
             container.innerHTML = html;
 
             setTimeout(() => {
+                if (isOnlineMultiSingle) {
+                    if (selectedMultiCharId) {
+                        const slotCvs = document.getElementById('team-slot-cvs-0');
+                        if (slotCvs) CharacterRenderer.drawCharacter(slotCvs, selectedMultiCharId);
+                    }
+                } else {
+                    [0, 1, 2].forEach(idx => {
+                        const cId = team[idx];
+                        if (cId) {
+                            const slotCvs = document.getElementById(`team-slot-cvs-${idx}`);
+                            if (slotCvs) CharacterRenderer.drawCharacter(slotCvs, cId);
+                        }
+                    });
+                }
                 chars.forEach(c => {
                     const cvs = document.getElementById(`new-select-cvs-${c.id}`);
                     if (cvs) CharacterRenderer.drawCharacter(cvs, c.id);
@@ -5237,20 +5869,125 @@ pasha_dark: {
                         <button onclick="renderDopagaKingdomScreen()" class="pixel-btn pixel-btn-danger px-3 py-1.5 text-xs font-bold">
                             ◀ 王国に戻る
                         </button>
-                        <h2 class="text-emerald-400 font-pixel text-base sm:text-xl font-bold tracking-wider drop-shadow-md">🌐 オンラインで戦う</h2>
+                        <h2 class="text-emerald-400 font-pixel text-base sm:text-xl font-bold tracking-wider drop-shadow-md">🌐 オンライン対戦モード選択</h2>
                         <div class="w-20"></div>
                     </div>
 
-                    <div class="flex-1 flex items-center justify-center relative z-10 my-auto max-w-md mx-auto w-full">
-                        <button onclick="renderOnlineBattleCharSelectScreen()" class="pixel-box bg-slate-900 border-emerald-400 hover:border-emerald-300 p-8 flex flex-col items-center justify-center gap-4 cursor-pointer transform hover:scale-105 transition-all shadow-xl w-full h-44 sm:h-52 group">
-                            <span class="text-4xl sm:text-5xl group-hover:scale-110 transition-transform">🌐</span>
-                            <span class="text-emerald-300 font-pixel font-bold text-base sm:text-lg text-center">オンライン3対3バトル</span>
-                            <span class="text-xs text-slate-400 text-center">全国のファイターと3対3のチームオンライン対戦！</span>
+                    <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10 my-auto max-w-3xl mx-auto w-full items-center">
+                        <button onclick="setOnlineMatchFormat('2p', 1, 1)" class="pixel-box bg-slate-900 border-2 border-emerald-400 hover:border-emerald-300 p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transform hover:scale-[1.03] transition-all shadow-xl w-full h-48 sm:h-56 group">
+                            <span class="text-4xl sm:text-5xl group-hover:scale-110 transition-transform">⚔️</span>
+                            <span class="text-emerald-300 font-pixel font-bold text-base sm:text-lg text-center">2人対戦 (1vs1)</span>
+                            <span class="text-xs text-amber-300 font-bold text-center">味方3体を選んで3体すべて操作！</span>
+                            <span class="text-[11px] text-slate-400 text-center leading-relaxed">お互い3体のキャラクターを順番に操作して戦うタイマン3対3バトル！</span>
+                        </button>
+
+                        <button onclick="setOnlineMatchFormat('multi', 2, 2)" class="pixel-box bg-slate-900 border-2 border-sky-400 hover:border-sky-300 p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transform hover:scale-[1.03] transition-all shadow-xl w-full h-48 sm:h-56 group">
+                            <span class="text-4xl sm:text-5xl group-hover:scale-110 transition-transform">👥</span>
+                            <span class="text-sky-300 font-pixel font-bold text-base sm:text-lg text-center">それ以上の対戦 (3〜6人)</span>
+                            <span class="text-xs text-amber-300 font-bold text-center">選んだ1体を操作 ＋ 人数に応じてBOT参戦！</span>
+                            <span class="text-[11px] text-slate-400 text-center leading-relaxed">2人同士(2vs2)なら味方・敵に各1体のBOTが自動参加！最大3vs3まで対応。</span>
                         </button>
                     </div>
 
                     <div class="text-center relative z-10 pb-2">
-                        <p class="text-xs text-slate-400 font-pixel">バトルモードを選んで出陣しよう！</p>
+                        <p class="text-xs text-slate-400 font-pixel">対戦人数モードを選んで出陣しよう！</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderOnlineMultiSetupScreen() {
+            audioSystem.playSelect();
+            window.isOnlineBattleMode = true;
+            if (!window.onlineBattleConfig || window.onlineBattleConfig.matchMode !== 'multi') {
+                window.onlineBattleConfig = { matchMode: 'multi', allyHumanCount: 2, enemyHumanCount: 2 };
+            }
+            const cfg = getOnlineBattleConfig();
+            const container = document.getElementById('screen-container');
+            if (!container) return;
+
+            const renderTeamSlotsPreview = (humanCount, isAlly) => {
+                return [0, 1, 2].map(idx => {
+                    const isHuman = idx < humanCount;
+                    const label = isAlly
+                        ? (idx === 0 ? 'あなた (操作)' : (isHuman ? `味方プレイヤー${idx + 1}` : '🤖 味方BOT'))
+                        : (isHuman ? `敵プレイヤー${idx + 1}` : '🤖 敵BOT');
+                    const cls = isHuman
+                        ? (isAlly ? 'border-emerald-400 bg-emerald-950/60 text-emerald-200' : 'border-red-400 bg-red-950/60 text-red-200')
+                        : 'border-amber-500/70 bg-slate-900 text-amber-300';
+                    return `<div class="px-2 py-1 rounded border text-[10px] font-mono font-bold ${cls}">${label}</div>`;
+                }).join('');
+            };
+
+            const presets = [
+                { title: '🤝 4人対戦 (2vs2)', sub: '味方BOT 1体 / 敵BOT 1体', a: 2, e: 2 },
+                { title: '⚖️ 3人対戦 (2vs1)', sub: '味方BOT 1体 / 敵BOT 2体', a: 2, e: 1 },
+                { title: '⚡ 5人対戦 (3vs2)', sub: '味方BOT 0体 / 敵BOT 1体', a: 3, e: 2 },
+                { title: '🔥 6人対戦 (3vs3)', sub: '味方BOT 0体 / 敵BOT 0体', a: 3, e: 3 }
+            ];
+
+            container.innerHTML = `
+                <div class="relative w-full h-full flex flex-col justify-between p-3 sm:p-5 select-none overflow-y-auto bg-slate-950 text-white">
+                    <div class="flex items-center justify-between w-full mb-2 shrink-0">
+                        <button onclick="renderOnlineModesScreen()" class="pixel-btn pixel-btn-danger px-3 py-1 text-xs font-bold">
+                            ◀ モード選択
+                        </button>
+                        <h2 class="text-sky-300 font-pixel text-sm sm:text-lg font-bold tracking-wider">👥 マルチ対戦人数設定 (1体操作＋BOT)</h2>
+                        <div class="w-16"></div>
+                    </div>
+
+                    <div class="max-w-3xl mx-auto w-full flex-1 flex flex-col justify-center gap-3">
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            ${presets.map(p => {
+                                const isActive = cfg.allyHumanCount === p.a && cfg.enemyHumanCount === p.e;
+                                return `
+                                    <button onclick="setOnlineMatchFormat('multi', ${p.a}, ${p.e})" class="pixel-box p-2.5 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all ${isActive ? 'bg-sky-950 border-2 border-sky-400 shadow-lg' : 'bg-slate-900 border border-slate-700 hover:border-slate-400'}">
+                                        <span class="font-pixel text-xs font-bold ${isActive ? 'text-sky-300' : 'text-white'}">${p.title}</span>
+                                        <span class="text-[10px] text-amber-300 font-mono">${p.sub}</span>
+                                    </button>
+                                `;
+                            }).join('')}
+                        </div>
+
+                        <div class="pixel-box bg-slate-900/95 border border-slate-700 p-3 sm:p-4 space-y-3">
+                            <div class="text-xs font-pixel text-amber-300 text-center">現在の構成: 合計 ${cfg.totalHumans}人 (${cfg.allyHumanCount}vs${cfg.enemyHumanCount}) ＋ BOT合計 ${cfg.allyBotCount + cfg.enemyBotCount}体</div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div class="bg-slate-950/90 border border-emerald-700/60 rounded p-2.5 space-y-2">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs font-bold text-emerald-300 font-pixel">🛡️ 味方チーム (計3体)</span>
+                                        <div class="flex items-center gap-1.5">
+                                            <button onclick="adjustOnlinePlayerCount('ally', -1)" class="pixel-btn bg-slate-800 border-slate-600 px-2 py-0.5 text-xs font-bold">-</button>
+                                            <span class="text-xs font-mono font-bold text-white">人${cfg.allyHumanCount} / BOT${cfg.allyBotCount}</span>
+                                            <button onclick="adjustOnlinePlayerCount('ally', 1)" class="pixel-btn bg-slate-800 border-slate-600 px-2 py-0.5 text-xs font-bold">+</button>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-col gap-1">${renderTeamSlotsPreview(cfg.allyHumanCount, true)}</div>
+                                </div>
+
+                                <div class="bg-slate-950/90 border border-red-700/60 rounded p-2.5 space-y-2">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs font-bold text-red-300 font-pixel">⚔️ 敵チーム (計3体)</span>
+                                        <div class="flex items-center gap-1.5">
+                                            <button onclick="adjustOnlinePlayerCount('enemy', -1)" class="pixel-btn bg-slate-800 border-slate-600 px-2 py-0.5 text-xs font-bold">-</button>
+                                            <span class="text-xs font-mono font-bold text-white">人${cfg.enemyHumanCount} / BOT${cfg.enemyBotCount}</span>
+                                            <button onclick="adjustOnlinePlayerCount('enemy', 1)" class="pixel-btn bg-slate-800 border-slate-600 px-2 py-0.5 text-xs font-bold">+</button>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-col gap-1">${renderTeamSlotsPreview(cfg.enemyHumanCount, false)}</div>
+                                </div>
+                            </div>
+
+                            <p class="text-[10px] sm:text-xs text-slate-300 font-mono text-center">
+                                ※ あなたは選択した<b class="text-emerald-300">1体のみ</b>を操作します。残りの味方枠・敵枠は指定人数に応じてBOTが自動補完されます。
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-center pt-2 shrink-0">
+                        <button onclick="renderOnlineBattleCharSelectScreen()" class="pixel-btn pixel-btn-success px-8 py-2.5 text-xs sm:text-sm font-bold font-pixel shadow-xl">
+                            キャラ選択へ進む (1体選択) ▶
+                        </button>
                     </div>
                 </div>
             `;
@@ -5260,15 +5997,17 @@ pasha_dark: {
             renderNewBattleCharSelectScreen(sortOrder, sortDir, onlyOwned, true);
         }
 
-        function startOnlineBattleMode(playerCharId = 'asaiomizu', enemyCharId = 'asaiomizu') {
+        function startOnlineBattleMode(playerCharId = 'asaiomizu', enemyCharId = 'asaiomizu', battleOptions = null) {
             window.isOnlineBattleMode = true;
-            startNewBattleMode(playerCharId, enemyCharId);
+            const cfg = battleOptions || getOnlineBattleConfig();
+            startNewBattleMode(playerCharId, enemyCharId, { ...cfg, isOnlineBattleMode: true });
             if (activeNewBattle) {
                 activeNewBattle.isOnlineBattleMode = true;
             }
         }
 
         window.renderOnlineModesScreen = renderOnlineModesScreen;
+        window.renderOnlineMultiSetupScreen = renderOnlineMultiSetupScreen;
         window.renderOnlineBattleCharSelectScreen = renderOnlineBattleCharSelectScreen;
         window.startOnlineBattleMode = startOnlineBattleMode;
 
@@ -5294,12 +6033,16 @@ pasha_dark: {
             return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
         }
 
-        function startNewBattleMode(playerCharId = 'asaiomizu', enemyCharId = 'asaiomizu') {
+        function startNewBattleMode(playerCharId = 'asaiomizu', enemyCharId = 'asaiomizu', battleOptions = null) {
             audioSystem.playSelect();
+            const leaderCharId = Array.isArray(playerCharId) ? (playerCharId[0] || 'asaiomizu') : playerCharId;
             if (typeof saveLastSelectedChar === 'function') {
-                saveLastSelectedChar(playerCharId);
+                saveLastSelectedChar(leaderCharId);
             } else {
-                window.selectedNewBattleChar = playerCharId;
+                window.selectedNewBattleChar = leaderCharId;
+            }
+            if (Array.isArray(playerCharId) && typeof saveSelectedNewBattleTeam === 'function') {
+                saveSelectedNewBattleTeam(playerCharId);
             }
             newBattleViewMode = 'main';
             isNewBattleSkillModalOpen = false;
@@ -5310,7 +6053,7 @@ pasha_dark: {
                 activeNewBattle = null;
             }
 
-            activeNewBattle = new BattleEngine(playerCharId, enemyCharId, false, 1, null, true);
+            activeNewBattle = new BattleEngine(playerCharId, enemyCharId, false, 1, null, true, battleOptions);
 
             activeNewBattle.onLogUpdate = (msg, colorClass) => {
                 appendNewBattleLog(msg, colorClass);
@@ -5453,6 +6196,7 @@ pasha_dark: {
 
                 activeNewBattle.activeAllyIndex = nextIdx;
                 activeNewBattle.currentControllingAllyIndex = nextIdx;
+                activeNewBattle.controlledAllyIndex = nextIdx;
                 activeNewBattle.p1 = activeNewBattle.allies[nextIdx];
                 activeNewBattle.waitingForChoice = false;
                 activeNewBattle.isRunModalOpen = false;
@@ -5547,17 +6291,21 @@ pasha_dark: {
                 const actor = activeNewBattle.currentAttacker;
                 const isAlly = activeNewBattle.getCharacterTeam(actor) === 'ally';
                 const actorName = (actor.charName || '').replace(/SPパシャ憎・半浸闇化状態|パシャ憎・半浸闇化状態/g, 'パシャ憎・半浸闇化');
+                const botCue = (activeNewBattle.controlSingleAllyOnly && actor.roleBadge) ? ` [${actor.roleBadge}]` : '';
                 actorIndicator = `
                     <div class="px-2 py-0.5 rounded border text-[10px] sm:text-xs font-bold font-pixel animate-pulse shadow ${isAlly ? 'bg-emerald-950/90 border-emerald-500 text-emerald-300' : 'bg-red-950/90 border-red-500 text-red-300'}">
-                        ⚡ 現在行動中：${isAlly ? '【味方】' : '【敵】'} ${actorName}
+                        ⚡ 現在行動中：${isAlly ? '【味方】' : '【敵】'}${botCue} ${actorName}
                     </div>
                 `;
             } else if (isMyTurn) {
                 const p1Name = (p1.charName || '').replace(/SPパシャ憎・半浸闇化状態|パシャ憎・半浸闇化状態/g, 'パシャ憎・半浸闇化');
                 const allyOrderNum = (activeNewBattle.allies ? activeNewBattle.allies.indexOf(p1) + 1 : 1);
+                const turnLabel = activeNewBattle.controlSingleAllyOnly
+                    ? `🟢 自分のターン (${p1Name})`
+                    : `🟢 自分のターン (${allyOrderNum}体目: ${p1Name})`;
                 actorIndicator = `
                     <div class="px-2 py-0.5 rounded border border-emerald-400 bg-emerald-950/90 text-emerald-300 text-[10px] sm:text-xs font-bold font-pixel animate-pulse shadow">
-                        🟢 自分のターン (${allyOrderNum}体目: ${p1Name})
+                        ${turnLabel}
                     </div>
                 `;
             } else {
@@ -5731,10 +6479,16 @@ pasha_dark: {
                     <!-- 1. 상部エリア（タイトル・行動状態・ターン・制限時間） -->
                     ${(() => {
                         const isOnline = (window.isOnlineBattleMode || (activeNewBattle && activeNewBattle.isOnlineBattleMode));
+                        let modeLabel = '⚔️ 3v3';
+                        if (isOnline && activeNewBattle && activeNewBattle.controlSingleAllyOnly) {
+                            modeLabel = `🌐 ${activeNewBattle.allyHumanCount}vs${activeNewBattle.enemyHumanCount} (1体操作・BOT味方${activeNewBattle.allyBotCount}/敵${activeNewBattle.enemyBotCount})`;
+                        } else if (isOnline) {
+                            modeLabel = '🌐 オンライン2人戦 (3体操作)';
+                        }
                         return `
                     <div class="w-full flex items-center justify-between gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-slate-900/95 rounded-lg border border-slate-700 shadow-md z-20 shrink-0">
                         <div class="flex items-center gap-1 text-[10px] sm:text-xs font-pixel ${isOnline ? 'text-emerald-300' : 'text-amber-300'} shrink-0">
-                            <span>${isOnline ? '🌐 オンライン戦' : '⚔️ 3v3'}</span>
+                            <span>${modeLabel}</span>
                         </div>
                         `;
                     })()}
@@ -5785,6 +6539,19 @@ pasha_dark: {
                                      const isCurrentActor = currentActor === c;
                                      const isCurrentControlling = isMyTurn && p1 === c;
 
+                                     let allyRoleBadgeHtml = '';
+                                     if (activeNewBattle.controlSingleAllyOnly) {
+                                         if (origIdx === (activeNewBattle.controlledAllyIndex || 0)) {
+                                             allyRoleBadgeHtml = '<div class="absolute bottom-0 right-0 bg-emerald-600 text-white px-1 py-0.5 rounded text-[7px] font-pixel shadow">YOU</div>';
+                                         } else if (c.isBot) {
+                                             allyRoleBadgeHtml = '<div class="absolute bottom-0 right-0 bg-amber-700 text-amber-100 px-1 py-0.5 rounded text-[7px] font-pixel shadow">🤖 BOT</div>';
+                                         } else {
+                                             allyRoleBadgeHtml = `<div class="absolute bottom-0 right-0 bg-sky-600 text-white px-1 py-0.5 rounded text-[7px] font-pixel shadow">${c.roleBadge || `味方P${origIdx + 1}`}</div>`;
+                                         }
+                                     } else if (isLeader) {
+                                         allyRoleBadgeHtml = '<div class="absolute bottom-0 right-0 bg-emerald-600 text-white px-1 py-0.5 rounded text-[7px] font-pixel shadow">LEADER</div>';
+                                     }
+
                                      let posClasses = 'flex flex-col items-center justify-end relative transition-all duration-300 ';
                                      if (posType === 'center') {
                                          posClasses += 'w-[36%] h-[82%] z-30 scale-105 translate-y-3';
@@ -5814,7 +6581,7 @@ pasha_dark: {
                                             <!-- 全身スプライト -->
                                             <div id="ally-shake-${origIdx}" class="w-full flex-1 flex items-center justify-center relative drop-shadow-[0_8px_8px_rgba(0,0,0,0.8)] ${c.isShaking ? 'char-shake' : ''}">
                                                <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none">
-                                               ${isLeader ? '<div class="absolute bottom-0 right-0 bg-emerald-600 text-white px-1 py-0.5 rounded text-[7px] font-pixel shadow">LEADER</div>' : ''}
+                                               ${allyRoleBadgeHtml}
                                                <div class="absolute bottom-1 left-1 z-30 flex flex-col gap-0.5 items-start pointer-events-none">
                                                    ${getStatusBadgesHtml(c, true)}
                                                </div>
@@ -5854,6 +6621,17 @@ pasha_dark: {
                                      const isCurrentActor = currentActor === c;
                                      const flipStyle = 'transform: scaleX(-1);';
 
+                                     let enemyRoleBadgeHtml = '';
+                                     if (activeNewBattle.controlSingleAllyOnly) {
+                                         if (c.isBot) {
+                                             enemyRoleBadgeHtml = '<div class="absolute bottom-0 left-0 bg-amber-700 text-amber-100 px-1 py-0.5 rounded text-[7px] font-pixel shadow">🤖 BOT</div>';
+                                         } else {
+                                             enemyRoleBadgeHtml = `<div class="absolute bottom-0 left-0 bg-red-600 text-white px-1 py-0.5 rounded text-[7px] font-pixel shadow">${c.roleBadge || `敵P${origIdx + 1}`}</div>`;
+                                         }
+                                     } else if (isLeader) {
+                                         enemyRoleBadgeHtml = '<div class="absolute bottom-0 left-0 bg-red-600 text-white px-1 py-0.5 rounded text-[7px] font-pixel shadow">BOSS</div>';
+                                     }
+
                                      let posClasses = 'flex flex-col items-center justify-end relative transition-all duration-300 ';
                                      if (posType === 'center') {
                                          posClasses += 'w-[36%] h-[82%] z-30 scale-105 translate-y-3';
@@ -5883,7 +6661,7 @@ pasha_dark: {
                                            <!-- 全身スプライト -->
                                            <div id="enemy-shake-${origIdx}" class="w-full flex-1 flex items-center justify-center relative drop-shadow-[0_8px_8px_rgba(0,0,0,0.8)] ${c.isShaking ? 'char-shake' : ''}">
                                                <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain" style="${flipStyle}">
-                                               ${isLeader ? '<div class="absolute bottom-0 left-0 bg-red-600 text-white px-1 py-0.5 rounded text-[7px] font-pixel shadow">BOSS</div>' : ''}
+                                               ${enemyRoleBadgeHtml}
                                                <div class="absolute bottom-1 left-1 z-30 flex flex-col gap-0.5 items-start pointer-events-none">
                                                    ${getStatusBadgesHtml(c, false)}
                                                </div>

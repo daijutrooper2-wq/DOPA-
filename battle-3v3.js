@@ -293,9 +293,20 @@ class Battle3v3Engine {
     }
 
     startBattle() {
-        this.log(`⚔️ 3v3バトル開始！ 味方チーム VS 敵チーム`, 'text-amber-300 font-bold');
+        const alliesTotalHp = (this.allies || [this.p1]).reduce((sum, c) => sum + (c ? (c.maxHp || c.hp || 0) : 0), 0);
+        const enemiesTotalHp = (this.enemies || [this.p2]).reduce((sum, c) => sum + (c ? (c.maxHp || c.hp || 0) : 0), 0);
+        this.log(`⚔️ 3v3バトル開始！ 味方チーム (合計HP: ${alliesTotalHp}) VS 敵チーム (合計HP: ${enemiesTotalHp})`, 'text-amber-300 font-bold');
         this.checkPashaPassive();
-        this.firstStrikerPlayerNum = 1;
+        if (alliesTotalHp < enemiesTotalHp) {
+            this.firstStrikerPlayerNum = 1;
+            this.log(`❤️ 3体合計HP比較 (味方:${alliesTotalHp} vs 敵:${enemiesTotalHp}) により、合計HPが低い【味方チーム】が先攻！（以降は交代制）`, 'text-emerald-300 font-bold');
+        } else if (enemiesTotalHp < alliesTotalHp) {
+            this.firstStrikerPlayerNum = 2;
+            this.log(`❤️ 3体合計HP比較 (味方:${alliesTotalHp} vs 敵:${enemiesTotalHp}) により、合計HPが低い【敵チーム】が先攻！（以降は交代制）`, 'text-red-300 font-bold');
+        } else {
+            this.firstStrikerPlayerNum = Math.random() < 0.5 ? 1 : 2;
+            this.log(`❤️ 3体合計HP同値 (${alliesTotalHp}) のため、ランダム判定により【${this.firstStrikerPlayerNum === 1 ? '味方チーム' : '敵チーム'}】が先攻！（以降は交代制）`, 'text-amber-300 font-bold');
+        }
         this.startTimer();
         this.startElapsedTimer();
         if (this.onStateChange) this.onStateChange(this);
@@ -538,7 +549,7 @@ class Battle3v3Engine {
             return false;
         };
 
-        const isAlliesFirst = (this.turn % 2 === 1);
+        const isAlliesFirst = (this.turn % 2 === 1) ? (this.firstStrikerPlayerNum === 1) : (this.firstStrikerPlayerNum !== 1);
 
         if (isAlliesFirst) {
             if (await executeAlliesTurn()) return;
