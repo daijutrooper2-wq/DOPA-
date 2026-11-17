@@ -549,7 +549,7 @@ class Battle3v3Engine {
             return false;
         };
 
-        const isAlliesFirst = (this.turn % 2 === 1) ? (this.firstStrikerPlayerNum === 1) : (this.firstStrikerPlayerNum !== 1);
+        const isAlliesFirst = (this.firstStrikerPlayerNum === 1);
 
         if (isAlliesFirst) {
             if (await executeAlliesTurn()) return;

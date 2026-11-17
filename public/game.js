@@ -2853,6 +2853,8 @@ pasha_dark: {
                 this.turn = 1;
                 this.turnTimer = 15;
                 this.timerId = null;
+                this._autoActionTimeoutId = null;
+                this._stepGen = 0;
                 this.battleEnded = false;
                 this.isSuddenDeath = false;
                 this.waitingForOpponent = false;
@@ -3219,13 +3221,13 @@ pasha_dark: {
                     let firstStrikerNum = 1;
                     if (alliesTotalHp < enemiesTotalHp) {
                         firstStrikerNum = 1;
-                        this.log(`❤️ 3体合計HP比較 (味方:${alliesTotalHp} vs 敵:${enemiesTotalHp}) により、合計HPが低い【味方チーム】が先攻！（以降は交代制）`, 'text-emerald-300 font-bold');
+                        this.log(`❤️ 3体合計HP比較 (味方:${alliesTotalHp} vs 敵:${enemiesTotalHp}) により、合計HPが低い【味方チーム】が先攻！（以降は先攻→後攻の交代制）`, 'text-emerald-300 font-bold');
                     } else if (enemiesTotalHp < alliesTotalHp) {
                         firstStrikerNum = 2;
-                        this.log(`❤️ 3体合計HP比較 (味方:${alliesTotalHp} vs 敵:${enemiesTotalHp}) により、合計HPが低い【敵チーム】が先攻！（以降は交代制）`, 'text-red-300 font-bold');
+                        this.log(`❤️ 3体合計HP比較 (味方:${alliesTotalHp} vs 敵:${enemiesTotalHp}) により、合計HPが低い【敵チーム】が先攻！（以降は先攻→後攻の交代制）`, 'text-red-300 font-bold');
                     } else {
                         firstStrikerNum = Math.random() < 0.5 ? 1 : 2;
-                        this.log(`❤️ 3体合計HP同値 (${alliesTotalHp}) のため、ランダム判定により【${firstStrikerNum === 1 ? '味方チーム' : '敵チーム'}】が先攻！（以降は交代制）`, 'text-amber-300 font-bold');
+                        this.log(`❤️ 3体合計HP同値 (${alliesTotalHp}) のため、ランダム判定により【${firstStrikerNum === 1 ? '味方チーム' : '敵チーム'}】が先攻！（以降は先攻→後攻の交代制）`, 'text-amber-300 font-bold');
                     }
                     this.firstStrikerPlayerNum = firstStrikerNum;
                 } else {
@@ -3484,17 +3486,20 @@ pasha_dark: {
                 try { window.newBattleTargetSelectSkillId = null; } catch(e) {}
                 try { window.newBattleTargetSelectType = null; } catch(e) {}
 
+                const expectedGen = this._stepGen || 0;
                 if (this.p1.hp > 0 && this.p1.eggplantReady && !this.p1Action && !this.battleEnded) {
-                    setTimeout(() => {
-                        if (this.p1.eggplantReady && !this.p1Action && !this.battleEnded) {
+                    this._autoActionTimeoutId = setTimeout(() => {
+                        this._autoActionTimeoutId = null;
+                        if (this._stepGen === expectedGen && !this.isProcessing && this.p1.eggplantReady && !this.p1Action && !this.battleEnded) {
                             this.submitAction(1, 'momo_eggplant_burst');
                         }
                     }, 400);
                     return;
                 }
                 if (this.isNewBattle && this.p1.hp > 0 && this.p1.isResting && !this.p1Action && !this.battleEnded) {
-                    setTimeout(() => {
-                        if (this.p1.isResting && !this.p1Action && !this.battleEnded) {
+                    this._autoActionTimeoutId = setTimeout(() => {
+                        this._autoActionTimeoutId = null;
+                        if (this._stepGen === expectedGen && !this.isProcessing && this.p1.isResting && !this.p1Action && !this.battleEnded) {
                             this.submitAction(1, 'rest');
                         }
                     }, 400);
@@ -3519,6 +3524,10 @@ pasha_dark: {
                     clearInterval(this.timerId);
                     this.timerId = null;
                 }
+                if (this._autoActionTimeoutId) {
+                    clearTimeout(this._autoActionTimeoutId);
+                    this._autoActionTimeoutId = null;
+                }
             }
 
             resetBattleUIAndModals() {
@@ -3528,7 +3537,7 @@ pasha_dark: {
             }
 
             handleTimeOut() {
-                if (this.battleEnded) return;
+                if (this.battleEnded || this.isProcessing || this.waitingForOpponent) return;
                 this.resetBattleUIAndModals();
                 this.log('⏰ 制限時間切れ！自動選択します。', 'text-amber-400 font-bold');
 
@@ -3666,8 +3675,9 @@ pasha_dark: {
                             if (this.onStateChange) this.onStateChange(this);
                             if (await this.checkWinner()) return;
 
+                            const submitGen = this._stepGen || 0;
                             await new Promise(resolve => setTimeout(resolve, 650));
-                            if (this.battleEnded) return;
+                            if (this.battleEnded || submitGen !== (this._stepGen || 0)) return;
 
                             this.turnCharIndex = idx + 1;
                             await this.advanceNewBattleStep();
@@ -3708,7 +3718,7 @@ pasha_dark: {
                     this.log(`--- [ ターン ${this.turn} ] ---`, 'text-slate-400 font-bold text-center');
                 }
 
-                const isAlliesFirst = (this.turn % 2 === 1) ? (this.firstStrikerPlayerNum === 1) : (this.firstStrikerPlayerNum !== 1);
+                const isAlliesFirst = (this.firstStrikerPlayerNum === 1);
                 this.turnTeamOrder = isAlliesFirst ? ['ally', 'enemy'] : ['enemy', 'ally'];
                 this.turnPhaseIndex = 0;
                 this.turnCharIndex = 0;
@@ -3716,7 +3726,7 @@ pasha_dark: {
                 this.allyActions = new Array(this.allies.length).fill(null);
                 this.allyTargets = new Array(this.allies.length).fill(null);
 
-                this.log(`⚡ ターン ${this.turn} 先攻：${isAlliesFirst ? '【味方チーム】' : '【敵チーム】'}から1体ずつ行動します！`, isAlliesFirst ? 'text-emerald-300 font-bold' : 'text-red-300 font-bold');
+                this.log(`⚡ ターン ${this.turn}：${isAlliesFirst ? '【味方チーム】' : '【敵チーム】'}から1体ずつ行動し、続いて${isAlliesFirst ? '【敵チーム】' : '【味方チーム】'}が行動します！`, isAlliesFirst ? 'text-emerald-300 font-bold' : 'text-red-300 font-bold');
 
                 await this.advanceNewBattleStep();
             }
@@ -3724,9 +3734,11 @@ pasha_dark: {
             async advanceNewBattleStep() {
                 if (!this.isNewBattle || this.battleEnded) return;
                 if (!this.botAdapter) this.botAdapter = new BotInputAdapter();
+                this._stepGen = (this._stepGen || 0) + 1;
+                const myGen = this._stepGen;
 
                 while (this.turnPhaseIndex < 2) {
-                    if (this.battleEnded) return;
+                    if (this.battleEnded || myGen !== this._stepGen) return;
                     const currentTeamType = this.turnTeamOrder[this.turnPhaseIndex];
                     const teamList = currentTeamType === 'ally' ? this.allies : this.enemies;
 
@@ -3797,7 +3809,7 @@ pasha_dark: {
                     if (this.onStateChange) this.onStateChange(this);
 
                     await new Promise(resolve => setTimeout(resolve, BOT_ACTION_DELAY));
-                    if (this.battleEnded) return;
+                    if (this.battleEnded || myGen !== this._stepGen) return;
                     if (!actor || actor.hp <= 0) {
                         this.turnCharIndex++;
                         continue;
@@ -3821,14 +3833,14 @@ pasha_dark: {
                             }
                             this.executePlayerAction(actor, defender, skillId);
                             if (this.onStateChange) this.onStateChange(this);
-                            if (await this.checkWinner()) return;
+                            if (await this.checkWinner() || myGen !== this._stepGen) return;
                         }
                     }
 
                     this.turnCharIndex++;
                 }
 
-                if (!this.battleEnded) {
+                if (!this.battleEnded && myGen === this._stepGen) {
                     this.p1TargetIndex = null;
                     this.p1TargetChar = null;
                     this.currentAttacker = null;
@@ -3868,7 +3880,7 @@ pasha_dark: {
                             this.currentAttacker = attacker;
                             if (this.onStateChange) this.onStateChange(this);
 
-                            if (i > 0 || (this.turn % 2 === 1 ? this.firstStrikerPlayerNum !== 1 : this.firstStrikerPlayerNum === 1)) {
+                            if (i > 0 || this.firstStrikerPlayerNum !== 1) {
                                 await new Promise(resolve => setTimeout(resolve, BOT_ACTION_DELAY));
                             }
 
@@ -3964,7 +3976,7 @@ pasha_dark: {
                         return false;
                     };
 
-                    const isAlliesFirst = (this.turn % 2 === 1) ? (this.firstStrikerPlayerNum === 1) : (this.firstStrikerPlayerNum !== 1);
+                    const isAlliesFirst = (this.firstStrikerPlayerNum === 1);
 
                     if (isAlliesFirst) {
                         if (await executeAlliesTurn()) return;
