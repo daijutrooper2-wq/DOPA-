@@ -1573,6 +1573,9 @@ static drawDopagaking(p, isCharged) {
             launchedRoomId: null,
             isSoloLocal: false,
             soloRoomData: null,
+            latestRoomData: null,
+            selectedMoveUid: null,
+            drawLobbyViewFn: null,
             waitStartAt: 0,
             waitTimerId: null
         };
@@ -1599,6 +1602,9 @@ static drawDopagaking(p, isCharged) {
             st.launchedRoomId = null;
             st.isSoloLocal = false;
             st.soloRoomData = null;
+            st.latestRoomData = null;
+            st.selectedMoveUid = null;
+            st.drawLobbyViewFn = null;
         }
 
         function setOnlineMatchStatus(msg, colorClass = 'text-amber-300') {
@@ -2002,9 +2008,10 @@ static drawDopagaking(p, isCharged) {
             const st = window._onlineLobbyState;
             const roomId = st.roomId;
             const isSolo = st.isSoloLocal;
+            const latestRd = st.latestRoomData;
             cleanupOnlineLobby();
             closeOnlineLobbyBotCharPicker();
-            if (!isSolo && roomId && window.fbDb && window.fbDoc) {
+            if (!isSolo && roomId && window.fbDb && window.fbDoc && !(latestRd && (latestRd.status === 'playing' || latestRd.status === 'ended'))) {
                 try {
                     const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
                     const myUid = window.getOnlineClientId();
@@ -2207,10 +2214,6 @@ static drawDopagaking(p, isCharged) {
 
             if (window.fbDb && window.fbDoc && window.fbOnSnapshot) {
                 const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
-                window._onlineLobbyState.heartbeatId = setInterval(() => {
-                    if (window._onlineLobbyState.roomId !== roomId) return;
-                    window.fbUpdateDoc(roomRef, { updatedAt: Date.now() }).catch(() => {});
-                }, 5000);
 
                 window._onlineLobbyState.unsub = window.fbOnSnapshot(roomRef, (snap) => {
                     if (!snap.exists()) return;
@@ -2254,13 +2257,31 @@ static drawDopagaking(p, isCharged) {
                 return;
             }
 
+            if (st.latestRoomData) {
+                const curFound = findMySlotInRoom(st.latestRoomData, myUid);
+                if (curFound && curFound.slot && curFound.slot.charConfig &&
+                    curFound.slot.charConfig.charId === charId &&
+                    JSON.stringify(curFound.slot.charConfig.customStats || null) === JSON.stringify(charConfig.customStats || null) &&
+                    !curFound.slot.ready) {
+                    return;
+                }
+            }
+
             if (window.fbDb && window.fbDoc && window.fbRunTransaction) {
                 const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
                 await window.fbRunTransaction(window.fbDb, async (tx) => {
                     const snap = await tx.get(roomRef);
                     if (!snap.exists()) return;
                     const rd = snap.data();
-                    if (rd.status === 'playing') return;
+                    if (rd.status === 'playing' || rd.status === 'ended') return;
+                    const curFound = findMySlotInRoom(rd, myUid);
+                    if (!curFound) return;
+                    if (curFound.slot.charConfig &&
+                        curFound.slot.charConfig.charId === charId &&
+                        JSON.stringify(curFound.slot.charConfig.customStats || null) === JSON.stringify(charConfig.customStats || null) &&
+                        !curFound.slot.ready) {
+                        return;
+                    }
                     const t1 = (rd.team1Slots || []).map(s => (s && s.uid === myUid ? { ...s, charConfig, ready: false, lastSeen: Date.now() } : s));
                     const t2 = (rd.team2Slots || []).map(s => (s && s.uid === myUid ? { ...s, charConfig, ready: false, lastSeen: Date.now() } : s));
                     tx.update(roomRef, { team1Slots: t1, team2Slots: t2, updatedAt: Date.now() });
@@ -2306,27 +2327,49 @@ static drawDopagaking(p, isCharged) {
             }
         }
 
+        function selectOnlineLobbyMovePlayer(uid) {
+            audioSystem.playSelect();
+            const st = window._onlineLobbyState;
+            const myUid = window.getOnlineClientId();
+            if (!st.latestRoomData || st.latestRoomData.hostUid !== myUid) return;
+            st.selectedMoveUid = uid;
+            if (typeof st.drawLobbyViewFn === 'function') {
+                st.drawLobbyViewFn(st.latestRoomData, true);
+            }
+        }
+
         async function moveOnlineMultiLobbySlot(roomId, targetTeamNum, targetSlotIdx) {
             audioSystem.playSelect();
             const st = window._onlineLobbyState;
             if (st.isSoloLocal) return;
             const myUid = window.getOnlineClientId();
+            if (st.latestRoomData) {
+                if (st.latestRoomData.hostUid !== myUid || st.latestRoomData.status === 'playing' || st.latestRoomData.status === 'ended') return;
+                const destCacheArr = targetTeamNum === 1 ? (st.latestRoomData.team1Slots || []) : (st.latestRoomData.team2Slots || []);
+                const destCacheSlot = destCacheArr[targetSlotIdx];
+                if (!destCacheSlot || destCacheSlot.type !== 'human' || destCacheSlot.uid) return;
+            }
             if (!window.fbDb || !window.fbDoc || !window.fbRunTransaction) return;
             const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
             await window.fbRunTransaction(window.fbDb, async (tx) => {
                 const snap = await tx.get(roomRef);
                 if (!snap.exists()) return;
                 const rd = snap.data();
-                if (rd.status === 'playing') return;
-                const found = findMySlotInRoom(rd, myUid);
-                if (!found || found.slot.ready) return;
+                if (rd.hostUid !== myUid || rd.status === 'playing' || rd.status === 'ended') return;
+                let targetUid = st.selectedMoveUid || myUid;
+                let found = findMySlotInRoom(rd, targetUid);
+                if (!found) {
+                    targetUid = myUid;
+                    found = findMySlotInRoom(rd, targetUid);
+                }
+                if (!found) return;
                 const t1 = [...(rd.team1Slots || [])];
                 const t2 = [...(rd.team2Slots || [])];
                 const destArr = targetTeamNum === 1 ? t1 : t2;
                 const destSlot = destArr[targetSlotIdx];
                 if (!destSlot || destSlot.type !== 'human' || destSlot.uid) return;
                 const srcArr = found.teamNum === 1 ? t1 : t2;
-                const movedData = { ...found.slot, ready: false, lastSeen: Date.now() };
+                const movedData = { ...found.slot, lastSeen: Date.now() };
                 srcArr[found.slotIdx] = { type: 'human', uid: null, playerName: '', selectedIcon: 'courtney', charConfig: null, ready: false, lastSeen: 0 };
                 destArr[targetSlotIdx] = movedData;
                 tx.update(roomRef, { team1Slots: t1, team2Slots: t2, updatedAt: Date.now() });
@@ -2337,6 +2380,7 @@ static drawDopagaking(p, isCharged) {
             audioSystem.playSelect();
             const myUid = window.getOnlineClientId();
             const st = window._onlineLobbyState;
+            if (!st.isSoloLocal && st.latestRoomData && st.latestRoomData.hostUid !== myUid) return;
             const allIds = Object.keys(CHARACTER_DATA);
 
             const transformSlots = (rd) => {
@@ -2384,7 +2428,7 @@ static drawDopagaking(p, isCharged) {
                 const snap = await tx.get(roomRef);
                 if (!snap.exists()) return;
                 const rd = snap.data();
-                if (rd.hostUid !== myUid || rd.status === 'playing') return;
+                if (rd.hostUid !== myUid || rd.status === 'playing' || rd.status === 'ended') return;
                 const res = transformSlots(rd);
                 if (!res) return;
                 tx.update(roomRef, { team1Slots: res.t1, team2Slots: res.t2, status: res.nextStatus, updatedAt: Date.now() });
@@ -2396,6 +2440,12 @@ static drawDopagaking(p, isCharged) {
             if (!CHARACTER_DATA[botCharId]) return;
             const myUid = window.getOnlineClientId();
             const st = window._onlineLobbyState;
+            if (!st.isSoloLocal && st.latestRoomData) {
+                if (st.latestRoomData.hostUid !== myUid) return;
+                const curArr = targetTeamNum === 1 ? (st.latestRoomData.team1Slots || []) : (st.latestRoomData.team2Slots || []);
+                const curSlot = curArr[targetSlotIdx];
+                if (!curSlot || curSlot.type !== 'bot' || curSlot.charConfig?.charId === botCharId) return;
+            }
             const charConfig = { charId: botCharId, customStats: null };
 
             const applyBotChar = (rd) => {
@@ -2403,7 +2453,7 @@ static drawDopagaking(p, isCharged) {
                 const t2 = [...(rd.team2Slots || [])];
                 const arr = targetTeamNum === 1 ? t1 : t2;
                 const slot = arr[targetSlotIdx];
-                if (!slot || slot.type !== 'bot') return null;
+                if (!slot || slot.type !== 'bot' || slot.charConfig?.charId === botCharId) return null;
                 arr[targetSlotIdx] = { ...slot, selectedIcon: botCharId, charConfig, ready: true, lastSeen: Date.now() };
                 return { t1, t2 };
             };
@@ -2423,7 +2473,7 @@ static drawDopagaking(p, isCharged) {
                 const snap = await tx.get(roomRef);
                 if (!snap.exists()) return;
                 const rd = snap.data();
-                if (rd.hostUid !== myUid || rd.status === 'playing') return;
+                if (rd.hostUid !== myUid || rd.status === 'playing' || rd.status === 'ended') return;
                 const res = applyBotChar(rd);
                 if (!res) return;
                 tx.update(roomRef, { team1Slots: res.t1, team2Slots: res.t2, updatedAt: Date.now() });
@@ -2442,6 +2492,9 @@ static drawDopagaking(p, isCharged) {
 
         function openOnlineLobbyBotCharPicker(roomId, teamNum, slotIdx, currentCharId = 'pasha') {
             audioSystem.playSelect();
+            const st = window._onlineLobbyState;
+            const myUid = window.getOnlineClientId();
+            if (!st.isSoloLocal && st.latestRoomData && st.latestRoomData.hostUid !== myUid) return;
             closeOnlineLobbyBotCharPicker();
             const chars = Object.values(CHARACTER_DATA);
             const modal = document.createElement('div');
@@ -2552,21 +2605,33 @@ static drawDopagaking(p, isCharged) {
                 window._onlineLobbyState.soloRoomData = prevSoloData;
             }
 
-            const drawLobbyView = (roomData) => {
+            const drawLobbyView = (roomData, forceRedraw = false) => {
                 latestLobbyData = roomData;
+                window._onlineLobbyState.latestRoomData = roomData;
+                window._onlineLobbyState.drawLobbyViewFn = drawLobbyView;
                 const container = document.getElementById('screen-container');
                 if (!container || !roomData) return;
+                const myUid = window.getOnlineClientId();
+                const isHost = roomData.hostUid === myUid;
+                if (isHost) {
+                    const selUid = window._onlineLobbyState.selectedMoveUid;
+                    if (!selUid || !findMySlotInRoom(roomData, selUid)) {
+                        window._onlineLobbyState.selectedMoveUid = myUid;
+                    }
+                } else {
+                    window._onlineLobbyState.selectedMoveUid = null;
+                }
+                const moveTargetUid = isHost ? (window._onlineLobbyState.selectedMoveUid || myUid) : '';
                 const sig = JSON.stringify({
                     st: roomData.status,
                     rc: roomData.roomCode,
                     hu: roomData.hostUid,
+                    mt: moveTargetUid,
                     t1: (roomData.team1Slots || []).map(s => [s?.type, s?.uid, s?.playerName, s?.charConfig?.charId, s?.ready]),
                     t2: (roomData.team2Slots || []).map(s => [s?.type, s?.uid, s?.playerName, s?.charConfig?.charId, s?.ready])
                 });
-                if (sig === lastLobbySig) return;
+                if (!forceRedraw && sig === lastLobbySig) return;
                 lastLobbySig = sig;
-                const myUid = window.getOnlineClientId();
-                const isHost = roomData.hostUid === myUid;
                 const myFound = findMySlotInRoom(roomData, myUid);
                 const myTeamNum = myFound ? myFound.teamNum : 1;
                 const mySlot = myFound ? myFound.slot : null;
@@ -2612,12 +2677,12 @@ static drawDopagaking(p, isCharged) {
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-1 shrink-0">
-                                    ${!isMyReady && !window._onlineLobbyState.isSoloLocal ? `
-                                        <button type="button" onclick="moveOnlineMultiLobbySlot('${roomId}', ${teamNum}, ${idx})" class="pixel-btn px-2 py-0.5 text-[10px] bg-slate-800 border-slate-500 text-sky-300 font-bold whitespace-nowrap">⇄ 移動</button>
-                                    ` : ''}
                                     ${isHost ? `
+                                        ${!window._onlineLobbyState.isSoloLocal ? `
+                                            <button type="button" onclick="moveOnlineMultiLobbySlot('${roomId}', ${teamNum}, ${idx})" class="pixel-btn px-2 py-0.5 text-[10px] bg-slate-800 border-slate-500 text-sky-300 font-bold whitespace-nowrap">⇄ 移動</button>
+                                        ` : ''}
                                         <button type="button" onclick="toggleOnlineMultiLobbySlotType('${roomId}', ${teamNum}, ${idx})" class="pixel-btn px-2 py-0.5 text-[10px] bg-amber-950 border-amber-500 text-amber-300 font-bold whitespace-nowrap" title="この枠をBOTに切り替え">⇄ BOT</button>
-                                    ` : ''}
+                                    ` : `<span class="text-[10px] font-mono text-slate-500 px-1.5">空き枠</span>`}
                                 </div>
                             </div>
                         `;
@@ -2626,7 +2691,10 @@ static drawDopagaking(p, isCharged) {
                     const charId = s.charConfig?.charId || 'asaiomizu';
                     const charName = (CHARACTER_DATA[charId] && CHARACTER_DATA[charId].name) || charId;
                     const isSlotHost = s.uid === roomData.hostUid;
-                    const borderColor = isMe ? 'border-emerald-400 bg-emerald-950/60' : (isAllySide ? 'border-emerald-600/80 bg-emerald-950/35' : 'border-red-500/80 bg-red-950/35');
+                    const isSelectedForMove = isHost && !window._onlineLobbyState.isSoloLocal && stats.joinedHumans >= 2 && s.uid === moveTargetUid;
+                    const borderColor = isSelectedForMove
+                        ? 'border-sky-400 bg-sky-950/50'
+                        : (isMe ? 'border-emerald-400 bg-emerald-950/60' : (isAllySide ? 'border-emerald-600/80 bg-emerald-950/35' : 'border-red-500/80 bg-red-950/35'));
                     return `
                         <div class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded border-2 ${borderColor}">
                             <div class="flex items-center gap-2 min-w-0">
@@ -2638,9 +2706,16 @@ static drawDopagaking(p, isCharged) {
                                     <div class="text-[10px] text-amber-300 font-mono truncate">使用: ${charName}</div>
                                 </div>
                             </div>
-                            <span class="text-[10px] font-pixel font-bold px-2 py-0.5 rounded border whitespace-nowrap shrink-0 ${s.ready ? 'bg-emerald-700 text-white border-emerald-300' : 'bg-slate-800 text-amber-300 border-amber-500/60'}">
-                                ${isSlotHost && !s.ready ? '🔒 ホスト' : (s.ready ? '✅ 完了' : '⏳ 準備中')}
-                            </span>
+                            <div class="flex items-center gap-1 shrink-0">
+                                ${isHost && !window._onlineLobbyState.isSoloLocal && stats.joinedHumans >= 2 ? (
+                                    isSelectedForMove
+                                        ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-700 text-white border border-sky-300 whitespace-nowrap">✓ 移動対象</span>`
+                                        : `<button type="button" onclick="selectOnlineLobbyMovePlayer('${s.uid}')" class="pixel-btn px-1.5 py-0.5 text-[10px] bg-slate-800 border-sky-500 text-sky-300 font-bold whitespace-nowrap" title="このプレイヤーを空き枠へ移動対象に選択">⇄ 選択</button>`
+                                ) : ''}
+                                <span class="text-[10px] font-pixel font-bold px-2 py-0.5 rounded border whitespace-nowrap shrink-0 ${s.ready ? 'bg-emerald-700 text-white border-emerald-300' : 'bg-slate-800 text-amber-300 border-amber-500/60'}">
+                                    ${isSlotHost && !s.ready ? '🔒 ホスト' : (s.ready ? '✅ 完了' : '⏳ 準備中')}
+                                </span>
+                            </div>
                         </div>
                     `;
                 }).join('');
@@ -2648,7 +2723,9 @@ static drawDopagaking(p, isCharged) {
                 let bannerText = '';
                 let bannerStyle = '';
                 if (!stats.allJoined) {
-                    bannerText = `⏳ 参加者待機中 (${stats.joinedHumans}/${stats.requiredHumans}人参加) — ホストはBOT枠・BOTキャラ編集や「対戦開始（未参加枠はBOT補充）」が可能です`;
+                    bannerText = isHost
+                        ? `⏳ 参加者待機中 (${stats.joinedHumans}/${stats.requiredHumans}人参加) — ホストはプレイヤー移動・BOT設定・対戦開始が可能です`
+                        : `⏳ 参加者待機中 (${stats.joinedHumans}/${stats.requiredHumans}人参加) — キャラを選んで「完了」でお待ちください（配置・BOT設定はホストのみ）`;
                     bannerStyle = 'bg-amber-950/70 border-amber-500 text-amber-200';
                 } else if (!stats.allReady) {
                     bannerText = `🎉 メンバー揃いました！(${stats.joinedHumans}/${stats.requiredHumans}人) — キャラを選んで「✅ 完了」またはホストが「⚔️ 対戦開始」を押してください`;
@@ -2771,10 +2848,6 @@ static drawDopagaking(p, isCharged) {
 
 
             const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
-            window._onlineLobbyState.heartbeatId = setInterval(() => {
-                if (window._onlineLobbyState.roomId !== roomId) return;
-                window.fbUpdateDoc(roomRef, { updatedAt: Date.now() }).catch(() => {});
-            }, 5000);
 
             window._onlineLobbyState.unsub = window.fbOnSnapshot(roomRef, (snap) => {
                 if (!snap.exists()) return;
@@ -2929,6 +3002,7 @@ static drawDopagaking(p, isCharged) {
         window.renderOnlineMultiReadyScreen = renderOnlineMultiReadyScreen;
         window.selectOnlineMultiLobbyChar = selectOnlineMultiLobbyChar;
         window.toggleOnlineMultiLobbyReady = toggleOnlineMultiLobbyReady;
+        window.selectOnlineLobbyMovePlayer = selectOnlineLobbyMovePlayer;
         window.moveOnlineMultiLobbySlot = moveOnlineMultiLobbySlot;
         window.toggleOnlineMultiLobbySlotType = toggleOnlineMultiLobbySlotType;
         window.assignOnlineLobbyBotChar = assignOnlineLobbyBotChar;
@@ -9697,78 +9771,78 @@ pasha_dark: {
             const showUsage = window._profileShowUsage || false;
 
             container.innerHTML = `
-                <div class="flex flex-col items-center justify-start w-full max-w-6xl mx-auto py-2 px-2 space-y-2 h-full overflow-hidden">
+                <div class="flex flex-col items-center justify-start w-full max-w-6xl mx-auto py-1 px-2 space-y-1.5 h-full overflow-hidden">
                     <div class="flex justify-between items-center w-full px-1 flex-shrink-0">
-                        <h2 class="text-base sm:text-lg font-bold text-amber-300 font-pixel">👑 プレイヤープロフィール</h2>
-                        <button onclick="renderHomeScreen()" class="pixel-btn px-4 py-1 text-xs font-bold">ホームに戻る</button>
+                        <h2 class="text-xs sm:text-base font-bold text-amber-300 font-pixel">👑 プレイヤープロフィール</h2>
+                        <button onclick="renderHomeScreen()" class="pixel-btn px-3 py-0.5 text-[11px] font-bold">ホームに戻る</button>
                     </div>
                     
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 w-full flex-1 min-h-0 items-stretch">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 w-full flex-1 min-h-0 items-stretch overflow-hidden">
                         <!-- 左側エリア：プロフィール・勝利数等 ＆ 切り替えボタン -->
-                        <div class="flex flex-col space-y-2.5 overflow-y-auto max-h-full pr-1">
-                            <div class="pixel-box-gold p-4 bg-amber-950/80 w-full space-y-3">
-                                <div class="flex items-center gap-4 w-full">
-                                    <div class="flex flex-col items-center gap-1.5 shrink-0">
-                                        <canvas id="profile-main-icon" width="80" height="80" class="pixel-box bg-slate-950 rounded cursor-pointer border-2 border-amber-400 w-20 h-20 shadow-lg" onclick="openIconSelectModal()" title="クリックしてアイコン変更"></canvas>
-                                        <button onclick="openIconSelectModal()" class="pixel-btn pixel-btn-primary px-3 py-1 text-[10px] font-bold">変更</button>
+                        <div class="flex flex-col space-y-2 overflow-y-auto max-h-full pr-1 shrink-0">
+                            <div class="pixel-box-gold p-3 bg-amber-950/80 w-full space-y-2">
+                                <div class="flex items-center gap-3 w-full">
+                                    <div class="flex flex-col items-center gap-1 shrink-0">
+                                        <canvas id="profile-main-icon" width="64" height="64" class="pixel-box bg-slate-950 rounded cursor-pointer border-2 border-amber-400 w-16 h-16 shadow-lg" onclick="openIconSelectModal()" title="クリックしてアイコン変更"></canvas>
+                                        <button onclick="openIconSelectModal()" class="pixel-btn pixel-btn-primary px-2.5 py-0.5 text-[10px] font-bold">変更</button>
                                     </div>
-                                    <div class="flex flex-col justify-center space-y-1.5 text-left flex-1 min-w-0">
+                                    <div class="flex flex-col justify-center space-y-1 text-left flex-1 min-w-0">
                                         <div class="flex items-center gap-1.5 flex-wrap">
-                                            <input id="profile-name-input" type="text" value="${playerState.playerName || ''}" maxlength="12" class="pixel-box bg-slate-950 px-2.5 py-1 text-sm font-bold text-amber-300 w-32 sm:w-40 outline-none border-amber-600">
-                                            <button onclick="savePlayerName()" class="pixel-btn pixel-btn-primary px-2.5 py-1 text-xs font-bold shrink-0">保存</button>
+                                            <input id="profile-name-input" type="text" value="${playerState.playerName || ''}" maxlength="12" class="pixel-box bg-slate-950 px-2 py-0.5 text-xs font-bold text-amber-300 w-28 sm:w-36 outline-none border-amber-600">
+                                            <button onclick="savePlayerName()" class="pixel-btn pixel-btn-primary px-2 py-0.5 text-[11px] font-bold shrink-0">保存</button>
                                         </div>
                                          <div class="flex items-center gap-2 flex-wrap">
-                                             <span class="text-xs text-slate-300 font-mono">ID: <span id="profile-player-id-text">${playerState.playerId || 'DP-1004'}</span></span>
-                                             <button onclick="copyPlayerId('${playerState.playerId || 'DP-1004'}')" class="pixel-btn pixel-btn-primary px-2 py-0.5 text-[10px] font-bold">📋 コピー</button>
+                                             <span class="text-[11px] text-slate-300 font-mono">ID: <span id="profile-player-id-text">${playerState.playerId || 'DP-1004'}</span></span>
+                                             <button onclick="copyPlayerId('${playerState.playerId || 'DP-1004'}')" class="pixel-btn pixel-btn-primary px-1.5 py-0.5 text-[9px] font-bold">📋 コピー</button>
                                          </div>
                                     </div>
                                 </div>
 
-                                <div class="flex flex-col justify-center space-y-2 w-full font-mono text-xs border-t border-amber-800/60 pt-3">
-                                    <div class="flex justify-between items-center">
-                                        <span class="text-xs text-slate-300">始めた日: <b class="text-amber-300">${playerState.startDate || '2026/10/14'}</b></span>
-                                        <span class="text-xs text-amber-200">DOPA: <b class="text-amber-400 font-pixel">${formatDopa(playerState.dopa)}</b></span>
+                                <div class="flex flex-col justify-center space-y-1.5 w-full font-mono text-xs border-t border-amber-800/60 pt-2">
+                                    <div class="flex justify-between items-center text-[11px]">
+                                        <span class="text-slate-300">始めた日: <b class="text-amber-300">${playerState.startDate || '2026/10/14'}</b></span>
+                                        <span class="text-amber-200">DOPA: <b class="text-amber-400 font-pixel">${formatDopa(playerState.dopa)}</b></span>
                                     </div>
-                                    <div class="grid grid-cols-4 gap-2 text-center text-xs">
-                                        <div class="bg-slate-950 px-1 py-1.5 rounded border border-amber-800/50">
-                                            <div class="text-slate-400 text-[10px]">総対戦</div>
-                                            <div class="text-amber-300 font-bold text-sm">${playerState.totalBattles}</div>
+                                    <div class="grid grid-cols-4 gap-1.5 text-center text-xs">
+                                        <div class="bg-slate-950 px-1 py-1 rounded border border-amber-800/55">
+                                            <div class="text-slate-400 text-[9px]">総対戦</div>
+                                            <div class="text-amber-300 font-bold text-xs">${playerState.totalBattles}</div>
                                         </div>
-                                        <div class="bg-slate-950 px-1 py-1.5 rounded border border-amber-800/50">
-                                            <div class="text-slate-400 text-[10px]">勝利</div>
-                                            <div class="text-emerald-400 font-bold text-sm">${playerState.wins}</div>
+                                        <div class="bg-slate-950 px-1 py-1 rounded border border-amber-800/55">
+                                            <div class="text-slate-400 text-[9px]">勝利</div>
+                                            <div class="text-emerald-400 font-bold text-xs">${playerState.wins}</div>
                                         </div>
-                                        <div class="bg-slate-950 px-1 py-1.5 rounded border border-amber-800/50">
-                                            <div class="text-slate-400 text-[10px]">敗北</div>
-                                            <div class="text-red-400 font-bold text-sm">${playerState.losses}</div>
+                                        <div class="bg-slate-950 px-1 py-1 rounded border border-amber-800/55">
+                                            <div class="text-slate-400 text-[9px]">敗北</div>
+                                            <div class="text-red-400 font-bold text-xs">${playerState.losses}</div>
                                         </div>
-                                        <div class="bg-slate-950 px-1 py-1.5 rounded border border-amber-800/50">
-                                            <div class="text-slate-400 text-[10px]">勝率</div>
-                                            <div class="text-cyan-400 font-bold text-sm">${winRate}%</div>
+                                        <div class="bg-slate-950 px-1 py-1 rounded border border-amber-800/55">
+                                            <div class="text-slate-400 text-[9px]">勝率</div>
+                                            <div class="text-cyan-400 font-bold text-xs">${winRate}%</div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
                             <!-- キャラクター使用率 / 過去の戦績 切り替えボタン -->
-                            <div class="w-full grid grid-cols-2 gap-2">
-                                <button onclick="setProfileTab('history')" class="pixel-btn ${!showUsage ? 'pixel-btn-primary border-amber-400' : 'bg-slate-800 text-slate-300 border-slate-700'} py-2 text-xs font-bold flex items-center justify-center gap-1.5">
+                            <div class="w-full grid grid-cols-2 gap-1.5">
+                                <button onclick="setProfileTab('history')" class="pixel-btn ${!showUsage ? 'pixel-btn-primary border-amber-400' : 'bg-slate-800 text-slate-300 border-slate-700'} py-1.5 text-[11px] font-bold flex items-center justify-center gap-1">
                                     <span>📜 過去の戦績</span>
                                 </button>
-                                <button onclick="setProfileTab('usage')" class="pixel-btn ${showUsage ? 'pixel-btn-warning border-amber-400' : 'bg-slate-800 text-slate-300 border-slate-700'} py-2 text-xs font-bold flex items-center justify-center gap-1.5">
+                                <button onclick="setProfileTab('usage')" class="pixel-btn ${showUsage ? 'pixel-btn-warning border-amber-400' : 'bg-slate-800 text-slate-300 border-slate-700'} py-1.5 text-[11px] font-bold flex items-center justify-center gap-1">
                                     <span>📊 キャラ使用率</span>
                                 </button>
                             </div>
 
-                            <div class="pt-2">
-                                <button onclick="confirmResetPlayerProfile()" class="pixel-btn pixel-btn-danger px-4 py-1.5 text-xs font-bold w-full">⚠️ データ初期化</button>
+                            <div class="pt-1">
+                                <button onclick="confirmResetPlayerProfile()" class="pixel-btn pixel-btn-danger px-3 py-1 text-[11px] font-bold w-full">⚠️ データ初期化</button>
                             </div>
                         </div>
 
                         <!-- 右側エリア：切り替え表示 (戦績 ⇔ キャラクター使用率) とスクロール対応 -->
-                        <div class="pixel-box p-3 bg-slate-900 w-full flex flex-col h-full max-h-[calc(100vh-100px)] md:max-h-full">
-                            <h3 class="text-xs font-bold text-amber-300 font-pixel mb-2 flex-shrink-0">${showUsage ? '📊 キャラクター使用率' : '📜 過去の戦歴 (最大50件)'}</h3>
-                            <div class="flex-1 min-h-0 overflow-y-auto pr-1">
+                        <div class="pixel-box p-2.5 bg-slate-900 w-full flex flex-col h-full min-h-0 overflow-hidden">
+                            <h3 class="text-[11px] font-bold text-amber-300 font-pixel mb-1.5 flex-shrink-0">${showUsage ? '📊 キャラクター使用率' : '📜 過去の戦歴 (最大50件)'}</h3>
+                            <div class="flex-1 min-h-0 overflow-y-auto pr-1 space-y-1.5">
                                 ${showUsage ? usageHtml : historyHtml}
                             </div>
                         </div>
