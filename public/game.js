@@ -2605,16 +2605,6 @@ static drawDopagaking(p, isCharged) {
                             <div class="text-[11px] font-mono text-amber-300 whitespace-nowrap shrink-0">${stats.readyHumans}/${stats.requiredHumans} 完了</div>
                         </div>
 
-                        ${roomData.roomCode ? `
-                            <div class="pixel-box-gold bg-amber-950/80 border-2 border-amber-400 p-2 text-center space-y-1 mb-1 shrink-0">
-                                <div class="text-[10px] font-pixel text-amber-200">フレンドに共有するルームID（6桁コード）</div>
-                                <div class="flex items-center justify-center gap-3">
-                                    <span class="text-xl sm:text-2xl font-mono font-black tracking-[0.2em] text-amber-300">${roomData.roomCode}</span>
-                                    <button type="button" onclick="copyOnlineRoomCode('${roomData.roomCode}')" class="pixel-btn pixel-btn-primary px-3 py-1 text-xs font-bold whitespace-nowrap">📋 コピー</button>
-                                </div>
-                            </div>
-                        ` : ''}
-
                         <div class="px-3 py-1.5 rounded border text-[11px] font-mono text-center mb-2 shrink-0 ${bannerStyle}">
                             ${bannerText}
                         </div>
