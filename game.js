@@ -153,7 +153,7 @@
             });
         };
 
-        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.1';
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.2';
         const STATIC_IMAGE_ASSETS = [
             'images/backnormal.webp',
             'images/screen.webp',
@@ -202,9 +202,9 @@
         ];
         const SHELL_SITE_ASSETS = [
             'manifest.json',
-            'style.css?v=2.3.1',
-            'battle-3v3.js?v=2.3.1',
-            'game.js?v=2.3.1'
+            'style.css?v=2.3.2',
+            'battle-3v3.js?v=2.3.2',
+            'game.js?v=2.3.2'
         ];
 
         const AssetPreloader = {
@@ -1967,6 +1967,9 @@ static drawDopagaking(p, isCharged) {
             st.latestRoomData = null;
             st.selectedMoveUid = null;
             st.drawLobbyViewFn = null;
+            if (typeof closeOnlineLobbyCharDetailModal === 'function') {
+                closeOnlineLobbyCharDetailModal();
+            }
         }
 
         function setOnlineMatchStatus(msg, colorClass = 'text-amber-300') {
@@ -3051,6 +3054,244 @@ static drawDopagaking(p, isCharged) {
             }).catch(e => console.warn('Assign BOT char error:', e));
         }
 
+        function closeOnlineLobbyCharDetailModal() {
+            const existing = document.getElementById('online-lobby-char-detail-modal');
+            if (existing) existing.remove();
+        }
+
+        function adjustOnlineLobbyCharStat(charId, statKey, delta, roomId = '', mode = 'player') {
+            if (typeof getNewBattleCustomStats !== 'function') return;
+            const stats = getNewBattleCustomStats(charId);
+            if (!stats) return;
+
+            const currentTotal = stats.hp + stats.atk + stats.def + stats.critRate + stats.eva;
+            let minVal = 1;
+            let maxVal = 300;
+            if (statKey === 'hp') { minVal = 50; maxVal = 300; }
+            else if (statKey === 'atk') { minVal = 5; maxVal = 45; }
+            else if (statKey === 'def') { minVal = 5; maxVal = 80; }
+            else if (statKey === 'critRate') { minVal = 1; maxVal = 40; }
+            else if (statKey === 'eva') { minVal = 1; maxVal = 60; }
+
+            const newVal = stats[statKey] + delta;
+            if (newVal < minVal || newVal > maxVal) return;
+            if (currentTotal + delta > 240) return;
+
+            audioSystem.playSelect();
+            stats[statKey] = newVal;
+            savePlayerState();
+            openOnlineLobbyCharDetailModal(charId, roomId, mode, true);
+        }
+
+        function resetOnlineLobbyCharStat(charId, roomId = '', mode = 'player') {
+            audioSystem.playSelect();
+            if (playerState.newBattleCustomStats) {
+                delete playerState.newBattleCustomStats[charId];
+            }
+            if (typeof getNewBattleCustomStats === 'function') {
+                getNewBattleCustomStats(charId);
+            }
+            savePlayerState();
+            openOnlineLobbyCharDetailModal(charId, roomId, mode, true);
+        }
+
+        async function selectOnlineLobbyCharFromDetailModal(roomId, charId) {
+            if (!validateCharCustomStats(charId)) return;
+            closeOnlineLobbyCharDetailModal();
+            if (roomId) {
+                await selectOnlineMultiLobbyChar(roomId, charId);
+            }
+        }
+
+        function openOnlineLobbyCharDetailModal(charId, roomId = '', mode = 'player', silent = false) {
+            const c = CHARACTER_DATA[charId];
+            if (!c) return;
+            if (!silent) audioSystem.playSelect();
+
+            const prevRightEl = document.getElementById('online-lobby-detail-right');
+            const prevScrollTop = prevRightEl ? prevRightEl.scrollTop : 0;
+
+            closeOnlineLobbyCharDetailModal();
+
+            const st = window._onlineLobbyState || {};
+            const myUid = typeof window.getOnlineClientId === 'function' ? window.getOnlineClientId() : null;
+            const activeRoom = st.isSoloLocal ? st.soloRoomData : st.latestRoomData;
+            const mySlotFound = (activeRoom && myUid) ? findMySlotInRoom(activeRoom, myUid) : null;
+            const currentLobbyCharId = (mySlotFound && mySlotFound.slot && mySlotFound.slot.charConfig && mySlotFound.slot.charConfig.charId)
+                ? mySlotFound.slot.charConfig.charId
+                : (typeof getSelectedOnlineMultiChar === 'function' ? getSelectedOnlineMultiChar() : 'asaiomizu');
+            const isSelectedInLobby = mode === 'player' && currentLobbyCharId === c.id;
+            const isUnlocked = playerState.unlockedChars.includes(c.id);
+            const isEligibleCustom = (mode === 'player') && !['dopagaking', 'courtney', 'pasha_dark'].includes(c.id);
+
+            let statsHtml = '';
+            if (isEligibleCustom && typeof getNewBattleCustomStats === 'function') {
+                const custStats = getNewBattleCustomStats(c.id);
+                const totalUsed = custStats.hp + custStats.atk + custStats.def + custStats.critRate + custStats.eva;
+                const remPts = 240 - totalUsed;
+                const hpMinusDisabled = custStats.hp <= 50;
+                const hpPlusDisabled = totalUsed + 5 > 240 || custStats.hp + 5 > 300;
+                const atkMinusDisabled = custStats.atk <= 5;
+                const atkPlusDisabled = custStats.atk >= 45 || totalUsed + 1 > 240;
+                const defMinusDisabled = custStats.def <= 5;
+                const defPlusDisabled = totalUsed + 1 > 240 || custStats.def + 1 > 80;
+                const critMinusDisabled = custStats.critRate <= 1;
+                const critPlusDisabled = totalUsed + 1 > 240 || custStats.critRate + 1 > 40;
+                const evaMinusDisabled = custStats.eva <= 1;
+                const evaPlusDisabled = totalUsed + 1 > 240 || custStats.eva + 1 > 60;
+
+                statsHtml = `
+                    <div class="w-full bg-slate-950 p-2.5 sm:p-3 rounded border border-amber-800 space-y-2 text-xs font-mono">
+                        <div class="flex justify-between items-center border-b border-amber-900 pb-1 gap-2 flex-wrap">
+                            <span class="text-amber-300 font-bold">📊 ステータス調整 (最大240Pt)</span>
+                            <span class="text-[11px]">残り: <span class="${remPts < 0 ? 'text-red-400' : (remPts === 0 ? 'text-emerald-400' : 'text-amber-300')} font-bold">${remPts}</span> Pt</span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                            <div class="flex items-center justify-between bg-slate-900 px-2 py-1.5 rounded">
+                                <span class="text-slate-300 font-bold">HP</span>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-emerald-400 font-bold w-8 text-right">${custStats.hp}</span>
+                                    <button type="button" ${hpMinusDisabled ? 'disabled class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-900 text-slate-600 border-slate-800 opacity-50 cursor-not-allowed"' : `onclick="adjustOnlineLobbyCharStat('${c.id}', 'hp', -5, '${roomId}', '${mode}')" class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-800"`}>-5</button>
+                                    <button type="button" ${hpPlusDisabled ? 'disabled class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-900 text-slate-600 border-slate-800 opacity-50 cursor-not-allowed"' : `onclick="adjustOnlineLobbyCharStat('${c.id}', 'hp', 5, '${roomId}', '${mode}')" class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-800"`}>+5</button>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between bg-slate-900 px-2 py-1.5 rounded">
+                                <span class="text-slate-300 font-bold">攻撃力</span>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-red-400 font-bold w-8 text-right">${custStats.atk}</span>
+                                    <button type="button" ${atkMinusDisabled ? 'disabled class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-900 text-slate-600 border-slate-800 opacity-50 cursor-not-allowed"' : `onclick="adjustOnlineLobbyCharStat('${c.id}', 'atk', -1, '${roomId}', '${mode}')" class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-800"`}>-1</button>
+                                    <button type="button" ${atkPlusDisabled ? 'disabled class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-900 text-slate-600 border-slate-800 opacity-50 cursor-not-allowed"' : `onclick="adjustOnlineLobbyCharStat('${c.id}', 'atk', 1, '${roomId}', '${mode}')" class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-800"`}>+1</button>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between bg-slate-900 px-2 py-1.5 rounded">
+                                <span class="text-slate-300 font-bold">防御力</span>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-blue-400 font-bold w-8 text-right">${custStats.def}</span>
+                                    <button type="button" ${defMinusDisabled ? 'disabled class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-900 text-slate-600 border-slate-800 opacity-50 cursor-not-allowed"' : `onclick="adjustOnlineLobbyCharStat('${c.id}', 'def', -1, '${roomId}', '${mode}')" class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-800"`}>-1</button>
+                                    <button type="button" ${defPlusDisabled ? 'disabled class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-900 text-slate-600 border-slate-800 opacity-50 cursor-not-allowed"' : `onclick="adjustOnlineLobbyCharStat('${c.id}', 'def', 1, '${roomId}', '${mode}')" class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-800"`}>+1</button>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between bg-slate-900 px-2 py-1.5 rounded">
+                                <span class="text-slate-300 font-bold">クリ率</span>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-yellow-400 font-bold w-8 text-right">${custStats.critRate}%</span>
+                                    <button type="button" ${critMinusDisabled ? 'disabled class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-900 text-slate-600 border-slate-800 opacity-50 cursor-not-allowed"' : `onclick="adjustOnlineLobbyCharStat('${c.id}', 'critRate', -1, '${roomId}', '${mode}')" class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-800"`}>-1</button>
+                                    <button type="button" ${critPlusDisabled ? 'disabled class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-900 text-slate-600 border-slate-800 opacity-50 cursor-not-allowed"' : `onclick="adjustOnlineLobbyCharStat('${c.id}', 'critRate', 1, '${roomId}', '${mode}')" class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-800"`}>+1</button>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between bg-slate-900 px-2 py-1.5 rounded sm:col-span-2">
+                                <span class="text-slate-300 font-bold">回避率</span>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-purple-400 font-bold w-8 text-right">${custStats.eva}%</span>
+                                    <button type="button" ${evaMinusDisabled ? 'disabled class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-900 text-slate-600 border-slate-800 opacity-50 cursor-not-allowed"' : `onclick="adjustOnlineLobbyCharStat('${c.id}', 'eva', -1, '${roomId}', '${mode}')" class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-800"`}>-1</button>
+                                    <button type="button" ${evaPlusDisabled ? 'disabled class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-900 text-slate-600 border-slate-800 opacity-50 cursor-not-allowed"' : `onclick="adjustOnlineLobbyCharStat('${c.id}', 'eva', 1, '${roomId}', '${mode}')" class="pixel-btn px-1.5 py-0.5 text-[11px] bg-slate-800"`}>+1</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex justify-end">
+                            <button type="button" onclick="resetOnlineLobbyCharStat('${c.id}', '${roomId}', '${mode}')" class="pixel-btn px-2 py-0.5 text-[10px] bg-slate-800 text-slate-300 border-slate-600">初期値に戻す</button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                const isCustomExcluded = ['dopagaking', 'courtney', 'pasha_dark'].includes(c.id);
+                statsHtml = `
+                    <div class="w-full bg-slate-950 p-2.5 sm:p-3 rounded border border-amber-800 space-y-2 text-xs font-mono">
+                        <div class="text-amber-300 font-bold border-b border-amber-900 pb-1">📊 ステータス ${isCustomExcluded ? '(※カスタマイズ対象外)' : ''}</div>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            <div class="flex justify-between bg-slate-900 p-1.5 rounded"><span class="text-slate-400">HP:</span><span class="text-emerald-400 font-bold">${c.id === 'dopagaking' ? '？' : c.hp}</span></div>
+                            <div class="flex justify-between bg-slate-900 p-1.5 rounded"><span class="text-slate-400">攻撃力:</span><span class="text-red-400 font-bold">${c.id === 'dopagaking' ? '？' : c.atk}</span></div>
+                            <div class="flex justify-between bg-slate-900 p-1.5 rounded"><span class="text-slate-400">防御力:</span><span class="text-blue-400 font-bold">${c.id === 'dopagaking' ? '？' : c.def}</span></div>
+                            <div class="flex justify-between bg-slate-900 p-1.5 rounded"><span class="text-slate-400">クリ率:</span><span class="text-yellow-400 font-bold">${c.id === 'dopagaking' ? '？%' : Math.round(c.critRate * 100) + '%'}</span></div>
+                            <div class="flex justify-between bg-slate-900 p-1.5 rounded col-span-2 sm:col-span-2"><span class="text-slate-400">回避率:</span><span class="text-purple-400 font-bold">${c.id === 'dopagaking' ? '？%' : c.eva + '%'}</span></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const pashaExtraHtml = c.id === 'pasha' ? `
+                <div class="w-full bg-amber-950/60 p-2.5 sm:p-3 rounded border border-amber-400 space-y-1.5 text-xs font-mono">
+                    <div class="text-amber-300 font-bold border-b border-amber-600 pb-1">✨ 固有スキル1: カメラフラッシュ仕様</div>
+                    <p class="text-amber-200 leading-relaxed font-bold">【解放条件】開幕1ターン待機（2ターン目以降に使用可能）</p>
+                    <p class="text-slate-200 leading-relaxed">【効果詳細】敵全体に小ダメージを与え、選択した敵1体を1ターンの間行動不能にする（CD: 3T）。</p>
+                </div>
+                <div class="w-full bg-amber-950/60 p-2.5 sm:p-3 rounded border border-amber-400 space-y-1.5 text-xs font-mono">
+                    <div class="text-amber-300 font-bold border-b border-amber-600 pb-1">✨ 固有パッシブスキル: 対・半浸闇化特効</div>
+                    <p class="text-amber-200 leading-relaxed font-bold">【パッシブ効果】敵チームに「SPパシャ憎・半浸闇化状態」がいる場合、自身のクリティカル率がバトル開始時から終了時まで10上昇する。</p>
+                    <p class="text-slate-200 leading-relaxed">【発動判定】バトル開始時および毎ターン自動判定され、敵チームに対象が存在する場合、パシャ憎のクリティカル率が常時+10%上昇します。</p>
+                </div>
+            ` : '';
+
+            const skillsHtml = (c.skills || []).map(s => {
+                const cdStr = s.cooldown > 0 ? ` [CT: ${s.cooldown}T]` : '';
+                return `
+                    <div class="bg-slate-900 p-2 rounded border border-slate-800">
+                        <div class="font-bold text-amber-200">${s.name}${cdStr}</div>
+                        <div class="text-[10px] sm:text-[11px] text-slate-300 mt-0.5 leading-relaxed">${s.desc}</div>
+                    </div>
+                `;
+            }).join('');
+
+            const actionBtnHtml = (mode === 'player' && roomId && isUnlocked) ? `
+                <button type="button" onclick="selectOnlineLobbyCharFromDetailModal('${roomId}', '${c.id}')" class="pixel-btn ${isSelectedInLobby ? 'pixel-btn-success' : 'pixel-btn-primary'} w-full py-2 px-3 text-xs font-bold shadow-lg">
+                    ${isSelectedInLobby ? '✓ 選択中（変更を確定）' : '⚔️ このキャラを出陣キャラにする'}
+                </button>
+            ` : '';
+
+            const modal = document.createElement('div');
+            modal.id = 'online-lobby-char-detail-modal';
+            modal.className = 'fixed inset-0 bg-black/85 z-[10000] flex items-center justify-center p-2 sm:p-4 select-none';
+            modal.onclick = (e) => { if (e.target === modal) closeOnlineLobbyCharDetailModal(); };
+            modal.innerHTML = `
+                <div class="pixel-box-gold bg-slate-900 border-2 border-amber-400 max-w-4xl w-full p-2.5 sm:p-4 flex flex-col max-h-[92vh] shadow-2xl overflow-hidden text-white">
+                    <div class="flex items-center justify-between border-b border-amber-500/40 pb-2 mb-2.5 shrink-0 gap-2">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="font-pixel text-xs sm:text-base font-bold text-amber-300 truncate">📖 キャラクター詳細${mode === 'bot' ? '（BOT候補）' : ''}</span>
+                            ${isSelectedInLobby ? '<span class="bg-emerald-950 border border-emerald-500 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded shrink-0">★ 選択中</span>' : ''}
+                        </div>
+                        <button type="button" onclick="closeOnlineLobbyCharDetailModal()" class="pixel-btn pixel-btn-danger px-3 py-1 text-xs font-bold shrink-0">✕ 閉じる</button>
+                    </div>
+
+                    <div class="flex-1 min-h-0 flex flex-col sm:flex-row gap-3 overflow-hidden">
+                        <div class="w-full sm:w-[215px] md:w-[245px] flex flex-row sm:flex-col items-center sm:justify-between gap-2.5 shrink-0 bg-slate-950/75 p-2.5 rounded border border-slate-800">
+                            <div class="flex flex-row sm:flex-col items-center gap-2.5 min-w-0 flex-1 sm:flex-none w-full">
+                                <canvas id="online-lobby-detail-cvs" width="140" height="140" class="pixel-box bg-slate-950 border-2 border-amber-500 w-20 h-20 sm:w-32 sm:h-32 shrink-0"></canvas>
+                                <div class="text-left sm:text-center min-w-0 flex-1">
+                                    <h3 class="text-sm sm:text-lg font-bold text-amber-300 font-pixel truncate">${c.name}</h3>
+                                    <p class="text-[11px] sm:text-xs text-amber-200 truncate">${c.title}</p>
+                                    <p class="text-[10px] text-slate-300 mt-0.5">${c.type}</p>
+                                </div>
+                            </div>
+                            ${actionBtnHtml ? `<div class="w-auto sm:w-full shrink-0">${actionBtnHtml}</div>` : ''}
+                        </div>
+
+                        <div id="online-lobby-detail-right" class="flex-1 min-h-0 overflow-y-auto pr-1 space-y-2.5 text-xs font-mono">
+                            ${statsHtml}
+                            <div class="w-full bg-slate-950 p-2.5 sm:p-3 rounded border border-amber-800 space-y-1.5">
+                                <div class="text-amber-300 font-bold border-b border-amber-900 pb-1">📖 キャラクター解説</div>
+                                <p class="text-slate-200 leading-relaxed whitespace-pre-line">${c.zukanDesc || c.desc}</p>
+                            </div>
+                            ${pashaExtraHtml}
+                            <div class="w-full bg-slate-950 p-2.5 sm:p-3 rounded border border-amber-800 space-y-2">
+                                <div class="text-amber-300 font-bold border-b border-amber-900 pb-1">⚔ 所持スキル</div>
+                                <div class="space-y-1.5">${skillsHtml}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            setTimeout(() => {
+                const cvs = document.getElementById('online-lobby-detail-cvs');
+                if (cvs) CharacterRenderer.drawCharacter(cvs, c.id);
+                if (prevScrollTop > 0) {
+                    const rightEl = document.getElementById('online-lobby-detail-right');
+                    if (rightEl) rightEl.scrollTop = prevScrollTop;
+                }
+            }, 15);
+        }
+
         function closeOnlineLobbyBotCharPicker() {
             const existing = document.getElementById('online-bot-picker-modal');
             if (existing) existing.remove();
@@ -3085,11 +3326,12 @@ static drawDopagaking(p, isCharged) {
                         ${chars.map(c => {
                             const isCurrent = c.id === currentCharId;
                             return `
-                                <button type="button" onclick="selectOnlineLobbyBotCharFromPicker('${roomId}', ${teamNum}, ${slotIdx}, '${c.id}')" class="pixel-box p-2.5 flex flex-col items-center gap-1.5 cursor-pointer transition-all text-center ${isCurrent ? 'border-2 border-amber-400 bg-amber-950/60 shadow-lg' : 'border border-slate-700 bg-slate-950 hover:border-sky-400'}">
+                                <div role="button" tabindex="0" onclick="selectOnlineLobbyBotCharFromPicker('${roomId}', ${teamNum}, ${slotIdx}, '${c.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectOnlineLobbyBotCharFromPicker('${roomId}', ${teamNum}, ${slotIdx}, '${c.id}');}" class="pixel-box p-2.5 flex flex-col items-center gap-1.5 cursor-pointer transition-all text-center ${isCurrent ? 'border-2 border-amber-400 bg-amber-950/60 shadow-lg' : 'border border-slate-700 bg-slate-950 hover:border-sky-400'}">
                                     <canvas id="bot-picker-cvs-${c.id}" width="56" height="56" class="w-12 h-12 rounded bg-slate-900 border border-slate-700"></canvas>
                                     <div class="text-xs font-bold ${isCurrent ? 'text-amber-300' : 'text-white'} truncate max-w-full">${c.name}</div>
-                                    <div class="text-[9px] font-mono text-slate-400">HP:${c.hp} 攻:${c.atk} 防:${c.def}</div>
-                                </button>
+                                    <div class="text-[9px] font-mono text-slate-400">${c.id === 'dopagaking' ? 'HP:？ 攻:？ 防:？' : `HP:${c.hp} 攻:${c.atk} 防:${c.def}`}</div>
+                                    <button type="button" onclick="event.stopPropagation(); openOnlineLobbyCharDetailModal('${c.id}', '${roomId}', 'bot')" class="w-full py-0.5 rounded text-[9px] font-bold bg-slate-800/90 hover:bg-sky-800 text-sky-300 border border-sky-500/50 cursor-pointer">🔍 詳細</button>
+                                </div>
                             `;
                         }).join('')}
                     </div>
@@ -3367,18 +3609,22 @@ static drawDopagaking(p, isCharged) {
 
                             <!-- 下段: 自分の出陣キャラ1体選択 -->
                             <div class="pixel-box bg-slate-900/95 border border-slate-700 p-2 space-y-1.5">
-                                <div class="flex items-center justify-between">
+                                <div class="flex items-center justify-between gap-2 flex-wrap">
                                     <span class="text-[11px] font-pixel font-bold text-amber-300">⚔️ あなたの出陣キャラ (1体選択)</span>
-                                    <span class="text-[10px] font-mono text-emerald-300">選択中: <b>${(CHARACTER_DATA[myCharId] || {}).name || myCharId}</b></span>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-[10px] font-mono text-emerald-300">選択中: <b>${(CHARACTER_DATA[myCharId] || {}).name || myCharId}</b></span>
+                                        <button type="button" onclick="openOnlineLobbyCharDetailModal('${myCharId}', '${roomId}', 'player')" class="pixel-btn px-2 py-0.5 text-[10px] font-bold bg-sky-900/90 border-sky-400 text-sky-200 hover:bg-sky-800">🔍 詳細</button>
+                                    </div>
                                 </div>
                                 <div class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-1.5">
                                     ${unlockedList.map(c => {
                                         const selected = c.id === myCharId;
                                         return `
-                                            <button type="button" onclick="selectOnlineMultiLobbyChar('${roomId}', '${c.id}')" class="p-1.5 rounded border-2 flex flex-col items-center gap-1 transition-all cursor-pointer ${selected ? 'border-emerald-400 bg-emerald-950/70 shadow' : 'border-slate-700 bg-slate-950 hover:border-slate-400'}">
+                                            <div role="button" tabindex="0" onclick="selectOnlineMultiLobbyChar('${roomId}', '${c.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectOnlineMultiLobbyChar('${roomId}', '${c.id}');}" class="p-1.5 rounded border-2 flex flex-col items-center gap-1 transition-all cursor-pointer ${selected ? 'border-emerald-400 bg-emerald-950/70 shadow' : 'border-slate-700 bg-slate-950 hover:border-slate-400'}">
                                                 <canvas id="lobby-pick-cvs-${c.id}" width="40" height="40" class="w-9 h-9 rounded bg-slate-900"></canvas>
                                                 <span class="text-[10px] font-bold truncate max-w-full ${selected ? 'text-emerald-300' : 'text-slate-200'}">${c.name}</span>
-                                            </button>
+                                                <button type="button" onclick="event.stopPropagation(); openOnlineLobbyCharDetailModal('${c.id}', '${roomId}', 'player')" class="w-full py-0.5 rounded text-[9px] font-bold bg-slate-800/90 hover:bg-sky-800 text-sky-300 border border-sky-500/50 cursor-pointer">🔍 詳細</button>
+                                            </div>
                                         `;
                                     }).join('')}
                                 </div>
@@ -3480,6 +3726,7 @@ static drawDopagaking(p, isCharged) {
             audioSystem.playSelect();
             cleanupOnlineLobby();
             closeOnlineLobbyBotCharPicker();
+            closeOnlineLobbyCharDetailModal();
             window.isOnlineBattleMode = true;
             newBattleViewMode = 'main';
             isNewBattleSkillModalOpen = false;
@@ -3636,6 +3883,11 @@ static drawDopagaking(p, isCharged) {
         window.openOnlineLobbyBotCharPicker = openOnlineLobbyBotCharPicker;
         window.closeOnlineLobbyBotCharPicker = closeOnlineLobbyBotCharPicker;
         window.selectOnlineLobbyBotCharFromPicker = selectOnlineLobbyBotCharFromPicker;
+        window.openOnlineLobbyCharDetailModal = openOnlineLobbyCharDetailModal;
+        window.closeOnlineLobbyCharDetailModal = closeOnlineLobbyCharDetailModal;
+        window.adjustOnlineLobbyCharStat = adjustOnlineLobbyCharStat;
+        window.resetOnlineLobbyCharStat = resetOnlineLobbyCharStat;
+        window.selectOnlineLobbyCharFromDetailModal = selectOnlineLobbyCharFromDetailModal;
         window.hostStartOnlineBattleNow = hostStartOnlineBattleNow;
         window.hostFillEmptySlotsWithBotsAndStart = hostFillEmptySlotsWithBotsAndStart;
         window.launchOnlineSyncedBattle = launchOnlineSyncedBattle;
