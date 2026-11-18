@@ -153,7 +153,7 @@
             });
         };
 
-        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.11';
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.13';
         const STATIC_IMAGE_ASSETS = [
             'assets/aistudio/image_6db88de4.png',
             'images/backnormal.webp',
@@ -203,9 +203,9 @@
         ];
         const SHELL_SITE_ASSETS = [
             'manifest.json',
-            'style.css?v=2.3.11',
-            'battle-3v3.js?v=2.3.11',
-            'game.js?v=2.3.11'
+            'style.css?v=2.3.13',
+            'battle-3v3.js?v=2.3.13',
+            'game.js?v=2.3.13'
         ];
 
         const AssetPreloader = {
@@ -10619,6 +10619,192 @@ pasha_dark: {
             return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
         }
 
+        const BattleNetMonitor = {
+            rttMs: null,
+            downlinkMbps: null,
+            effectiveType: null,
+            pingFailed: false,
+            _timer: null,
+            _pending: false,
+            _lastMeasuredAt: 0,
+            _listenersBound: false,
+
+            readConnectionApi() {
+                const conn = (typeof navigator !== 'undefined')
+                    ? (navigator.connection || navigator.mozConnection || navigator.webkitConnection)
+                    : null;
+                if (conn) {
+                    this.downlinkMbps = (typeof conn.downlink === 'number' && conn.downlink > 0) ? conn.downlink : null;
+                    this.effectiveType = conn.effectiveType || null;
+                    if (this.rttMs === null && typeof conn.rtt === 'number' && conn.rtt > 0) {
+                        this.rttMs = Math.round(conn.rtt);
+                    }
+                } else {
+                    this.downlinkMbps = null;
+                    this.effectiveType = null;
+                }
+            },
+
+            bindListeners() {
+                if (this._listenersBound || typeof window === 'undefined') return;
+                this._listenersBound = true;
+                window.addEventListener('online', () => {
+                    this.pingFailed = false;
+                    this.updateUI();
+                    this.measurePing(true);
+                });
+                window.addEventListener('offline', () => {
+                    this.updateUI();
+                });
+                const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+                if (conn && typeof conn.addEventListener === 'function') {
+                    conn.addEventListener('change', () => {
+                        this.readConnectionApi();
+                        this.updateUI();
+                        this.measurePing(true);
+                    });
+                }
+            },
+
+            async measurePing(force = false) {
+                if (this._pending) return;
+                if (!force && this._lastMeasuredAt && (Date.now() - this._lastMeasuredAt < 2500)) return;
+                this.readConnectionApi();
+                if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                    this.updateUI();
+                    return;
+                }
+                this._pending = true;
+                const start = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+                const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+                const timeoutId = controller ? setTimeout(() => controller.abort(), 4000) : null;
+                try {
+                    const res = await fetch(`version.json?ping=${Date.now()}`, {
+                        method: 'GET',
+                        cache: 'no-store',
+                        signal: controller ? controller.signal : undefined
+                    });
+                    if (res && res.ok) {
+                        const elapsed = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - start;
+                        this.rttMs = Math.max(1, Math.round(elapsed));
+                        this.pingFailed = false;
+                    } else {
+                        this.pingFailed = true;
+                    }
+                } catch (e) {
+                    this.pingFailed = true;
+                } finally {
+                    if (timeoutId) clearTimeout(timeoutId);
+                    this._pending = false;
+                    this._lastMeasuredAt = Date.now();
+                    this.updateUI();
+                }
+            },
+
+            getBadgeData() {
+                this.readConnectionApi();
+                const online = (typeof navigator === 'undefined') ? true : navigator.onLine !== false;
+                if (!online) {
+                    return {
+                        colorClass: 'text-red-400',
+                        html: '<span>📵</span><span>切断</span>',
+                        title: 'オフライン（ネットワーク未接続）'
+                    };
+                }
+                if (this.pingFailed) {
+                    return {
+                        colorClass: 'text-red-400',
+                        html: '<span>⚠️</span><span>不安定</span>',
+                        title: '通信応答なし・タイムアウト'
+                    };
+                }
+
+                const dl = this.downlinkMbps;
+                const rtt = this.rttMs;
+                let colorClass = 'text-emerald-400';
+
+                if ((dl !== null && dl < 1.5) || (rtt !== null && rtt >= 350) || this.effectiveType === '2g' || this.effectiveType === 'slow-2g') {
+                    colorClass = 'text-red-400';
+                } else if ((dl !== null && dl < 5) || (rtt !== null && rtt >= 150) || this.effectiveType === '3g') {
+                    colorClass = 'text-amber-300';
+                }
+
+                if (dl !== null) {
+                    const speedText = dl >= 10 ? `${Math.round(dl)}Mbps` : `${dl.toFixed(1)}Mbps`;
+                    const rttSub = rtt !== null ? `<span class="hidden sm:inline text-slate-400 font-normal">(${rtt}ms)</span>` : '';
+                    return {
+                        colorClass,
+                        html: `<span>📶</span><span>${speedText}</span>${rttSub}`,
+                        title: `推定回線速度: ${dl.toFixed(1)} Mbps${rtt !== null ? ` / 応答: ${rtt}ms` : ''}`
+                    };
+                }
+
+                if (rtt !== null) {
+                    const tier = rtt < 120 ? '高速' : (rtt < 300 ? '普通' : '低速');
+                    return {
+                        colorClass,
+                        html: `<span>📶</span><span class="hidden sm:inline">${tier}</span><span>${rtt}ms</span>`,
+                        title: `通信状態: ${tier}（応答速度: ${rtt}ms）`
+                    };
+                }
+
+                return {
+                    colorClass: 'text-sky-300',
+                    html: '<span>📶</span><span>計測中</span>',
+                    title: '回線速度を計測中...'
+                };
+            },
+
+            getBadgeHtml() {
+                return this.getBadgeData().html;
+            },
+
+            getBadgeColorClass() {
+                return this.getBadgeData().colorClass;
+            },
+
+            getBadgeTitle() {
+                return this.getBadgeData().title;
+            },
+
+            updateUI() {
+                const el = document.getElementById('new-battle-net-speed');
+                if (!el) {
+                    if (this._timer) this.stop();
+                    return;
+                }
+                const data = this.getBadgeData();
+                el.className = `flex items-center gap-0.5 ${data.colorClass} font-pixel`;
+                el.innerHTML = data.html;
+                el.title = data.title;
+            },
+
+            start() {
+                this.bindListeners();
+                this.updateUI();
+                if (!this._timer) {
+                    this._timer = setInterval(() => {
+                        if (!document.getElementById('new-battle-net-speed')) {
+                            this.stop();
+                            return;
+                        }
+                        this.measurePing();
+                    }, 5000);
+                }
+                if (!this._lastMeasuredAt || (Date.now() - this._lastMeasuredAt > 3000)) {
+                    this.measurePing();
+                }
+            },
+
+            stop() {
+                if (this._timer) {
+                    clearInterval(this._timer);
+                    this._timer = null;
+                }
+            }
+        };
+        window.BattleNetMonitor = BattleNetMonitor;
+
         function startNewBattleMode(playerCharId = null, enemyCharId = 'asaiomizu', battleOptions = null) {
             const opts = battleOptions || {};
             if (!opts.isOnlineSynced) {
@@ -10723,6 +10909,9 @@ pasha_dark: {
                 activeNewBattle.destroy();
                 activeNewBattle.stopElapsedTimer();
                 activeNewBattle = null;
+            }
+            if (typeof BattleNetMonitor !== 'undefined') {
+                BattleNetMonitor.stop();
             }
             if (typeof cleanupOnlineLobby === 'function') {
                 cleanupOnlineLobby();
@@ -11178,15 +11367,14 @@ pasha_dark: {
                     ${(() => {
                         const isOnline = (window.isOnlineBattleMode || (activeNewBattle && activeNewBattle.isOnlineBattleMode));
                         let modeLabel = '⚔️ 3v3';
-                        const roomCodeTag = (isOnline && activeNewBattle && activeNewBattle.roomCode) ? ` [ID:${activeNewBattle.roomCode}]` : '';
                         if (isOnline && activeNewBattle && activeNewBattle.controlSingleAllyOnly) {
-                            modeLabel = `🌐${roomCodeTag} ${activeNewBattle.allyHumanCount}vs${activeNewBattle.enemyHumanCount} (BOT味${activeNewBattle.allyBotCount}/敵${activeNewBattle.enemyBotCount})`;
+                            modeLabel = `🌐 ${activeNewBattle.allyHumanCount}vs${activeNewBattle.enemyHumanCount} (BOT味${activeNewBattle.allyBotCount}/敵${activeNewBattle.enemyBotCount})`;
                         } else if (isOnline) {
-                            modeLabel = `🌐${roomCodeTag} オンライン2人戦 (3体操作)`;
+                            modeLabel = `🌐 オンライン2人戦 (3体操作)`;
                         }
                         return `
                     <div class="w-full h-7 md:h-9 flex items-center justify-between gap-1 md:gap-2 px-1.5 md:px-3 bg-slate-900/95 rounded-lg border border-slate-700 shadow-md z-20 shrink-0 overflow-hidden">
-                        <div class="flex items-center gap-1 text-[9px] md:text-xs font-pixel ${isOnline ? 'text-emerald-300' : 'text-amber-300'} min-w-0 max-w-[36%] shrink">
+                        <div class="flex items-center gap-1 text-[9px] md:text-xs font-pixel ${isOnline ? 'text-emerald-300' : 'text-amber-300'} min-w-0 max-w-[28%] sm:max-w-[33%] shrink">
                             <span class="truncate whitespace-nowrap">${modeLabel}</span>
                         </div>
                         `;
@@ -11195,6 +11383,10 @@ pasha_dark: {
                             ${actorIndicator}
                         </div>
                         <div class="flex items-center gap-1 md:gap-2 text-[9px] md:text-xs font-mono shrink-0 whitespace-nowrap">
+                            <div id="new-battle-net-speed" class="flex items-center gap-0.5 ${typeof BattleNetMonitor !== 'undefined' ? BattleNetMonitor.getBadgeColorClass() : 'text-sky-300'} font-pixel" title="${typeof BattleNetMonitor !== 'undefined' ? BattleNetMonitor.getBadgeTitle() : '回線速度を計測中...'}">
+                                ${typeof BattleNetMonitor !== 'undefined' ? BattleNetMonitor.getBadgeHtml() : '<span>📶</span><span>計測中</span>'}
+                            </div>
+                            <span class="text-slate-600">|</span>
                             <div class="flex items-center gap-0.5 text-sky-400">
                                 <span>⏱</span>
                                 <strong id="new-battle-elapsed-timer" class="font-pixel">${activeNewBattle ? formatElapsedTime(activeNewBattle.elapsedSeconds) : '00:00'}</strong>
@@ -11411,6 +11603,10 @@ pasha_dark: {
             const logEl = document.getElementById('new-battle-log');
             if (logEl) {
                 logEl.scrollTop = logEl.scrollHeight;
+            }
+
+            if (typeof BattleNetMonitor !== 'undefined') {
+                BattleNetMonitor.start();
             }
         }
 
@@ -11643,6 +11839,7 @@ pasha_dark: {
             if (pBarEl) pBarEl.style.width = pPercent + '%';
             if (eBarEl) eBarEl.style.width = ePercent + '%';
             if (turnEl) turnEl.innerText = activeNewBattle.turn;
+            if (typeof BattleNetMonitor !== 'undefined') BattleNetMonitor.updateUI();
         }
 
         function openNewBattleSettingsPanel() {
