@@ -8256,7 +8256,7 @@ pasha_dark: {
             if (!container) return;
             const isConnected = !!(window.fbDb && window.fbAuth && window.fbAuth.currentUser);
             container.innerHTML = `
-                <div class="relative w-full h-full flex flex-col justify-between p-3 sm:p-6 select-none overflow-y-auto bg-slate-950 text-white">
+                <div class="relative w-full h-full flex flex-col justify-between px-2.5 py-1.5 md:px-6 md:py-3 select-none overflow-hidden bg-slate-950 text-white">
                     <div class="absolute inset-0 overflow-hidden pointer-events-none z-0 opacity-20">
                         <div class="absolute inset-y-0 left-0 flex animate-endless-scroll h-full w-[200%]">
                             <img src="images/screen.webp" alt="screen" class="w-1/2 h-full object-cover">
@@ -8264,62 +8264,59 @@ pasha_dark: {
                         </div>
                     </div>
 
-                    <div class="flex items-center justify-between relative z-10 w-full mb-3 gap-2 shrink-0">
-                        <button onclick="renderDopagaKingdomScreen()" class="pixel-btn pixel-btn-danger px-3 py-1.5 text-xs font-bold whitespace-nowrap">
+                    <div class="flex items-center justify-between relative z-10 w-full gap-2 pb-1 shrink-0">
+                        <button onclick="renderDopagaKingdomScreen()" class="pixel-btn pixel-btn-danger px-2.5 py-1 text-[11px] sm:text-xs font-bold whitespace-nowrap shrink-0">
                             ◀ 王国に戻る
                         </button>
-                        <h2 class="text-emerald-400 font-pixel text-sm sm:text-xl font-bold tracking-wider drop-shadow-md truncate">🌐 オンライン対戦 モード選択</h2>
-                        <div id="online-server-status-badge" class="text-[10px] font-mono px-2 py-1 rounded border whitespace-nowrap ${isConnected ? 'bg-emerald-950/90 border-emerald-500 text-emerald-300' : 'bg-amber-950/90 border-amber-500 text-amber-300'}">
+                        <h2 class="text-emerald-400 font-pixel text-xs sm:text-sm md:text-lg font-bold tracking-wider drop-shadow-md truncate text-center">🌐 オンライン対戦 モード選択</h2>
+                        <div id="online-server-status-badge" class="text-[10px] font-mono px-2 py-0.5 rounded border whitespace-nowrap shrink-0 ${isConnected ? 'bg-emerald-950/90 border-emerald-500 text-emerald-300' : 'bg-amber-950/90 border-amber-500 text-amber-300'}">
                             ${isConnected ? '🟢 サーバー接続OK' : '🔄 サーバー接続中...'}
                         </div>
                     </div>
 
-                    <div class="max-w-3xl mx-auto w-full flex-1 flex flex-col justify-center gap-4 relative z-10 my-auto min-h-0">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch">
-                            <!-- カード1: フレンドと遊ぶ（ルーム作成） -->
-                            <div class="pixel-box bg-slate-900/95 border-2 border-amber-400 p-5 flex flex-col justify-between gap-4 shadow-xl">
-                                <div class="space-y-2 text-center">
-                                    <div class="text-4xl sm:text-5xl">🔑</div>
-                                    <h3 class="font-pixel text-base sm:text-lg font-bold text-amber-300">フレンドと遊ぶ（ルーム作成）</h3>
-                                    <p class="text-xs text-slate-300 font-mono leading-relaxed">
-                                        6桁のルームIDを発行してルームを作成！<br>
-                                        コードを共有してフレンドを招待できます。
-                                    </p>
-                                </div>
-                                <button type="button" onclick="createOnlineCodeRoom()" class="pixel-btn pixel-btn-primary w-full py-3 px-4 text-xs sm:text-sm font-bold font-pixel shadow-lg cursor-pointer transform hover:scale-[1.02] transition-all whitespace-nowrap">
-                                    🏠 フレンド用ルームを作成 ▶
-                                </button>
-                            </div>
-
-                            <!-- カード2: ルームIDを入力して参加 -->
-                            <div class="pixel-box bg-slate-900/95 border-2 border-sky-400 p-5 flex flex-col justify-between gap-4 shadow-xl">
-                                <div class="space-y-2 text-center">
-                                    <div class="text-4xl sm:text-5xl">🚪</div>
-                                    <h3 class="font-pixel text-base sm:text-lg font-bold text-sky-300">ルームIDを入力して参加</h3>
-                                    <p class="text-xs text-slate-300 font-mono leading-relaxed">
-                                        ホストから共有された6桁のルームコードを入力して、<br>
-                                        対戦準備ルームに参加します。
-                                    </p>
+                    <div class="w-full flex-1 min-h-0 overflow-y-auto flex flex-col relative z-10">
+                        <div class="w-full max-w-3xl mx-auto my-auto py-1">
+                            <div class="grid grid-cols-1 min-[480px]:grid-cols-2 gap-2.5 sm:gap-3.5 items-stretch">
+                                <!-- カード1: フレンドと遊ぶ（ルーム作成） -->
+                                <div class="pixel-box bg-slate-900/95 border-2 border-amber-400 p-2.5 sm:p-3 md:p-4 flex flex-col justify-between gap-2 shadow-xl">
+                                    <div class="flex flex-col items-center text-center gap-1">
+                                        <div class="text-2xl md:text-4xl leading-none">🔑</div>
+                                        <h3 class="font-pixel text-xs sm:text-sm md:text-base font-bold text-amber-300 leading-tight">フレンドと遊ぶ（ルーム作成）</h3>
+                                        <p class="text-[10px] sm:text-[11px] md:text-xs text-slate-300 font-mono leading-snug">
+                                            6桁のルームIDを発行して招待！
+                                        </p>
+                                    </div>
+                                    <button type="button" onclick="createOnlineCodeRoom()" class="pixel-btn pixel-btn-primary w-full py-2 px-3 text-[11px] sm:text-xs md:text-sm font-bold font-pixel shadow-lg cursor-pointer transform hover:scale-[1.02] transition-all whitespace-nowrap">
+                                        🏠 フレンド用ルームを作成 ▶
+                                    </button>
                                 </div>
 
-                                <div class="space-y-2">
-                                    <div class="flex gap-2">
-                                        <input id="online-room-code-input" type="text" maxlength="6" inputmode="numeric" placeholder="6桁コード" class="pixel-box bg-slate-950 border-sky-500 text-amber-300 font-mono font-bold text-base text-center tracking-widest px-2 py-2 flex-1 min-w-0 outline-none">
-                                        <button type="button" onclick="joinOnlineRoomByCode()" class="pixel-btn pixel-btn-warning px-5 py-2 text-xs sm:text-sm font-bold font-pixel whitespace-nowrap shrink-0">
+                                <!-- カード2: ルームIDを入力して参加 -->
+                                <div class="pixel-box bg-slate-900/95 border-2 border-sky-400 p-2.5 sm:p-3 md:p-4 flex flex-col justify-between gap-2 shadow-xl">
+                                    <div class="flex flex-col items-center text-center gap-1">
+                                        <div class="text-2xl md:text-4xl leading-none">🚪</div>
+                                        <h3 class="font-pixel text-xs sm:text-sm md:text-base font-bold text-sky-300 leading-tight">ルームIDを入力して参加</h3>
+                                        <p class="text-[10px] sm:text-[11px] md:text-xs text-slate-300 font-mono leading-snug">
+                                            共有された6桁コードを入力して参加
+                                        </p>
+                                    </div>
+
+                                    <div class="flex gap-1.5 sm:gap-2 items-center">
+                                        <input id="online-room-code-input" type="text" maxlength="6" inputmode="numeric" placeholder="6桁コード" class="pixel-box bg-slate-950 border-sky-500 text-amber-300 font-mono font-bold text-sm sm:text-base text-center tracking-widest px-2 py-1.5 flex-1 min-w-0 outline-none">
+                                        <button type="button" onclick="joinOnlineRoomByCode()" class="pixel-btn pixel-btn-warning px-3 sm:px-4 py-1.5 text-[11px] sm:text-xs md:text-sm font-bold font-pixel whitespace-nowrap shrink-0">
                                             参加 ▶
                                         </button>
                                     </div>
                                 </div>
                             </div>
                         </div>
-
-                        <div id="online-match-status-msg" class="text-xs font-mono text-center min-h-[22px] text-slate-400">
-                            「フレンド用ルームを作成」または「ルームIDを入力して参加」を選択してください
-                        </div>
                     </div>
 
-                    <div class="flex justify-center pt-2 pb-1 relative z-10 shrink-0">
-                        <button type="button" onclick="fallbackLaunchBotFromMatchmaking('multi')" class="text-xs font-mono text-slate-400 hover:text-amber-300 underline cursor-pointer">
+                    <div class="w-full flex flex-col items-center gap-1 pt-1 relative z-10 shrink-0">
+                        <div id="online-match-status-msg" class="text-[10px] sm:text-xs font-mono text-center text-slate-300 leading-tight min-h-[16px]">
+                            「フレンド用ルームを作成」または「ルームIDを入力して参加」を選択してください
+                        </div>
+                        <button type="button" onclick="fallbackLaunchBotFromMatchmaking('multi')" class="text-[11px] sm:text-xs font-mono text-slate-400 hover:text-amber-300 underline cursor-pointer leading-tight">
                             🤖 すぐにBOT相手に練習バトルを開始する
                         </button>
                     </div>
