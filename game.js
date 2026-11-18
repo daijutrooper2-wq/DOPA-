@@ -4634,7 +4634,7 @@ pasha_dark: {
             }
 
             checkActiveAllyStatus() {
-                if (this.isOnlineSynced) return false;
+                if (this.isOnlineSynced || this.isOnlineBattleMode) return false;
                 if (!this.isNewBattle || this.battleEnded || this.waitingForChoice) return false;
                 if (this.isProcessing) return false;
                 const currentActiveAlly = this.allies[this.activeAllyIndex || 0];
@@ -5418,7 +5418,9 @@ pasha_dark: {
                     this.currentControllingAllyIndex = this.onlineAwaitingSlot;
                     this.p1 = this.allies[this.onlineAwaitingSlot] || this.allies[0];
                 } else {
-                    const fallbackIdx = this.myControlSlots[0] || 0;
+                    const fallbackIdx = this.controlSingleAllyOnly
+                        ? (this.myControlSlots[0] || 0)
+                        : (this.myControlSlots.find(idx => this.allies[idx] && this.allies[idx].hp > 0) ?? (this.myControlSlots[0] || 0));
                     this.p1 = this.allies[fallbackIdx] || this.allies[0];
                 }
 
@@ -5788,6 +5790,7 @@ pasha_dark: {
                 try { window.newBattleTargetSelectType = null; } catch(e) {}
 
                 const expectedGen = this._stepGen || 0;
+                if (this.battleEnded || (this.isNewBattle && this.p1 && this.p1.hp <= 0)) return;
                 if (this.p1.hp > 0 && this.p1.eggplantReady && !this.p1Action && !this.battleEnded) {
                     this._autoActionTimeoutId = setTimeout(() => {
                         this._autoActionTimeoutId = null;
@@ -6115,7 +6118,7 @@ pasha_dark: {
                         continue;
                     }
 
-                    if (currentTeamType === 'ally' && this.controlSingleAllyOnly) {
+                    if (currentTeamType === 'ally' && this.controlSingleAllyOnly && !this.isOnlineBattleMode) {
                         const ctrlIdx = this.controlledAllyIndex || 0;
                         const ctrlAlly = this.allies[ctrlIdx];
                         if (ctrlAlly && ctrlAlly.hp <= 0 && !this.waitingForChoice && this.allies.some(a => a && a.hp > 0)) {
@@ -6426,6 +6429,11 @@ pasha_dark: {
                 this.waitingForOpponent = false;
 
                 if (this.isNewBattle && this.controlSingleAllyOnly && !this.battleEnded && this.p1 && this.p1.hp <= 0) {
+                    if (this.isOnlineBattleMode) {
+                        this.stopTimer();
+                        if (this.onStateChange) this.onStateChange(this);
+                        return;
+                    }
                     if (this.checkActiveAllyStatus()) return;
                 }
 
@@ -6737,6 +6745,8 @@ pasha_dark: {
                             const targetDead = deadAllies[Math.floor(Math.random() * deadAllies.length)];
                             const revivedHp = Math.floor(targetDead.maxHp * 0.40);
                             targetDead.hp = revivedHp;
+                            targetDead.isResting = false;
+                            targetDead.stunTurns = 0;
 
                             this.triggerEffect(this.getCharacterTeam(targetDead) === 'ally' ? 'Player' : 'Enemy', 'heal', '復活！', targetDead);
                             const remainingRevive = maxReviveTotal - this.battleData.pashaRollReviveCount;
@@ -7452,17 +7462,17 @@ pasha_dark: {
                     if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
                 }
 
-                if (this.checkActiveAllyStatus()) return;
-
                 if (defender.hp <= 0 && defender.id === 'momo' && !defender.momoRevived) {
                     defender.momoRevived = true;
                     defender.hp = Math.floor(defender.maxHp * 0.35);
                     this.log(`✨ 桃ピンは諦めない！要塞の底力でHP ${defender.hp} で復活！！`, 'text-amber-300 font-bold');
                     this.triggerCutin('✨ ナス要塞不屈の復活！', '桃ピンは倒れない！ HP35%で復活！');
-                    this.triggerEffect(side, 'heal', '不屈復活!!');
+                    this.triggerEffect(side, 'heal', '不屈復活!!', defender);
                     audioSystem.playSpecial();
                     return;
                 }
+
+                if (this.checkActiveAllyStatus()) return;
 
                 if (!isCounter && defender.id === 'asaiomizu' && defender.hp > 0 && Math.random() < 0.5) {
                     this.executeCounter(defender, attacker);
@@ -8724,6 +8734,14 @@ pasha_dark: {
             audioSystem.playSelect();
             if (!activeNewBattle) return;
 
+            const isOnlineBattle = !!(activeNewBattle.isOnlineSynced || activeNewBattle.isOnlineBattleMode);
+            if (isOnlineBattle && (action === 'skip' || action === 'switch')) {
+                activeNewBattle.waitingForChoice = false;
+                activeNewBattle.isRunModalOpen = false;
+                renderNewBattleScreen();
+                return;
+            }
+
             if (action === 'skip') {
                 activeNewBattle.waitingForChoice = false;
                 activeNewBattle.isRunModalOpen = false;
@@ -8928,7 +8946,7 @@ pasha_dark: {
             } else if (isSpectatingMulti) {
                 commandAreaContent = `
                     <div class="grid grid-cols-2 gap-1 w-full h-full relative z-20">
-                        <div class="col-span-2 text-center text-[10px] font-pixel text-slate-300 flex items-center justify-center">👻 観戦中（残りの味方が戦闘中）</div>
+                        <div class="col-span-2 text-center text-[10px] font-pixel text-slate-300 flex items-center justify-center">👻 観戦中（復活または味方の決着を待機中）</div>
                         <button onclick="executeNewBattleAction('run')" class="pixel-btn pixel-btn-danger py-1 px-1 text-[11px] font-bold flex items-center justify-center text-center shadow cursor-pointer">
                             <span>🚪 退出</span>
                         </button>
@@ -9028,19 +9046,22 @@ pasha_dark: {
             }
 
             let choicePopupHtml = '';
-            if (activeNewBattle && (activeNewBattle.waitingForChoice || activeNewBattle.isRunModalOpen)) {
-                const isOnlineSyncedRun = !!(activeNewBattle.isOnlineSynced);
-                const isRun = activeNewBattle.isRunModalOpen && !activeNewBattle.waitingForChoice;
+            const isOnlineBattlePopup = !!(activeNewBattle && (activeNewBattle.isOnlineSynced || activeNewBattle.isOnlineBattleMode));
+            if (activeNewBattle && isOnlineBattlePopup && activeNewBattle.waitingForChoice) {
+                activeNewBattle.waitingForChoice = false;
+            }
+            if (activeNewBattle && ((activeNewBattle.waitingForChoice && !isOnlineBattlePopup) || activeNewBattle.isRunModalOpen)) {
+                const isRun = activeNewBattle.isRunModalOpen && (!activeNewBattle.waitingForChoice || isOnlineBattlePopup);
                 const livingAlliesCount = activeNewBattle.allies ? activeNewBattle.allies.filter(a => a.hp > 0).length : 1;
                 const hasOtherAlly = activeNewBattle.allies 
                     ? activeNewBattle.allies.some(a => a.hp > 0 && a !== activeNewBattle.p1) 
                     : false;
-                const canSwitch = !isOnlineSyncedRun && (hasOtherAlly || (isRun && livingAlliesCount > 0));
+                const canSwitch = !isOnlineBattlePopup && (hasOtherAlly || (isRun && livingAlliesCount > 0));
 
-                const titleText = isOnlineSyncedRun
+                const titleText = isOnlineBattlePopup
                     ? '🚪 オンライン対戦から退出'
                     : (isRun ? '🏃 戦闘離脱・選択' : '⚠️ 操作キャラクター戦闘不能！');
-                const bodyText = isOnlineSyncedRun
+                const bodyText = isOnlineBattlePopup
                     ? '現在のオンライン対戦を退出してモード選択へ戻りますか？'
                     : (isRun
                         ? '逃げ出しますか？ バトルをスキップして結果を見るか、残っているキャラクターで戦い続けるか選択できます。'
@@ -9052,7 +9073,7 @@ pasha_dark: {
                             <div class="text-xl sm:text-2xl font-pixel font-black text-red-500 animate-bounce">${titleText}</div>
                             <p class="text-xs sm:text-sm text-slate-200 font-mono leading-relaxed">${bodyText}</p>
                             <div class="flex flex-col gap-3 w-full mt-2">
-                                ${isOnlineSyncedRun ? `
+                                ${isOnlineBattlePopup ? `
                                 <button onclick="returnFromNewBattle()" class="pixel-btn pixel-btn-danger py-3 px-4 text-xs sm:text-sm font-bold font-pixel flex items-center justify-center gap-2 shadow-lg cursor-pointer">
                                     <span>🚪 退出してモード選択へ戻る</span>
                                 </button>
