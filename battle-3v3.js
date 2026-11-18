@@ -1873,12 +1873,12 @@ function renderNewBattleScreen() {
         const actor = activeNewBattle.currentAttacker;
         const isAlly = activeNewBattle.getCharacterTeam(actor) === 'ally';
         const actorName = (actor.charName || '').replace(/SPパシャ憎・半浸闇化状態|パシャ憎・半浸闇化状態/g, 'パシャ憎・半浸闇化');
-        actorIndicator = `<div class="px-2 py-0.5 rounded border text-[10px] sm:text-xs font-bold font-pixel animate-pulse shadow ${isAlly ? 'bg-emerald-950/90 border-emerald-500 text-emerald-300' : 'bg-red-950/90 border-red-500 text-red-300'}">⚡ 現在行動中：${isAlly ? '【味方】' : '【敵】'} ${actorName}</div>`;
+        actorIndicator = `<div class="px-1.5 py-0.5 rounded border text-[9px] md:text-[11px] leading-tight font-bold font-pixel animate-pulse shadow whitespace-nowrap truncate max-w-full ${isAlly ? 'bg-emerald-950/90 border-emerald-500 text-emerald-300' : 'bg-red-950/90 border-red-500 text-red-300'}">⚡ 現在行動中：${isAlly ? '【味方】' : '【敵】'} ${actorName}</div>`;
     } else if (isMyTurn) {
         const p1Name = (p1.charName || '').replace(/SPパシャ憎・半浸闇化状態|パシャ憎・半浸闇化状態/g, 'パシャ憎・半浸闇化');
-        actorIndicator = `<div class="px-2 py-0.5 rounded border border-emerald-400 bg-emerald-950/90 text-emerald-300 text-[10px] sm:text-xs font-bold font-pixel animate-pulse shadow">🟢 自分のターン (${p1Name})</div>`;
+        actorIndicator = `<div class="px-1.5 py-0.5 rounded border border-emerald-400 bg-emerald-950/90 text-emerald-300 text-[9px] md:text-[11px] leading-tight font-bold font-pixel animate-pulse shadow whitespace-nowrap truncate max-w-full">🟢 自分のターン (${p1Name})</div>`;
     } else {
-        actorIndicator = `<div class="px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[10px] sm:text-xs font-bold font-pixel">⏳ 相手のターン</div>`;
+        actorIndicator = `<div class="px-1.5 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] md:text-[11px] leading-tight font-bold font-pixel whitespace-nowrap truncate max-w-full">⏳ 相手のターン</div>`;
     }
 
     let commandAreaContent = '';
@@ -2006,10 +2006,10 @@ function renderNewBattleScreen() {
             <div class="absolute inset-0 overflow-hidden pointer-events-none z-0">
                 <img src="images/backnormal.webp" alt="backnormal" class="w-full h-full object-cover opacity-80">
             </div>
-            <div class="w-full flex items-center justify-between gap-2 px-3 py-1.5 bg-slate-900/95 rounded-lg border border-slate-700 shadow-md z-20 shrink-0">
-                <div class="flex items-center gap-1.5 text-xs font-pixel text-amber-300"><span>⚔️ 3v3バトルモード</span></div>
-                <div class="flex items-center justify-center flex-1">${actorIndicator}</div>
-                <div class="flex items-center gap-2 text-xs font-mono">
+            <div class="w-full h-7 md:h-9 flex items-center justify-between gap-1 md:gap-2 px-1.5 md:px-3 bg-slate-900/95 rounded-lg border border-slate-700 shadow-md z-20 shrink-0 overflow-hidden">
+                <div class="flex items-center gap-1 text-[9px] md:text-xs font-pixel text-amber-300 min-w-0 max-w-[36%] shrink"><span class="truncate whitespace-nowrap">⚔️ 3v3バトルモード</span></div>
+                <div class="flex items-center justify-center flex-1 min-w-0 overflow-hidden px-1">${actorIndicator}</div>
+                <div class="flex items-center gap-1 md:gap-2 text-[9px] md:text-xs font-mono shrink-0 whitespace-nowrap">
                     <span>時間:<strong id="new-battle-elapsed-timer" class="text-sky-400 font-pixel">${activeNewBattle ? formatElapsedTime(activeNewBattle.elapsedSeconds) : '00:00'}</strong></span>
                     <span>T:<strong id="new-battle-turn" class="text-amber-400 font-pixel">${activeNewBattle.turn}</strong></span>
                     <span>制限:<strong id="new-battle-timer" class="text-emerald-400 font-pixel">${activeNewBattle.turnTimer}</strong>s</span>

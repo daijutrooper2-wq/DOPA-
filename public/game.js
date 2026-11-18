@@ -8679,7 +8679,7 @@ pasha_dark: {
                 const actorName = (actor.charName || '').replace(/SPパシャ憎・半浸闇化状態|パシャ憎・半浸闇化状態/g, 'パシャ憎・半浸闇化');
                 const botCue = (activeNewBattle.controlSingleAllyOnly && actor.roleBadge) ? ` [${actor.roleBadge}]` : '';
                 actorIndicator = `
-                    <div class="px-2 py-0.5 rounded border text-[10px] sm:text-xs font-bold font-pixel animate-pulse shadow ${isAlly ? 'bg-emerald-950/90 border-emerald-500 text-emerald-300' : 'bg-red-950/90 border-red-500 text-red-300'}">
+                    <div class="px-1.5 py-0.5 rounded border text-[9px] md:text-[11px] leading-tight font-bold font-pixel animate-pulse shadow whitespace-nowrap truncate max-w-full ${isAlly ? 'bg-emerald-950/90 border-emerald-500 text-emerald-300' : 'bg-red-950/90 border-red-500 text-red-300'}">
                         ⚡ 現在行動中：${isAlly ? '【味方】' : '【敵】'}${botCue} ${actorName}
                     </div>
                 `;
@@ -8690,19 +8690,19 @@ pasha_dark: {
                     ? `🟢 自分のターン (${p1Name})`
                     : `🟢 自分のターン (${allyOrderNum}体目: ${p1Name})`;
                 actorIndicator = `
-                    <div class="px-2 py-0.5 rounded border border-emerald-400 bg-emerald-950/90 text-emerald-300 text-[10px] sm:text-xs font-bold font-pixel animate-pulse shadow">
+                    <div class="px-1.5 py-0.5 rounded border border-emerald-400 bg-emerald-950/90 text-emerald-300 text-[9px] md:text-[11px] leading-tight font-bold font-pixel animate-pulse shadow whitespace-nowrap truncate max-w-full">
                         ${turnLabel}
                     </div>
                 `;
             } else if (isSpectatingMulti) {
                 actorIndicator = `
-                    <div class="px-2 py-0.5 rounded border border-slate-600 bg-slate-900 text-slate-300 text-[10px] sm:text-xs font-bold font-pixel">
+                    <div class="px-1.5 py-0.5 rounded border border-slate-600 bg-slate-900 text-slate-300 text-[9px] md:text-[11px] leading-tight font-bold font-pixel whitespace-nowrap truncate max-w-full">
                         👻 戦闘不能・観戦中
                     </div>
                 `;
             } else {
                 actorIndicator = `
-                    <div class="px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[10px] sm:text-xs font-bold font-pixel">
+                    <div class="px-1.5 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] md:text-[11px] leading-tight font-bold font-pixel whitespace-nowrap truncate max-w-full">
                         ⏳ 相手のターン
                     </div>
                 `;
@@ -8901,16 +8901,16 @@ pasha_dark: {
                             modeLabel = '🌐 オンライン2人戦 (3体操作)';
                         }
                         return `
-                    <div class="w-full flex items-center justify-between gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-slate-900/95 rounded-lg border border-slate-700 shadow-md z-20 shrink-0">
-                        <div class="flex items-center gap-1 text-[10px] sm:text-xs font-pixel ${isOnline ? 'text-emerald-300' : 'text-amber-300'} shrink-0">
-                            <span>${modeLabel}</span>
+                    <div class="w-full h-7 md:h-9 flex items-center justify-between gap-1 md:gap-2 px-1.5 md:px-3 bg-slate-900/95 rounded-lg border border-slate-700 shadow-md z-20 shrink-0 overflow-hidden">
+                        <div class="flex items-center gap-1 text-[9px] md:text-xs font-pixel ${isOnline ? 'text-emerald-300' : 'text-amber-300'} min-w-0 max-w-[36%] shrink">
+                            <span class="truncate whitespace-nowrap">${modeLabel}</span>
                         </div>
                         `;
                     })()}
-                        <div class="flex items-center justify-center flex-1 px-1">
+                        <div class="flex items-center justify-center flex-1 min-w-0 overflow-hidden px-1">
                             ${actorIndicator}
                         </div>
-                        <div class="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-mono shrink-0">
+                        <div class="flex items-center gap-1 md:gap-2 text-[9px] md:text-xs font-mono shrink-0 whitespace-nowrap">
                             <div class="flex items-center gap-0.5 text-sky-400">
                                 <span>⏱</span>
                                 <strong id="new-battle-elapsed-timer" class="font-pixel">${activeNewBattle ? formatElapsedTime(activeNewBattle.elapsedSeconds) : '00:00'}</strong>
