@@ -153,7 +153,7 @@
             });
         };
 
-        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.3';
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.4';
         const STATIC_IMAGE_ASSETS = [
             'images/backnormal.webp',
             'images/screen.webp',
@@ -202,9 +202,9 @@
         ];
         const SHELL_SITE_ASSETS = [
             'manifest.json',
-            'style.css?v=2.3.3',
-            'battle-3v3.js?v=2.3.3',
-            'game.js?v=2.3.3'
+            'style.css?v=2.3.4',
+            'battle-3v3.js?v=2.3.4',
+            'game.js?v=2.3.4'
         ];
 
         const AssetPreloader = {
@@ -3531,7 +3531,7 @@ static drawDopagaking(p, isCharged) {
                     <div class="flex items-center justify-between border-b border-amber-500/40 pb-2.5 mb-3 shrink-0">
                         <div>
                             <h3 class="font-pixel text-sm sm:text-base font-bold text-amber-300">🤖 BOT割り当てキャラクター選択</h3>
-                            <p class="text-[11px] font-mono text-slate-300">同じチーム内で重複しないキャラクターを選んでください</p>
+                            <p class="text-[11px] font-mono text-slate-300">同じチーム内で重複しないキャラを選択（画像タップで詳細）</p>
                         </div>
                         <button type="button" onclick="closeOnlineLobbyBotCharPicker()" class="pixel-btn pixel-btn-danger px-3 py-1 text-xs font-bold">✕ 閉じる</button>
                     </div>
@@ -3540,12 +3540,14 @@ static drawDopagaking(p, isCharged) {
                             const isCurrent = c.id === currentCharId;
                             const isUsedInTeam = !isCurrent && usedByOthers.has(c.id);
                             return `
-                                <div ${isUsedInTeam ? '' : `role="button" tabindex="0" onclick="selectOnlineLobbyBotCharFromPicker('${roomId}', ${teamNum}, ${slotIdx}, '${c.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectOnlineLobbyBotCharFromPicker('${roomId}', ${teamNum}, ${slotIdx}, '${c.id}');}"`} class="pixel-box p-2.5 flex flex-col items-center gap-1.5 transition-all text-center relative ${isUsedInTeam ? 'border border-slate-800 bg-slate-950/60 opacity-50 cursor-not-allowed' : (isCurrent ? 'border-2 border-amber-400 bg-amber-950/60 shadow-lg cursor-pointer' : 'border border-slate-700 bg-slate-950 hover:border-sky-400 cursor-pointer')}">
-                                    ${isUsedInTeam ? '<span class="absolute top-1 left-1 bg-red-900/90 text-red-200 border border-red-500/70 px-1 py-0.5 rounded text-[8px] font-bold">使用中</span>' : ''}
-                                    <canvas id="bot-picker-cvs-${c.id}" width="56" height="56" class="w-12 h-12 rounded bg-slate-900 border border-slate-700"></canvas>
+                                <div ${isUsedInTeam ? '' : `role="button" tabindex="0" onclick="selectOnlineLobbyBotCharFromPicker('${roomId}', ${teamNum}, ${slotIdx}, '${c.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectOnlineLobbyBotCharFromPicker('${roomId}', ${teamNum}, ${slotIdx}, '${c.id}');}"`} class="pixel-box p-2 flex flex-col items-center gap-1 transition-all text-center relative ${isUsedInTeam ? 'border border-slate-800 bg-slate-950/60 opacity-50 cursor-not-allowed' : (isCurrent ? 'border-2 border-amber-400 bg-amber-950/60 shadow-lg cursor-pointer' : 'border border-slate-700 bg-slate-950 hover:border-sky-400 cursor-pointer')}">
+                                    ${isUsedInTeam ? '<span class="absolute top-1 left-1 bg-red-900/90 text-red-200 border border-red-500/70 px-1 py-0.5 rounded text-[8px] font-bold z-10">使用中</span>' : ''}
+                                    <button type="button" onclick="event.stopPropagation(); openOnlineLobbyCharDetailModal('${c.id}', '${roomId}', 'bot')" title="画像をタップで詳細を表示" aria-label="${c.name}の詳細を表示" class="relative group rounded overflow-hidden border border-slate-700 hover:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer shrink-0">
+                                        <canvas id="bot-picker-cvs-${c.id}" width="84" height="84" class="w-16 h-16 sm:w-[72px] sm:h-[72px] block bg-slate-900"></canvas>
+                                        <span class="absolute bottom-0.5 right-0.5 bg-slate-950/80 text-sky-300 border border-sky-500/50 rounded px-1 text-[8px] leading-tight pointer-events-none">🔍</span>
+                                    </button>
                                     <div class="text-xs font-bold ${isCurrent ? 'text-amber-300' : 'text-white'} truncate max-w-full">${c.name}</div>
                                     <div class="text-[9px] font-mono text-slate-400">${c.id === 'dopagaking' ? 'HP:？ 攻:？ 防:？' : `HP:${c.hp} 攻:${c.atk} 防:${c.def}`}</div>
-                                    <button type="button" onclick="event.stopPropagation(); openOnlineLobbyCharDetailModal('${c.id}', '${roomId}', 'bot')" class="w-full py-0.5 rounded text-[9px] font-bold bg-slate-800/90 hover:bg-sky-800 text-sky-300 border border-sky-500/50 cursor-pointer">🔍 詳細</button>
                                 </div>
                             `;
                         }).join('')}
@@ -3801,7 +3803,7 @@ static drawDopagaking(p, isCharged) {
                             <!-- 下段: 自分の出陣キャラ1体選択 -->
                             <div class="pixel-box bg-slate-900/95 border border-slate-700 p-2 space-y-1.5">
                                 <div class="flex items-center justify-between gap-2 flex-wrap">
-                                    <span class="text-[11px] font-pixel font-bold text-amber-300">⚔️ あなたの出陣キャラ (1体選択・チーム内重複なし)</span>
+                                    <span class="text-[11px] font-pixel font-bold text-amber-300">⚔️ あなたの出陣キャラ (1体選択・画像タップで詳細)</span>
                                     <div class="flex items-center gap-2">
                                         <span class="text-[10px] font-mono text-emerald-300">選択中: <b>${(CHARACTER_DATA[myCharId] || {}).name || myCharId}</b></span>
                                         <button type="button" onclick="openOnlineLobbyCharDetailModal('${myCharId}', '${roomId}', 'player')" class="pixel-btn px-2 py-0.5 text-[10px] font-bold bg-sky-900/90 border-sky-400 text-sky-200 hover:bg-sky-800">🔍 詳細</button>
@@ -3823,11 +3825,13 @@ static drawDopagaking(p, isCharged) {
                                             const usedByAllyHuman = !selected && allyHumanUsed.has(c.id);
                                             const usedByAllyBot = !selected && !usedByAllyHuman && allyBotUsed.has(c.id);
                                             return `
-                                                <div role="button" tabindex="0" onclick="selectOnlineMultiLobbyChar('${roomId}', '${c.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectOnlineMultiLobbyChar('${roomId}', '${c.id}');}" class="p-1.5 rounded border-2 flex flex-col items-center gap-1 transition-all cursor-pointer relative ${selected ? 'border-emerald-400 bg-emerald-950/70 shadow' : (usedByAllyHuman ? 'border-red-800/70 bg-slate-950/60 opacity-65' : 'border-slate-700 bg-slate-950 hover:border-slate-400')}">
-                                                    ${usedByAllyHuman ? '<span class="absolute top-0.5 left-0.5 bg-red-900/90 text-red-200 border border-red-500/70 px-1 rounded text-[8px] font-bold">味方使用中</span>' : (usedByAllyBot ? '<span class="absolute top-0.5 left-0.5 bg-amber-900/90 text-amber-200 border border-amber-500/70 px-1 rounded text-[8px] font-bold">味方BOT</span>' : '')}
-                                                    <canvas id="lobby-pick-cvs-${c.id}" width="40" height="40" class="w-9 h-9 rounded bg-slate-900"></canvas>
-                                                    <span class="text-[10px] font-bold truncate max-w-full ${selected ? 'text-emerald-300' : 'text-slate-200'}">${c.name}</span>
-                                                    <button type="button" onclick="event.stopPropagation(); openOnlineLobbyCharDetailModal('${c.id}', '${roomId}', 'player')" class="w-full py-0.5 rounded text-[9px] font-bold bg-slate-800/90 hover:bg-sky-800 text-sky-300 border border-sky-500/50 cursor-pointer">🔍 詳細</button>
+                                                <div role="button" tabindex="0" onclick="selectOnlineMultiLobbyChar('${roomId}', '${c.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectOnlineMultiLobbyChar('${roomId}', '${c.id}');}" class="p-1.5 rounded border-2 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer relative ${selected ? 'border-emerald-400 bg-emerald-950/70 shadow' : (usedByAllyHuman ? 'border-red-800/70 bg-slate-950/60 opacity-65' : 'border-slate-700 bg-slate-950 hover:border-slate-400')}">
+                                                    ${usedByAllyHuman ? '<span class="absolute top-0.5 left-0.5 bg-red-900/90 text-red-200 border border-red-500/70 px-1 rounded text-[8px] font-bold z-10 pointer-events-none">味方使用中</span>' : (usedByAllyBot ? '<span class="absolute top-0.5 left-0.5 bg-amber-900/90 text-amber-200 border border-amber-500/70 px-1 rounded text-[8px] font-bold z-10 pointer-events-none">味方BOT</span>' : '')}
+                                                    <button type="button" onclick="event.stopPropagation(); openOnlineLobbyCharDetailModal('${c.id}', '${roomId}', 'player')" title="画像をタップで詳細を表示" aria-label="${c.name}の詳細を表示" class="relative rounded overflow-hidden border border-slate-700/80 hover:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer shrink-0">
+                                                        <canvas id="lobby-pick-cvs-${c.id}" width="84" height="84" class="w-14 h-14 sm:w-16 sm:h-16 block bg-slate-900"></canvas>
+                                                        <span class="absolute bottom-0.5 right-0.5 bg-slate-950/80 text-sky-300 border border-sky-500/50 rounded px-1 text-[8px] leading-tight pointer-events-none">🔍</span>
+                                                    </button>
+                                                    <span class="text-[10px] sm:text-[11px] font-bold truncate max-w-full ${selected ? 'text-emerald-300' : 'text-slate-200'}">${c.name}</span>
                                                 </div>
                                             `;
                                         }).join('');
