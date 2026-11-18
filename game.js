@@ -153,7 +153,7 @@
             });
         };
 
-        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.4';
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.6';
         const STATIC_IMAGE_ASSETS = [
             'images/backnormal.webp',
             'images/screen.webp',
@@ -202,9 +202,9 @@
         ];
         const SHELL_SITE_ASSETS = [
             'manifest.json',
-            'style.css?v=2.3.4',
-            'battle-3v3.js?v=2.3.4',
-            'game.js?v=2.3.4'
+            'style.css?v=2.3.6',
+            'battle-3v3.js?v=2.3.6',
+            'game.js?v=2.3.6'
         ];
 
         const AssetPreloader = {
@@ -1147,21 +1147,20 @@ static drawDopagaking(p, isCharged) {
             if (titleEl) titleEl.innerText = "🌟 ファイター登録";
             if (bodyEl) {
                 bodyEl.innerHTML = `
-                    <div class="text-center space-y-2 py-1">
-                        <div class="text-left mb-2">
-                            <label class="text-xs text-amber-300 font-bold block mb-1">あなたのファイター名を入力してください：</label>
-                            <input id="first-name-input" type="text" value="${playerState.playerName || '名無しファイター'}" maxlength="12" class="pixel-box bg-slate-950 px-3 py-1.5 text-sm font-bold text-amber-300 w-full outline-none border-amber-600">
-                        </div>
-                        <p class="text-[11px] text-amber-300 font-bold font-pixel">🎉 新規プレイヤー特典！ 🎉</p>
+                    <div class="text-center space-y-2.5 py-1">
                         <p class="text-[11px] text-slate-200 leading-normal font-mono">
                             ドパガキングダムへようこそ！<br>
-                            新規特典として <b class="text-amber-400">1000 DOPA</b> をプレゼントしました！
+                            まずはあなたのファイター名を登録してください。
                         </p>
+                        <div class="text-left">
+                            <label class="text-xs text-amber-300 font-bold block mb-1">あなたのファイター名を入力してください：</label>
+                            <input id="first-name-input" type="text" value="${playerState.playerName || '名無しファイター'}" maxlength="12" onkeydown="if(event.key==='Enter'){event.preventDefault();completeFirstTimeSetup();}" class="pixel-box bg-slate-950 px-3 py-1.5 text-sm font-bold text-amber-300 w-full outline-none border-amber-600">
+                        </div>
                     </div>
                 `;
             }
             if (actionsEl) {
-                actionsEl.innerHTML = `<button onclick="completeFirstTimeSetup()" class="pixel-btn pixel-btn-primary px-8 py-2 font-bold text-sm">冒険へ出発！ ▶</button>`;
+                actionsEl.innerHTML = `<button onclick="completeFirstTimeSetup()" class="pixel-btn pixel-btn-primary px-8 py-2 font-bold text-sm">名前を登録する ▶</button>`;
             }
             if (overlay) {
                 overlay.classList.remove('hidden');
@@ -1170,12 +1169,9 @@ static drawDopagaking(p, isCharged) {
         }
 
         async function completeFirstTimeSetup() {
-            audioSystem.playSelect();
             const input = document.getElementById('first-name-input');
-            if (input) {
-                const name = input.value.trim();
-                if (name) playerState.playerName = name;
-            }
+            const rawName = input ? input.value.trim() : '';
+            playerState.playerName = rawName ? rawName.slice(0, 12) : '名無しファイター';
             playerState.isFirstTime = false;
             playerState.dopa = 1000;
             playerState.unlockedChars = [];
@@ -1183,11 +1179,52 @@ static drawDopagaking(p, isCharged) {
             playerState.selectedPlayerChar = null;
             playerState.selectedIcon = 'dopagaking';
             await savePlayerState();
+            renderHomeScreen();
             updateHeaderProfile();
             const dopaEl = document.getElementById('dopa-count');
             if (dopaEl) dopaEl.innerText = formatDopa(playerState.dopa);
-            closeModal();
-            renderHomeScreen();
+
+            if (typeof audioSystem.playTitleSound === 'function') {
+                audioSystem.playTitleSound();
+            } else {
+                audioSystem.playSelect();
+            }
+
+            const safeDisplayName = String(playerState.playerName)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+            const titleEl = document.getElementById('modal-title');
+            const bodyEl = document.getElementById('modal-body');
+            const overlay = document.getElementById('modal-overlay');
+            const actionsEl = document.getElementById('modal-actions');
+
+            if (titleEl) titleEl.innerText = "🎁 1000 DOPA プレゼント！";
+            if (bodyEl) {
+                bodyEl.innerHTML = `
+                    <div class="text-center space-y-3 py-1">
+                        <p class="text-xs sm:text-sm text-emerald-300 font-bold font-mono">
+                            ようこそ、<span class="text-amber-300">${safeDisplayName}</span> さん！
+                        </p>
+                        <div class="pixel-box bg-amber-950/70 border-2 border-amber-400 p-3 space-y-1.5 shadow-lg">
+                            <p class="text-xs text-amber-300 font-bold font-pixel">🎉 新規プレイヤー特典 🎉</p>
+                            <div class="text-xl sm:text-2xl font-black text-amber-300 font-pixel tracking-wider">+ 1,000 DOPA</div>
+                            <p class="text-[11px] text-slate-200 leading-relaxed font-mono">
+                                初回登録プレゼントとして <b class="text-amber-300">1000 DOPA</b> を贈りました！<br>
+                                ガチャやストアでキャラクターをゲットしてバトルしよう！
+                            </p>
+                        </div>
+                    </div>
+                `;
+            }
+            if (actionsEl) {
+                actionsEl.innerHTML = `<button onclick="audioSystem.playSelect(); closeModal();" class="pixel-btn pixel-btn-success px-8 py-2 font-bold text-sm">冒険へ出発！ ▶</button>`;
+            }
+            if (overlay) {
+                overlay.classList.remove('hidden');
+                document.body.classList.add('modal-open');
+            }
         }
 
         function renderOpeningScreen(startScene = 1) {
@@ -1403,11 +1440,33 @@ static drawDopagaking(p, isCharged) {
         }
 
         async function savePlayerState() {
+            if (!playerState.playerId) {
+                playerState.playerId = 'DP-' + Math.floor(1000 + Math.random() * 9000);
+            }
+            if (!playerState.startDate) {
+                playerState.startDate = new Date().toLocaleDateString('ja-JP');
+            }
+            if (!Array.isArray(playerState.unlockedChars)) {
+                playerState.unlockedChars = [];
+            }
+            if (!Array.isArray(playerState.unlockedIcons) || playerState.unlockedIcons.length === 0) {
+                playerState.unlockedIcons = ['dopagaking'];
+            }
+            if (!playerState.selectedIcon) {
+                playerState.selectedIcon = playerState.unlockedIcons[0] || 'dopagaking';
+            }
+            if (!playerState.playerName) {
+                playerState.playerName = '名無しファイター';
+            }
+            if (typeof playerState.volume !== 'number') {
+                playerState.volume = 0.5;
+            }
+
             if (window.fbUser && window.fbDb) {
                 try {
                     const userDocRef = window.fbDoc(window.fbDb, 'users', window.fbUser.uid);
-                    await window.fbSetDoc(userDocRef, {
-                        dopa: playerState.dopa,
+                    const safePayload = JSON.parse(JSON.stringify({
+                        dopa: typeof playerState.dopa === 'number' ? playerState.dopa : 1000,
                         unlockedChars: playerState.unlockedChars,
                         unlockedIcons: playerState.unlockedIcons,
                         playerName: playerState.playerName,
@@ -1415,14 +1474,15 @@ static drawDopagaking(p, isCharged) {
                         startDate: playerState.startDate,
                         selectedIcon: playerState.selectedIcon,
                         skipOpening: !!playerState.skipOpening,
-                        totalBattles: playerState.totalBattles,
-                        wins: playerState.wins,
-                        losses: playerState.losses,
-                        charUsage: playerState.charUsage,
-                        battleHistory: playerState.battleHistory,
+                        totalBattles: typeof playerState.totalBattles === 'number' ? playerState.totalBattles : 0,
+                        wins: typeof playerState.wins === 'number' ? playerState.wins : 0,
+                        losses: typeof playerState.losses === 'number' ? playerState.losses : 0,
+                        charUsage: (playerState.charUsage && typeof playerState.charUsage === 'object') ? playerState.charUsage : {},
+                        battleHistory: Array.isArray(playerState.battleHistory) ? playerState.battleHistory : [],
                         volume: playerState.volume,
                         updatedAt: Date.now()
-                    }, { merge: true });
+                    }));
+                    await window.fbSetDoc(userDocRef, safePayload, { merge: true });
                 } catch(e){
                     console.error("Firestore Save Player State Error:", e);
                 }
@@ -1446,6 +1506,13 @@ static drawDopagaking(p, isCharged) {
                     }
                 }
             } catch(e){}
+
+            if (!playerState.playerId) {
+                playerState.playerId = 'DP-' + Math.floor(1000 + Math.random() * 9000);
+            }
+            if (!playerState.startDate) {
+                playerState.startDate = new Date().toLocaleDateString('ja-JP');
+            }
 
             if (window.fbUser && window.fbDb) {
                 try {
@@ -12593,13 +12660,19 @@ pasha_dark: {
                 selectedPlayerChar: null,
                 selectedEnemyChar: 'pasha',
                 playerName: '名無しファイター',
+                playerId: 'DP-' + Math.floor(1000 + Math.random() * 9000),
+                startDate: new Date().toLocaleDateString('ja-JP'),
                 selectedIcon: 'dopagaking',
                 isFirstTime: true,
+                skipOpening: false,
                 totalBattles: 0,
                 wins: 0,
                 losses: 0,
                 charUsage: {},
-                battleHistory: []
+                battleHistory: [],
+                lastDailyBonusDate: null,
+                volume: typeof playerState.volume === 'number' ? playerState.volume : 0.5,
+                newBattleCustomStats: {}
             };
 
             try {
