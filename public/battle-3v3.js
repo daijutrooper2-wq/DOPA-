@@ -34,10 +34,14 @@ class Battle3v3Engine {
         const allIds = Object.keys(CHARACTER_DATA);
         const otherAllyIds = allIds.filter(id => id !== p1CharId);
         const ally2Id = otherAllyIds[Math.floor(Math.random() * otherAllyIds.length)] || 'courtney';
-        const ally3Id = otherAllyIds.filter(id => id !== ally2Id)[Math.floor(Math.random() * (otherAllyIds.length - 1))] || 'ndaihyo';
+        const ally3Id = otherAllyIds.filter(id => id !== ally2Id)[Math.floor(Math.random() * Math.max(1, otherAllyIds.length - 1))] || 'ndaihyo';
 
-        const enemy2Id = allIds[Math.floor(Math.random() * allIds.length)];
-        const enemy3Id = allIds[Math.floor(Math.random() * allIds.length)];
+        const enemySeen = new Set([p2CharId]);
+        const enemyPool2 = allIds.filter(id => !enemySeen.has(id));
+        const enemy2Id = enemyPool2[Math.floor(Math.random() * enemyPool2.length)] || 'courtney';
+        enemySeen.add(enemy2Id);
+        const enemyPool3 = allIds.filter(id => !enemySeen.has(id));
+        const enemy3Id = enemyPool3[Math.floor(Math.random() * enemyPool3.length)] || 'ndaihyo';
 
         this.allies = [
             this.p1,

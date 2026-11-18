@@ -153,7 +153,7 @@
             });
         };
 
-        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.2';
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.3';
         const STATIC_IMAGE_ASSETS = [
             'images/backnormal.webp',
             'images/screen.webp',
@@ -202,9 +202,9 @@
         ];
         const SHELL_SITE_ASSETS = [
             'manifest.json',
-            'style.css?v=2.3.2',
-            'battle-3v3.js?v=2.3.2',
-            'game.js?v=2.3.2'
+            'style.css?v=2.3.3',
+            'battle-3v3.js?v=2.3.3',
+            'game.js?v=2.3.3'
         ];
 
         const AssetPreloader = {
@@ -1984,12 +1984,82 @@ static drawDopagaking(p, isCharged) {
             return String(Math.floor(100000 + Math.random() * 900000));
         }
 
+        function pickUniqueCharId(excludeSet, preferredPool = []) {
+            const allIds = typeof CHARACTER_DATA !== 'undefined' ? Object.keys(CHARACTER_DATA) : ['asaiomizu', 'pasha', 'courtney', 'ndaihyo', 'iwaba', 'momo', 'moenan', 'dopagaking'];
+            const seenExclude = excludeSet instanceof Set ? excludeSet : new Set(excludeSet || []);
+            if (Array.isArray(preferredPool) && preferredPool.length > 0) {
+                const prefCandidates = preferredPool.filter(id => id && CHARACTER_DATA[id] && !seenExclude.has(id));
+                if (prefCandidates.length > 0) {
+                    return prefCandidates[Math.floor(Math.random() * prefCandidates.length)];
+                }
+            }
+            const candidates = allIds.filter(id => !seenExclude.has(id));
+            if (candidates.length > 0) {
+                return candidates[Math.floor(Math.random() * candidates.length)];
+            }
+            return allIds[0] || 'pasha';
+        }
+
+        function getTeamCharIdsExceptSlot(teamSlots, excludeSlotIdx = -1) {
+            const set = new Set();
+            (teamSlots || []).forEach((s, idx) => {
+                if (idx === excludeSlotIdx) return;
+                const cid = s && s.charConfig && s.charConfig.charId;
+                if (cid && CHARACTER_DATA[cid]) set.add(cid);
+            });
+            return set;
+        }
+
+        function deduplicateTeamSlots(teamSlots, teamLabel = '味方', options = {}) {
+            const fillEmptyHumansAsBots = !!options.fillEmptyHumansAsBots;
+            const src = [0, 1, 2].map(i => (teamSlots && teamSlots[i]) ? { ...teamSlots[i] } : { type: 'bot', uid: null, playerName: `${teamLabel}BOT ${i + 1}`, selectedIcon: 'pasha', charConfig: null, ready: true, lastSeen: Date.now() });
+            const used = new Set();
+            const result = [null, null, null];
+
+            // Pass 1: Keep active human slots first (with valid unique charConfig)
+            src.forEach((s, idx) => {
+                const isActiveHuman = s && s.type === 'human' && !!s.uid;
+                if (!isActiveHuman) return;
+                let cid = (s.charConfig && s.charConfig.charId && CHARACTER_DATA[s.charConfig.charId]) ? s.charConfig.charId : null;
+                let customStats = (s.charConfig && s.charConfig.customStats) ? s.charConfig.customStats : null;
+                if (!cid || used.has(cid)) {
+                    cid = pickUniqueCharId(used);
+                    customStats = null;
+                }
+                used.add(cid);
+                result[idx] = { ...s, charConfig: { charId: cid, customStats } };
+            });
+
+            // Pass 2: Assign BOT slots (and empty human slots) keeping every character unique
+            src.forEach((s, idx) => {
+                if (result[idx]) return;
+                if (s && s.type === 'human' && !s.uid && !fillEmptyHumansAsBots) {
+                    result[idx] = { ...s };
+                    return;
+                }
+                const existingCid = (s && s.charConfig && s.charConfig.charId && CHARACTER_DATA[s.charConfig.charId]) ? s.charConfig.charId : null;
+                const botCharId = (existingCid && !used.has(existingCid)) ? existingCid : pickUniqueCharId(used);
+                used.add(botCharId);
+                result[idx] = {
+                    ...(s || {}),
+                    type: 'bot',
+                    uid: null,
+                    playerName: (s && s.playerName) ? s.playerName : `${teamLabel}BOT ${idx + 1}`,
+                    selectedIcon: botCharId,
+                    charConfig: { charId: botCharId, customStats: null },
+                    ready: true,
+                    lastSeen: (s && s.lastSeen) || Date.now()
+                };
+            });
+
+            return result;
+        }
+
         function createMultiInitialSlots(allySlotTypes, enemySlotTypes, hostCharConfig, hostUid, hostName, hostIcon) {
-            const allIds = Object.keys(CHARACTER_DATA);
-            const pickBotCharId = (seedIdx) => {
-                const picked = allIds[Math.floor(Math.random() * allIds.length)] || 'pasha';
-                return picked;
-            };
+            const t1Used = new Set();
+            if (hostCharConfig && hostCharConfig.charId) t1Used.add(hostCharConfig.charId);
+            const t2Used = new Set();
+
             const t1 = (allySlotTypes || ['human', 'human', 'bot']).map((type, idx) => {
                 if (idx === 0) {
                     const hostPid = (typeof playerState !== 'undefined' && playerState.playerId) ? playerState.playerId : null;
@@ -2008,7 +2078,8 @@ static drawDopagaking(p, isCharged) {
                     };
                 }
                 if (type === 'bot') {
-                    const botCharId = pickBotCharId(idx);
+                    const botCharId = pickUniqueCharId(t1Used);
+                    t1Used.add(botCharId);
                     return {
                         type: 'bot',
                         uid: null,
@@ -2032,7 +2103,8 @@ static drawDopagaking(p, isCharged) {
 
             const t2 = (enemySlotTypes || ['human', 'human', 'bot']).map((type, idx) => {
                 if (type === 'bot') {
-                    const botCharId = pickBotCharId(idx + 3);
+                    const botCharId = pickUniqueCharId(t2Used);
+                    t2Used.add(botCharId);
                     return {
                         type: 'bot',
                         uid: null,
@@ -2417,27 +2489,56 @@ static drawDopagaking(p, isCharged) {
                     if (existing) {
                         return { resolvedUid: myUid, teamNum: existing.teamNum, slotIdx: existing.slotIdx, roomData: rd };
                     }
-                    const t1 = [...(rd.team1Slots || [])];
-                    const t2 = [...(rd.team2Slots || [])];
-                    const myChar = buildOnlineCharConfig(getSelectedOnlineMultiChar());
+                    const t1 = (rd.team1Slots || []).map(s => (s ? { ...s } : s));
+                    const t2 = (rd.team2Slots || []).map(s => (s ? { ...s } : s));
+                    let myChar = buildOnlineCharConfig(getSelectedOnlineMultiChar());
                     let placed = false;
                     let placedTeamNum = 2;
                     let placedSlotIdx = 0;
-                    for (let i = 0; i < 3 && !placed; i++) {
-                        if (t2[i] && t2[i].type === 'human' && !t2[i].uid) {
-                            t2[i] = { ...t2[i], uid: myUid, originalUid: myUid, playerId: myPlayerId, originalPlayerId: myPlayerId, playerName: myName, originalPlayerName: myName, selectedIcon: myIcon, charConfig: myChar, ready: false, lastSeen: now };
-                            placed = true;
-                            placedTeamNum = 2;
-                            placedSlotIdx = i;
+
+                    const placeInTeam = (targetArr, teamNum, teamLabel) => {
+                        for (let i = 0; i < 3; i++) {
+                            if (targetArr[i] && targetArr[i].type === 'human' && !targetArr[i].uid) {
+                                const humanUsed = new Set();
+                                targetArr.forEach((s, idx) => {
+                                    if (idx !== i && s && s.type === 'human' && s.uid && s.charConfig && s.charConfig.charId) {
+                                        humanUsed.add(s.charConfig.charId);
+                                    }
+                                });
+                                if (humanUsed.has(myChar.charId)) {
+                                    const altId = pickUniqueCharId(humanUsed, playerState.unlockedChars || []);
+                                    myChar = buildOnlineCharConfig(altId);
+                                }
+                                targetArr[i] = { ...targetArr[i], uid: myUid, originalUid: myUid, playerId: myPlayerId, originalPlayerId: myPlayerId, playerName: myName, originalPlayerName: myName, selectedIcon: myIcon, charConfig: myChar, ready: false, lastSeen: now };
+                                const usedNow = new Set([myChar.charId]);
+                                targetArr.forEach((s, idx) => {
+                                    if (idx !== i && s && s.type === 'human' && s.uid && s.charConfig && s.charConfig.charId) {
+                                        usedNow.add(s.charConfig.charId);
+                                    }
+                                });
+                                targetArr.forEach((s, idx) => {
+                                    if (idx !== i && s && s.type === 'bot') {
+                                        const bId = s.charConfig && s.charConfig.charId;
+                                        if (!bId || usedNow.has(bId)) {
+                                            const newBotId = pickUniqueCharId(usedNow);
+                                            usedNow.add(newBotId);
+                                            targetArr[idx] = { ...s, playerName: s.playerName || `${teamLabel}BOT ${idx + 1}`, selectedIcon: newBotId, charConfig: { charId: newBotId, customStats: null }, ready: true };
+                                        } else {
+                                            usedNow.add(bId);
+                                        }
+                                    }
+                                });
+                                placed = true;
+                                placedTeamNum = teamNum;
+                                placedSlotIdx = i;
+                                return true;
+                            }
                         }
-                    }
-                    for (let i = 0; i < 3 && !placed; i++) {
-                        if (t1[i] && t1[i].type === 'human' && !t1[i].uid) {
-                            t1[i] = { ...t1[i], uid: myUid, originalUid: myUid, playerId: myPlayerId, originalPlayerId: myPlayerId, playerName: myName, originalPlayerName: myName, selectedIcon: myIcon, charConfig: myChar, ready: false, lastSeen: now };
-                            placed = true;
-                            placedTeamNum = 1;
-                            placedSlotIdx = i;
-                        }
+                        return false;
+                    };
+
+                    if (!placeInTeam(t2, 2, '敵')) {
+                        placeInTeam(t1, 1, '味方');
                     }
                     if (!placed) return { error: 'このルームのプレイヤー枠は満員です。' };
                     const allHumansJoined = [...t1, ...t2].filter(s => s && s.type === 'human').every(s => !!s.uid);
@@ -2619,18 +2720,30 @@ static drawDopagaking(p, isCharged) {
                     if (!snap.exists()) return;
                     const rd = snap.data();
                     if (rd.hostUid !== myUid || rd.status === 'playing' || rd.status === 'ended') return;
-                    const t1 = (rd.team1Slots || []).map(s => ({ ...s, ready: true }));
-                    const used = new Set(t1.map(s => s?.charConfig?.charId).filter(Boolean));
+                    const t1 = deduplicateTeamSlots((rd.team1Slots || []).map(s => ({ ...s, ready: true })), '味方', { fillEmptyHumansAsBots: true });
+                    const usedInT1 = new Set(t1.map(s => s?.charConfig?.charId).filter(Boolean));
+                    const usedInT2 = new Set();
                     const t2 = [0, 1, 2].map((idx) => {
                         const existing = rd.team2Slots && rd.team2Slots[idx];
-                        if (existing && existing.type === 'human' && existing.uid) return existing;
-                        if (existing && existing.type === 'bot' && existing.charConfig && existing.charConfig.charId) {
-                            return { ...existing, ready: true };
+                        if (existing && existing.type === 'human' && existing.uid) {
+                            const hCid = (existing.charConfig && existing.charConfig.charId && CHARACTER_DATA[existing.charConfig.charId] && !usedInT2.has(existing.charConfig.charId))
+                                ? existing.charConfig.charId
+                                : pickUniqueCharId(usedInT2);
+                            usedInT2.add(hCid);
+                            return { ...existing, charConfig: { ...(existing.charConfig || {}), charId: hCid }, ready: true };
                         }
-                        const pool = allIds.filter(id => !used.has(id));
-                        const pickPool = pool.length > 0 ? pool : allIds;
-                        const botCharId = (existing && existing.charConfig && existing.charConfig.charId) || pickPool[Math.floor(Math.random() * pickPool.length)] || 'pasha';
-                        used.add(botCharId);
+                        const existBotCid = (existing && existing.charConfig && existing.charConfig.charId && CHARACTER_DATA[existing.charConfig.charId]) ? existing.charConfig.charId : null;
+                        let botCharId;
+                        if (existBotCid && !usedInT2.has(existBotCid)) {
+                            botCharId = existBotCid;
+                        } else {
+                            const combinedExclude = new Set([...usedInT2, ...usedInT1]);
+                            const nonMirrorPool = allIds.filter(id => !combinedExclude.has(id));
+                            botCharId = nonMirrorPool.length > 0
+                                ? nonMirrorPool[Math.floor(Math.random() * nonMirrorPool.length)]
+                                : pickUniqueCharId(usedInT2);
+                        }
+                        usedInT2.add(botCharId);
                         return {
                             type: 'bot',
                             uid: null,
@@ -2816,31 +2929,76 @@ static drawDopagaking(p, isCharged) {
             audioSystem.playSelect();
             if (!playerState.unlockedChars.includes(charId)) {
                 showModal('未解放キャラクター', 'このキャラクターはまだ所持していません！');
-                return;
+                return false;
             }
-            if (!validateCharCustomStats(charId)) return;
-            saveSelectedOnlineMultiChar(charId);
-            const charConfig = buildOnlineCharConfig(charId);
+            if (!validateCharCustomStats(charId)) return false;
+
             const st = window._onlineLobbyState;
             const myUid = window.getOnlineClientId();
+            const charConfig = buildOnlineCharConfig(charId);
+
+            const applyTeamSelection = (teamArr, teamLabel) => {
+                const myIdx = (teamArr || []).findIndex(s => s && s.uid === myUid);
+                if (myIdx === -1) return { found: false, slots: teamArr };
+                const humanConflict = teamArr.find((s, idx) => idx !== myIdx && s && s.type === 'human' && s.uid && s.charConfig && s.charConfig.charId === charId);
+                if (humanConflict) {
+                    return { found: true, error: 'human_conflict', conflictName: humanConflict.playerName || '味方プレイヤー' };
+                }
+                const usedSet = new Set([charId]);
+                teamArr.forEach((s, idx) => {
+                    if (idx !== myIdx && s && s.type === 'human' && s.uid && s.charConfig && s.charConfig.charId) {
+                        usedSet.add(s.charConfig.charId);
+                    }
+                });
+                const next = teamArr.map((s, idx) => {
+                    if (idx === myIdx) {
+                        return { ...s, charConfig, ready: false, lastSeen: Date.now() };
+                    }
+                    if (s && s.type === 'bot') {
+                        const botCid = s.charConfig && s.charConfig.charId;
+                        if (!botCid || usedSet.has(botCid)) {
+                            const newBotId = pickUniqueCharId(usedSet);
+                            usedSet.add(newBotId);
+                            return { ...s, playerName: s.playerName || `${teamLabel}BOT ${idx + 1}`, selectedIcon: newBotId, charConfig: { charId: newBotId, customStats: null }, ready: true };
+                        }
+                        usedSet.add(botCid);
+                    }
+                    return s;
+                });
+                return { found: true, slots: next };
+            };
 
             if (st.isSoloLocal && st.soloRoomData) {
-                st.soloRoomData.team1Slots[0].charConfig = charConfig;
-                st.soloRoomData.team1Slots[0].ready = false;
+                saveSelectedOnlineMultiChar(charId);
+                const r1 = applyTeamSelection(st.soloRoomData.team1Slots, '味方');
+                if (r1.found && r1.slots) st.soloRoomData.team1Slots = r1.slots;
                 renderOnlineMultiReadyScreen(roomId, st.soloRoomData);
-                return;
+                return true;
             }
 
             if (st.latestRoomData) {
                 const curFound = findMySlotInRoom(st.latestRoomData, myUid);
-                if (curFound && curFound.slot && curFound.slot.charConfig &&
-                    curFound.slot.charConfig.charId === charId &&
-                    JSON.stringify(curFound.slot.charConfig.customStats || null) === JSON.stringify(charConfig.customStats || null) &&
-                    !curFound.slot.ready) {
-                    return;
+                if (curFound) {
+                    const teamArr = curFound.teamNum === 1 ? st.latestRoomData.team1Slots : st.latestRoomData.team2Slots;
+                    const humanConflict = (teamArr || []).find((s, idx) => idx !== curFound.slotIdx && s && s.type === 'human' && s.uid && s.charConfig && s.charConfig.charId === charId);
+                    if (humanConflict) {
+                        const cName = (CHARACTER_DATA[charId] && CHARACTER_DATA[charId].name) || charId;
+                        showModal('同じチームで重複不可', `「${cName}」は同じチームの ${humanConflict.playerName || '味方プレイヤー'} がすでに選択しています。\n\n敵・味方とも各チーム3体はそれぞれ別のキャラクターにしてください。`);
+                        return false;
+                    }
+                    const botConflict = (teamArr || []).some((s, idx) => idx !== curFound.slotIdx && s && s.type === 'bot' && s.charConfig && s.charConfig.charId === charId);
+                    if (!botConflict && curFound.slot && curFound.slot.charConfig &&
+                        curFound.slot.charConfig.charId === charId &&
+                        JSON.stringify(curFound.slot.charConfig.customStats || null) === JSON.stringify(charConfig.customStats || null) &&
+                        !curFound.slot.ready) {
+                        saveSelectedOnlineMultiChar(charId);
+                        return true;
+                    }
                 }
             }
 
+            saveSelectedOnlineMultiChar(charId);
+            let txConflict = null;
             if (window.fbDb && window.fbDoc && window.fbRunTransaction) {
                 const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
                 await window.fbRunTransaction(window.fbDb, async (tx) => {
@@ -2850,17 +3008,21 @@ static drawDopagaking(p, isCharged) {
                     if (rd.status === 'playing' || rd.status === 'ended') return;
                     const curFound = findMySlotInRoom(rd, myUid);
                     if (!curFound) return;
-                    if (curFound.slot.charConfig &&
-                        curFound.slot.charConfig.charId === charId &&
-                        JSON.stringify(curFound.slot.charConfig.customStats || null) === JSON.stringify(charConfig.customStats || null) &&
-                        !curFound.slot.ready) {
+                    const r1 = curFound.teamNum === 1 ? applyTeamSelection(rd.team1Slots, '味方') : { found: false, slots: rd.team1Slots };
+                    const r2 = curFound.teamNum === 2 ? applyTeamSelection(rd.team2Slots, '敵') : { found: false, slots: rd.team2Slots };
+                    if (r1.error === 'human_conflict' || r2.error === 'human_conflict') {
+                        txConflict = r1.conflictName || r2.conflictName || '味方プレイヤー';
                         return;
                     }
-                    const t1 = (rd.team1Slots || []).map(s => (s && s.uid === myUid ? { ...s, charConfig, ready: false, lastSeen: Date.now() } : s));
-                    const t2 = (rd.team2Slots || []).map(s => (s && s.uid === myUid ? { ...s, charConfig, ready: false, lastSeen: Date.now() } : s));
-                    tx.update(roomRef, { team1Slots: t1, team2Slots: t2, updatedAt: Date.now() });
+                    tx.update(roomRef, { team1Slots: r1.slots, team2Slots: r2.slots, updatedAt: Date.now() });
                 }).catch(e => console.warn('Select lobby char error:', e));
             }
+            if (txConflict) {
+                const cName = (CHARACTER_DATA[charId] && CHARACTER_DATA[charId].name) || charId;
+                showModal('同じチームで重複不可', `「${cName}」は同じチームの ${txConflict} がすでに選択しています。\n\n敵・味方とも各チーム3体はそれぞれ別のキャラクターにしてください。`);
+                return false;
+            }
+            return true;
         }
 
         async function toggleOnlineMultiLobbyReady(roomId) {
@@ -2925,6 +3087,7 @@ static drawDopagaking(p, isCharged) {
             }
             if (!window.fbDb || !window.fbDoc || !window.fbRunTransaction) return;
             const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
+            let moveConflictName = null;
             await window.fbRunTransaction(window.fbDb, async (tx) => {
                 const snap = await tx.get(roomRef);
                 if (!snap.exists()) return;
@@ -2937,17 +3100,49 @@ static drawDopagaking(p, isCharged) {
                     found = findMySlotInRoom(rd, targetUid);
                 }
                 if (!found) return;
-                const t1 = [...(rd.team1Slots || [])];
-                const t2 = [...(rd.team2Slots || [])];
+                const t1 = (rd.team1Slots || []).map(s => (s ? { ...s } : s));
+                const t2 = (rd.team2Slots || []).map(s => (s ? { ...s } : s));
                 const destArr = targetTeamNum === 1 ? t1 : t2;
                 const destSlot = destArr[targetSlotIdx];
                 if (!destSlot || destSlot.type !== 'human' || destSlot.uid) return;
                 const srcArr = found.teamNum === 1 ? t1 : t2;
                 const movedData = { ...found.slot, lastSeen: Date.now() };
+                const movedCharId = movedData.charConfig && movedData.charConfig.charId;
+                if (movedCharId && found.teamNum !== targetTeamNum) {
+                    const humanConflict = destArr.find(s => s && s.type === 'human' && s.uid && s.charConfig && s.charConfig.charId === movedCharId);
+                    if (humanConflict) {
+                        moveConflictName = (CHARACTER_DATA[movedCharId] && CHARACTER_DATA[movedCharId].name) || movedCharId;
+                        return;
+                    }
+                }
                 srcArr[found.slotIdx] = { type: 'human', uid: null, playerName: '', selectedIcon: 'courtney', charConfig: null, ready: false, lastSeen: 0 };
                 destArr[targetSlotIdx] = movedData;
+                if (movedCharId) {
+                    const usedInDest = new Set();
+                    destArr.forEach(s => {
+                        if (s && s.type === 'human' && s.uid && s.charConfig && s.charConfig.charId) {
+                            usedInDest.add(s.charConfig.charId);
+                        }
+                    });
+                    const teamLabel = targetTeamNum === 1 ? '味方' : '敵';
+                    destArr.forEach((s, idx) => {
+                        if (s && s.type === 'bot') {
+                            const bId = s.charConfig && s.charConfig.charId;
+                            if (!bId || usedInDest.has(bId)) {
+                                const newBotId = pickUniqueCharId(usedInDest);
+                                usedInDest.add(newBotId);
+                                destArr[idx] = { ...s, playerName: s.playerName || `${teamLabel}BOT ${idx + 1}`, selectedIcon: newBotId, charConfig: { charId: newBotId, customStats: null }, ready: true };
+                            } else {
+                                usedInDest.add(bId);
+                            }
+                        }
+                    });
+                }
                 tx.update(roomRef, { team1Slots: t1, team2Slots: t2, updatedAt: Date.now() });
             }).catch(e => console.warn('Move slot error:', e));
+            if (moveConflictName) {
+                showModal('移動できません', `移動先のチームにすでに「${moveConflictName}」が編成されているため移動できません。\n別のキャラクターに変更してから移動してください。`);
+            }
         }
 
         async function toggleOnlineMultiLobbySlotType(roomId, targetTeamNum, targetSlotIdx) {
@@ -2955,7 +3150,6 @@ static drawDopagaking(p, isCharged) {
             const myUid = window.getOnlineClientId();
             const st = window._onlineLobbyState;
             if (!st.isSoloLocal && st.latestRoomData && st.latestRoomData.hostUid !== myUid) return;
-            const allIds = Object.keys(CHARACTER_DATA);
 
             const transformSlots = (rd) => {
                 const t1 = [...(rd.team1Slots || [])];
@@ -2968,10 +3162,11 @@ static drawDopagaking(p, isCharged) {
                 if (slot.type === 'bot') {
                     arr[targetSlotIdx] = { type: 'human', uid: null, playerName: '', selectedIcon: 'courtney', charConfig: null, ready: false, lastSeen: 0 };
                 } else {
+                    const otherUsed = getTeamCharIdsExceptSlot(arr, targetSlotIdx);
                     const existingCharId = slot.charConfig?.charId;
-                    const botCharId = (existingCharId && CHARACTER_DATA[existingCharId])
+                    const botCharId = (existingCharId && CHARACTER_DATA[existingCharId] && !otherUsed.has(existingCharId))
                         ? existingCharId
-                        : (allIds[Math.floor(Math.random() * allIds.length)] || 'pasha');
+                        : pickUniqueCharId(otherUsed);
                     arr[targetSlotIdx] = {
                         type: 'bot',
                         uid: null,
@@ -3028,12 +3223,18 @@ static drawDopagaking(p, isCharged) {
                 const arr = targetTeamNum === 1 ? t1 : t2;
                 const slot = arr[targetSlotIdx];
                 if (!slot || slot.type !== 'bot' || slot.charConfig?.charId === botCharId) return null;
+                const otherUsed = getTeamCharIdsExceptSlot(arr, targetSlotIdx);
+                if (otherUsed.has(botCharId)) return 'duplicate';
                 arr[targetSlotIdx] = { ...slot, selectedIcon: botCharId, charConfig, ready: true, lastSeen: Date.now() };
                 return { t1, t2 };
             };
 
             if (st.isSoloLocal && st.soloRoomData) {
                 const res = applyBotChar(st.soloRoomData);
+                if (res === 'duplicate') {
+                    showModal('同じチームで重複不可', 'このキャラクターは同じチームの別枠ですでに選択されているため設定できません。');
+                    return;
+                }
                 if (!res) return;
                 st.soloRoomData.team1Slots = res.t1;
                 st.soloRoomData.team2Slots = res.t2;
@@ -3043,15 +3244,23 @@ static drawDopagaking(p, isCharged) {
 
             if (!window.fbDb || !window.fbDoc || !window.fbRunTransaction) return;
             const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
+            let botDupError = false;
             await window.fbRunTransaction(window.fbDb, async (tx) => {
                 const snap = await tx.get(roomRef);
                 if (!snap.exists()) return;
                 const rd = snap.data();
                 if (rd.hostUid !== myUid || rd.status === 'playing' || rd.status === 'ended') return;
                 const res = applyBotChar(rd);
+                if (res === 'duplicate') {
+                    botDupError = true;
+                    return;
+                }
                 if (!res) return;
                 tx.update(roomRef, { team1Slots: res.t1, team2Slots: res.t2, updatedAt: Date.now() });
             }).catch(e => console.warn('Assign BOT char error:', e));
+            if (botDupError) {
+                showModal('同じチームで重複不可', 'このキャラクターは同じチームの別枠ですでに選択されているため設定できません。');
+            }
         }
 
         function closeOnlineLobbyCharDetailModal() {
@@ -3097,10 +3306,11 @@ static drawDopagaking(p, isCharged) {
 
         async function selectOnlineLobbyCharFromDetailModal(roomId, charId) {
             if (!validateCharCustomStats(charId)) return;
-            closeOnlineLobbyCharDetailModal();
             if (roomId) {
-                await selectOnlineMultiLobbyChar(roomId, charId);
+                const ok = await selectOnlineMultiLobbyChar(roomId, charId);
+                if (ok === false) return;
             }
+            closeOnlineLobbyCharDetailModal();
         }
 
         function openOnlineLobbyCharDetailModal(charId, roomId = '', mode = 'player', silent = false) {
@@ -3308,6 +3518,9 @@ static drawDopagaking(p, isCharged) {
             const myUid = window.getOnlineClientId();
             if (!st.isSoloLocal && st.latestRoomData && st.latestRoomData.hostUid !== myUid) return;
             closeOnlineLobbyBotCharPicker();
+            const activeRd = st.isSoloLocal ? st.soloRoomData : st.latestRoomData;
+            const teamArr = activeRd ? (teamNum === 1 ? activeRd.team1Slots : activeRd.team2Slots) : [];
+            const usedByOthers = getTeamCharIdsExceptSlot(teamArr, slotIdx);
             const chars = Object.values(CHARACTER_DATA);
             const modal = document.createElement('div');
             modal.id = 'online-bot-picker-modal';
@@ -3318,15 +3531,17 @@ static drawDopagaking(p, isCharged) {
                     <div class="flex items-center justify-between border-b border-amber-500/40 pb-2.5 mb-3 shrink-0">
                         <div>
                             <h3 class="font-pixel text-sm sm:text-base font-bold text-amber-300">🤖 BOT割り当てキャラクター選択</h3>
-                            <p class="text-[11px] font-mono text-slate-300">このBOT枠が出陣させるキャラクターを選んでください</p>
+                            <p class="text-[11px] font-mono text-slate-300">同じチーム内で重複しないキャラクターを選んでください</p>
                         </div>
                         <button type="button" onclick="closeOnlineLobbyBotCharPicker()" class="pixel-btn pixel-btn-danger px-3 py-1 text-xs font-bold">✕ 閉じる</button>
                     </div>
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 overflow-y-auto pr-1 flex-1">
                         ${chars.map(c => {
                             const isCurrent = c.id === currentCharId;
+                            const isUsedInTeam = !isCurrent && usedByOthers.has(c.id);
                             return `
-                                <div role="button" tabindex="0" onclick="selectOnlineLobbyBotCharFromPicker('${roomId}', ${teamNum}, ${slotIdx}, '${c.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectOnlineLobbyBotCharFromPicker('${roomId}', ${teamNum}, ${slotIdx}, '${c.id}');}" class="pixel-box p-2.5 flex flex-col items-center gap-1.5 cursor-pointer transition-all text-center ${isCurrent ? 'border-2 border-amber-400 bg-amber-950/60 shadow-lg' : 'border border-slate-700 bg-slate-950 hover:border-sky-400'}">
+                                <div ${isUsedInTeam ? '' : `role="button" tabindex="0" onclick="selectOnlineLobbyBotCharFromPicker('${roomId}', ${teamNum}, ${slotIdx}, '${c.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectOnlineLobbyBotCharFromPicker('${roomId}', ${teamNum}, ${slotIdx}, '${c.id}');}"`} class="pixel-box p-2.5 flex flex-col items-center gap-1.5 transition-all text-center relative ${isUsedInTeam ? 'border border-slate-800 bg-slate-950/60 opacity-50 cursor-not-allowed' : (isCurrent ? 'border-2 border-amber-400 bg-amber-950/60 shadow-lg cursor-pointer' : 'border border-slate-700 bg-slate-950 hover:border-sky-400 cursor-pointer')}">
+                                    ${isUsedInTeam ? '<span class="absolute top-1 left-1 bg-red-900/90 text-red-200 border border-red-500/70 px-1 py-0.5 rounded text-[8px] font-bold">使用中</span>' : ''}
                                     <canvas id="bot-picker-cvs-${c.id}" width="56" height="56" class="w-12 h-12 rounded bg-slate-900 border border-slate-700"></canvas>
                                     <div class="text-xs font-bold ${isCurrent ? 'text-amber-300' : 'text-white'} truncate max-w-full">${c.name}</div>
                                     <div class="text-[9px] font-mono text-slate-400">${c.id === 'dopagaking' ? 'HP:？ 攻:？ 防:？' : `HP:${c.hp} 攻:${c.atk} 防:${c.def}`}</div>
@@ -3353,33 +3568,9 @@ static drawDopagaking(p, isCharged) {
             const allIds = Object.keys(CHARACTER_DATA);
 
             const finalizeSlotsAndStatus = (rd) => {
-                const used = new Set();
-                [...(rd.team1Slots || []), ...(rd.team2Slots || [])].forEach(s => {
-                    if (s && s.charConfig && s.charConfig.charId) used.add(s.charConfig.charId);
-                });
-                const fillFn = (teamLabel) => (s, idx) => {
-                    if (!s || (s.type === 'human' && !s.uid)) {
-                        const pool = allIds.filter(id => !used.has(id));
-                        const pickPool = pool.length > 0 ? pool : allIds;
-                        const botCharId = (s && s.charConfig && s.charConfig.charId) || pickPool[Math.floor(Math.random() * pickPool.length)] || 'pasha';
-                        used.add(botCharId);
-                        return { type: 'bot', uid: null, playerName: `${teamLabel}BOT ${idx + 1}`, selectedIcon: botCharId, charConfig: { charId: botCharId, customStats: null }, ready: true, lastSeen: Date.now() };
-                    }
-                    if (s.type === 'bot') {
-                        const botCharId = (s.charConfig && s.charConfig.charId && CHARACTER_DATA[s.charConfig.charId])
-                            ? s.charConfig.charId
-                            : (allIds[Math.floor(Math.random() * allIds.length)] || 'pasha');
-                        return { ...s, selectedIcon: botCharId, charConfig: { charId: botCharId, customStats: null }, ready: true };
-                    }
-                    const humanChar = (s.charConfig && s.charConfig.charId)
-                        ? s.charConfig
-                        : buildOnlineCharConfig(getSelectedOnlineMultiChar());
-                    return { ...s, charConfig: humanChar, ready: true };
-                };
-                return {
-                    t1: (rd.team1Slots || []).map(fillFn('味方')),
-                    t2: (rd.team2Slots || []).map(fillFn('敵'))
-                };
+                const t1 = deduplicateTeamSlots(rd.team1Slots || [], '味方', { fillEmptyHumansAsBots: true }).map(s => ({ ...s, ready: true }));
+                const t2 = deduplicateTeamSlots(rd.team2Slots || [], '敵', { fillEmptyHumansAsBots: true }).map(s => ({ ...s, ready: true }));
+                return { t1, t2 };
             };
 
             if (st.isSoloLocal && st.soloRoomData) {
@@ -3610,23 +3801,37 @@ static drawDopagaking(p, isCharged) {
                             <!-- 下段: 自分の出陣キャラ1体選択 -->
                             <div class="pixel-box bg-slate-900/95 border border-slate-700 p-2 space-y-1.5">
                                 <div class="flex items-center justify-between gap-2 flex-wrap">
-                                    <span class="text-[11px] font-pixel font-bold text-amber-300">⚔️ あなたの出陣キャラ (1体選択)</span>
+                                    <span class="text-[11px] font-pixel font-bold text-amber-300">⚔️ あなたの出陣キャラ (1体選択・チーム内重複なし)</span>
                                     <div class="flex items-center gap-2">
                                         <span class="text-[10px] font-mono text-emerald-300">選択中: <b>${(CHARACTER_DATA[myCharId] || {}).name || myCharId}</b></span>
                                         <button type="button" onclick="openOnlineLobbyCharDetailModal('${myCharId}', '${roomId}', 'player')" class="pixel-btn px-2 py-0.5 text-[10px] font-bold bg-sky-900/90 border-sky-400 text-sky-200 hover:bg-sky-800">🔍 詳細</button>
                                     </div>
                                 </div>
                                 <div class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 gap-1.5">
-                                    ${unlockedList.map(c => {
-                                        const selected = c.id === myCharId;
-                                        return `
-                                            <div role="button" tabindex="0" onclick="selectOnlineMultiLobbyChar('${roomId}', '${c.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectOnlineMultiLobbyChar('${roomId}', '${c.id}');}" class="p-1.5 rounded border-2 flex flex-col items-center gap-1 transition-all cursor-pointer ${selected ? 'border-emerald-400 bg-emerald-950/70 shadow' : 'border-slate-700 bg-slate-950 hover:border-slate-400'}">
-                                                <canvas id="lobby-pick-cvs-${c.id}" width="40" height="40" class="w-9 h-9 rounded bg-slate-900"></canvas>
-                                                <span class="text-[10px] font-bold truncate max-w-full ${selected ? 'text-emerald-300' : 'text-slate-200'}">${c.name}</span>
-                                                <button type="button" onclick="event.stopPropagation(); openOnlineLobbyCharDetailModal('${c.id}', '${roomId}', 'player')" class="w-full py-0.5 rounded text-[9px] font-bold bg-slate-800/90 hover:bg-sky-800 text-sky-300 border border-sky-500/50 cursor-pointer">🔍 詳細</button>
-                                            </div>
-                                        `;
-                                    }).join('')}
+                                    ${(() => {
+                                        const allyHumanUsed = new Set();
+                                        const allyBotUsed = new Set();
+                                        (allySlots || []).forEach(s => {
+                                            if (!s || s.uid === myUid) return;
+                                            const cid = s.charConfig && s.charConfig.charId;
+                                            if (!cid) return;
+                                            if (s.type === 'human' && s.uid) allyHumanUsed.add(cid);
+                                            else if (s.type === 'bot') allyBotUsed.add(cid);
+                                        });
+                                        return unlockedList.map(c => {
+                                            const selected = c.id === myCharId;
+                                            const usedByAllyHuman = !selected && allyHumanUsed.has(c.id);
+                                            const usedByAllyBot = !selected && !usedByAllyHuman && allyBotUsed.has(c.id);
+                                            return `
+                                                <div role="button" tabindex="0" onclick="selectOnlineMultiLobbyChar('${roomId}', '${c.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectOnlineMultiLobbyChar('${roomId}', '${c.id}');}" class="p-1.5 rounded border-2 flex flex-col items-center gap-1 transition-all cursor-pointer relative ${selected ? 'border-emerald-400 bg-emerald-950/70 shadow' : (usedByAllyHuman ? 'border-red-800/70 bg-slate-950/60 opacity-65' : 'border-slate-700 bg-slate-950 hover:border-slate-400')}">
+                                                    ${usedByAllyHuman ? '<span class="absolute top-0.5 left-0.5 bg-red-900/90 text-red-200 border border-red-500/70 px-1 rounded text-[8px] font-bold">味方使用中</span>' : (usedByAllyBot ? '<span class="absolute top-0.5 left-0.5 bg-amber-900/90 text-amber-200 border border-amber-500/70 px-1 rounded text-[8px] font-bold">味方BOT</span>' : '')}
+                                                    <canvas id="lobby-pick-cvs-${c.id}" width="40" height="40" class="w-9 h-9 rounded bg-slate-900"></canvas>
+                                                    <span class="text-[10px] font-bold truncate max-w-full ${selected ? 'text-emerald-300' : 'text-slate-200'}">${c.name}</span>
+                                                    <button type="button" onclick="event.stopPropagation(); openOnlineLobbyCharDetailModal('${c.id}', '${roomId}', 'player')" class="w-full py-0.5 rounded text-[9px] font-bold bg-slate-800/90 hover:bg-sky-800 text-sky-300 border border-sky-500/50 cursor-pointer">🔍 詳細</button>
+                                                </div>
+                                            `;
+                                        }).join('');
+                                    })()}
                                 </div>
                             </div>
                         </div>
@@ -3696,11 +3901,15 @@ static drawDopagaking(p, isCharged) {
                 const myUid = window.getOnlineClientId();
                 if (stats.allReady && rd.hostUid === myUid && rd.status !== 'playing') {
                     const now = Date.now();
+                    const dedupT1 = deduplicateTeamSlots(rd.team1Slots || [], '味方', { fillEmptyHumansAsBots: true });
+                    const dedupT2 = deduplicateTeamSlots(rd.team2Slots || [], '敵', { fillEmptyHumansAsBots: true });
                     const heartbeats = { ...(rd.battleHeartbeats || {}) };
-                    [...(rd.team1Slots || []), ...(rd.team2Slots || [])].forEach(s => {
+                    [...dedupT1, ...dedupT2].forEach(s => {
                         if (s && s.type === 'human' && s.uid) heartbeats[s.uid] = now;
                     });
                     window.fbUpdateDoc(roomRef, {
+                        team1Slots: dedupT1,
+                        team2Slots: dedupT2,
                         status: 'playing',
                         startedAt: now,
                         hostLastSeen: now,
@@ -3775,21 +3984,10 @@ static drawDopagaking(p, isCharged) {
                 window.saveOnlineRejoinTicket(roomId, roomData.roomCode, myUid, { teamNum: myTeamNum, slotIdx: myControlSlots[0] || 0 });
             }
 
-            const fillBotCharConfigs = (slots) => {
-                const allIds = Object.keys(CHARACTER_DATA);
-                const fallbackOrder = ['pasha', 'courtney', 'ndaihyo', 'asaiomizu', 'momo', 'iwaba'];
-                return slots.map((s, idx) => {
-                    if (s && s.charConfig && s.charConfig.charId) return s;
-                    const picked = fallbackOrder[idx % fallbackOrder.length] || allIds[idx % Math.max(1, allIds.length)] || 'pasha';
-                    return {
-                        ...(s || { type: 'bot' }),
-                        charConfig: { charId: picked, customStats: null }
-                    };
-                });
-            };
+            const fillBotCharConfigs = (slots, teamLabel) => deduplicateTeamSlots(slots, teamLabel, { fillEmptyHumansAsBots: true });
 
-            const t1Slots = fillBotCharConfigs(roomData.team1Slots || []);
-            const t2Slots = fillBotCharConfigs(roomData.team2Slots || []);
+            const t1Slots = fillBotCharConfigs(roomData.team1Slots || [], '味方');
+            const t2Slots = fillBotCharConfigs(roomData.team2Slots || [], '敵');
             const hasRemoteHuman = !isLocalSolo && [...t1Slots, ...t2Slots].some(s => s && s.type === 'human' && s.uid && s.uid !== myUid);
             const hadBotTakeover = [...t1Slots, ...t2Slots].some(s => s && s.botTakeover);
             const useSyncedFirestore = !isLocalSolo && (hasRemoteHuman || isResume || roomData.matchType === 'code' || hadBotTakeover);
@@ -5270,6 +5468,26 @@ pasha_dark: {
                 this.battleData = { pashaRollUsedCount: 0, pashaRollReviveCount: 0 };
 
                 if (this.isNewBattle && this.team1Slots && this.team2Slots) {
+                    const ensureUniqueSlotIds = (slots) => {
+                        const used = new Set();
+                        const allIds = Object.keys(CHARACTER_DATA);
+                        return slots.map(slot => {
+                            const rawId = (slot && slot.charConfig && slot.charConfig.charId && CHARACTER_DATA[slot.charConfig.charId])
+                                ? slot.charConfig.charId
+                                : null;
+                            let cId = rawId;
+                            let cStats = (slot && slot.charConfig && slot.charConfig.customStats) ? slot.charConfig.customStats : null;
+                            if (!cId || used.has(cId)) {
+                                cId = allIds.find(id => !used.has(id)) || 'asaiomizu';
+                                cStats = null;
+                            }
+                            used.add(cId);
+                            return { ...(slot || {}), charConfig: { charId: cId, customStats: cStats } };
+                        });
+                    };
+                    this.team1Slots = ensureUniqueSlotIds(this.team1Slots);
+                    this.team2Slots = ensureUniqueSlotIds(this.team2Slots);
+
                     const buildTeamFromSlots = (slots, teamNum) => slots.map((slot, idx) => {
                         const cId = (slot && slot.charConfig && slot.charConfig.charId && CHARACTER_DATA[slot.charConfig.charId])
                             ? slot.charConfig.charId
@@ -5338,13 +5556,34 @@ pasha_dark: {
                     this.p2 = this.enemies[0];
                 } else if (this.isNewBattle) {
                     const allIds = Object.keys(CHARACTER_DATA);
-                    const selectedTeam = isTeamArray ? p1CharId.filter(id => id && CHARACTER_DATA[id]) : [];
-                    const otherAllyIds = allIds.filter(id => id !== ally1Id);
-                    const ally2Id = selectedTeam[1] || otherAllyIds[Math.floor(Math.random() * otherAllyIds.length)] || 'courtney';
-                    const ally3Id = selectedTeam[2] || otherAllyIds.filter(id => id !== ally2Id)[Math.floor(Math.random() * Math.max(1, otherAllyIds.length - 1))] || 'ndaihyo';
+                    const rawTeam = isTeamArray ? p1CharId.filter(id => id && CHARACTER_DATA[id]) : [];
+                    const allyIds = [];
+                    const allySeen = new Set();
+                    [ally1Id, rawTeam[1], rawTeam[2]].forEach(id => {
+                        if (id && CHARACTER_DATA[id] && !allySeen.has(id)) {
+                            allySeen.add(id);
+                            allyIds.push(id);
+                        }
+                    });
+                    while (allyIds.length < 3) {
+                        const pool = allIds.filter(id => !allySeen.has(id));
+                        const picked = pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : 'asaiomizu';
+                        allySeen.add(picked);
+                        allyIds.push(picked);
+                    }
+                    const ally2Id = allyIds[1];
+                    const ally3Id = allyIds[2];
 
-                    const enemy2Id = allIds[Math.floor(Math.random() * allIds.length)];
-                    const enemy3Id = allIds[Math.floor(Math.random() * allIds.length)];
+                    const enemy1Id = (p2CharId && CHARACTER_DATA[p2CharId]) ? p2CharId : (allIds[Math.floor(Math.random() * allIds.length)] || 'pasha');
+                    const enemySeen = new Set([enemy1Id]);
+                    const pickUniqueEnemy = () => {
+                        const pool = allIds.filter(id => !enemySeen.has(id));
+                        const picked = pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : 'pasha';
+                        enemySeen.add(picked);
+                        return picked;
+                    };
+                    const enemy2Id = pickUniqueEnemy();
+                    const enemy3Id = pickUniqueEnemy();
 
                     this.allies = [
                         this.p1,
