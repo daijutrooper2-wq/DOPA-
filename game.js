@@ -153,8 +153,9 @@
             });
         };
 
-        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.6';
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.7';
         const STATIC_IMAGE_ASSETS = [
+            'assets/aistudio/image_6db88de4.png',
             'images/backnormal.webp',
             'images/screen.webp',
             'images/title-1.webp',
@@ -202,9 +203,9 @@
         ];
         const SHELL_SITE_ASSETS = [
             'manifest.json',
-            'style.css?v=2.3.6',
-            'battle-3v3.js?v=2.3.6',
-            'game.js?v=2.3.6'
+            'style.css?v=2.3.7',
+            'battle-3v3.js?v=2.3.7',
+            'game.js?v=2.3.7'
         ];
 
         const AssetPreloader = {
@@ -12395,6 +12396,21 @@ pasha_dark: {
                             </button>
                         </div>
 
+                        <div class="bg-slate-950 p-2 rounded border border-sky-600/70 space-y-1.5">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sky-300 font-bold">サイトを共有:</span>
+                                <span class="text-[10px] text-slate-400 font-mono">URL / QRコード</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-1.5">
+                                <button onclick="openSiteShareModal('url')" class="pixel-btn pixel-btn-primary text-[11px] px-2 py-1 font-bold whitespace-nowrap">
+                                    🔗 URLで共有
+                                </button>
+                                <button onclick="openSiteShareModal('qr')" class="pixel-btn pixel-btn-success text-[11px] px-2 py-1 font-bold whitespace-nowrap">
+                                    📱 QRで共有
+                                </button>
+                            </div>
+                        </div>
+
                         <div class="flex justify-between items-center bg-slate-950 p-2 rounded border border-slate-800">
                             <span class="text-slate-300 font-bold">アプリ更新 (リロード):</span>
                             <button onclick="forceReloadApp()" class="pixel-btn pixel-btn-warning text-xs px-3 py-1 font-bold">
@@ -12424,13 +12440,236 @@ pasha_dark: {
             document.body.classList.add('modal-open');
         }
 
-        function closeSettingsPanel() {
-            audioSystem.playSelect();
+        function closeSettingsPanel(silent = false) {
+            if (!silent) audioSystem.playSelect();
             const backdrop = document.getElementById('settings-backdrop');
             const panel = document.getElementById('settings-slide-panel');
             if (panel) panel.classList.add('translate-x-full');
             if (backdrop) backdrop.classList.add('hidden');
             document.body.classList.remove('modal-open');
+        }
+
+        const SITE_SHARE_URL = 'https://daijutrooper2-wq.github.io/DOPA-/';
+        const SITE_SHARE_QR_IMAGE = 'assets/aistudio/image_6db88de4.png';
+
+        function setSiteShareStatus(msg, colorClass = 'text-emerald-300') {
+            const el = document.getElementById('site-share-status');
+            if (!el) return;
+            el.className = `text-[11px] font-bold min-h-[16px] text-center ${colorClass}`;
+            el.innerText = msg || '';
+        }
+
+        function renderSiteShareModalContent() {
+            const activeTab = window._siteShareActiveTab === 'qr' ? 'qr' : 'url';
+            const qrZoomed = !!window._siteShareQrExpanded;
+            const qrSrc = (typeof AssetPreloader !== 'undefined' && AssetPreloader.resolve)
+                ? AssetPreloader.resolve(SITE_SHARE_QR_IMAGE)
+                : SITE_SHARE_QR_IMAGE;
+            const shareText = `ドパガキングダムの熱き3v3バトルRPG「ドパキン」で一緒に遊ぼう！\n${SITE_SHARE_URL}`;
+            const lineUrl = `https://line.me/R/share?text=${encodeURIComponent(shareText)}`;
+
+            const urlTabBtnClass = activeTab === 'url'
+                ? 'pixel-btn pixel-btn-primary text-xs px-3 py-1.5 font-bold flex-1 ring-2 ring-amber-300'
+                : 'pixel-btn text-xs px-3 py-1.5 font-bold flex-1 opacity-75 hover:opacity-100';
+            const qrTabBtnClass = activeTab === 'qr'
+                ? 'pixel-btn pixel-btn-success text-xs px-3 py-1.5 font-bold flex-1 ring-2 ring-amber-300'
+                : 'pixel-btn text-xs px-3 py-1.5 font-bold flex-1 opacity-75 hover:opacity-100';
+
+            const urlSectionHtml = `
+                <div class="pixel-box bg-slate-950/90 border border-sky-500/70 p-3 space-y-2.5 text-center">
+                    <p class="text-[11px] text-slate-300 font-mono leading-relaxed">
+                        サイトのURLをコピーまたはSNS・LINEでそのまま送信できます。
+                    </p>
+                    <input type="text" id="site-share-url-input" readonly value="${SITE_SHARE_URL}" onclick="this.select()" class="pixel-box bg-slate-900 border-sky-600 text-amber-300 text-xs font-mono w-full px-2.5 py-2 text-center outline-none select-all">
+                    <div class="flex flex-wrap justify-center gap-2">
+                        <button type="button" onclick="shareSiteByUrl()" class="pixel-btn pixel-btn-primary px-3.5 py-1.5 text-xs font-bold font-pixel">
+                            📤 アプリで共有
+                        </button>
+                        <button type="button" onclick="copySiteShareUrl()" class="pixel-btn pixel-btn-warning px-3.5 py-1.5 text-xs font-bold font-pixel">
+                            📋 URLコピー
+                        </button>
+                        <a href="${lineUrl}" target="_blank" rel="noopener noreferrer" class="pixel-btn pixel-btn-success px-3.5 py-1.5 text-xs font-bold font-pixel inline-flex items-center gap-1 no-underline">
+                            💬 LINEで送る
+                        </a>
+                    </div>
+                </div>
+            `;
+
+            const qrSizeClass = qrZoomed ? 'w-44 h-44 sm:w-48 sm:h-48' : 'w-28 h-28 sm:w-32 sm:h-32';
+            const qrSectionHtml = `
+                <div class="pixel-box bg-slate-950/90 border border-emerald-500/70 p-3 space-y-2.5 text-center">
+                    <p class="text-[11px] text-slate-300 font-mono leading-relaxed">
+                        カメラで読み取るか、QR画像を共有・保存して友達に送れます。
+                    </p>
+                    <div class="flex flex-col items-center justify-center gap-1.5">
+                        <div onclick="toggleSiteShareQrZoom()" title="タップで拡大・縮小" class="bg-white p-2 rounded-lg inline-block shadow-lg border-2 border-amber-400 cursor-pointer transition-transform active:scale-95">
+                            <img id="site-share-qr-img" src="${qrSrc}" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='/${SITE_SHARE_QR_IMAGE}';}" alt="ドパキン共有QRコード" class="${qrSizeClass} object-contain block mx-auto" style="image-rendering: pixelated;">
+                        </div>
+                        <button type="button" onclick="toggleSiteShareQrZoom()" class="text-[10px] text-amber-300 underline font-mono">
+                            ${qrZoomed ? '🔍 通常サイズに戻す' : '🔍 QRコードを拡大表示'}
+                        </button>
+                    </div>
+                    <div class="text-[10px] text-sky-300 font-mono break-all">${SITE_SHARE_URL}</div>
+                    <div class="flex flex-wrap justify-center gap-2">
+                        <button type="button" onclick="shareSiteByQrImage()" class="pixel-btn pixel-btn-success px-3.5 py-1.5 text-xs font-bold font-pixel">
+                            📤 QR画像を共有
+                        </button>
+                        <button type="button" onclick="downloadSiteShareQrImage()" class="pixel-btn pixel-btn-primary px-3.5 py-1.5 text-xs font-bold font-pixel">
+                            💾 QR画像を保存
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            return `
+                <div class="space-y-2.5 text-center">
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="switchSiteShareTab('url')" class="${urlTabBtnClass}">
+                            🔗 URLで共有
+                        </button>
+                        <button type="button" onclick="switchSiteShareTab('qr')" class="${qrTabBtnClass}">
+                            📱 QRコードで共有
+                        </button>
+                    </div>
+                    ${activeTab === 'qr' ? qrSectionHtml : urlSectionHtml}
+                    <div id="site-share-status" class="text-[11px] font-bold min-h-[16px] text-center text-emerald-300"></div>
+                </div>
+            `;
+        }
+
+        function openSiteShareModal(tab = 'url') {
+            audioSystem.playSelect();
+            closeSettingsPanel(true);
+            window._siteShareActiveTab = tab === 'qr' ? 'qr' : 'url';
+            window._siteShareQrExpanded = false;
+            showModal('📤 サイトを共有', renderSiteShareModalContent());
+        }
+
+        function switchSiteShareTab(tab) {
+            audioSystem.playSelect();
+            window._siteShareActiveTab = tab === 'qr' ? 'qr' : 'url';
+            const bodyEl = document.getElementById('modal-body');
+            if (bodyEl) {
+                bodyEl.innerHTML = renderSiteShareModalContent();
+            }
+        }
+
+        function toggleSiteShareQrZoom() {
+            audioSystem.playSelect();
+            window._siteShareQrExpanded = !window._siteShareQrExpanded;
+            const bodyEl = document.getElementById('modal-body');
+            if (bodyEl) {
+                bodyEl.innerHTML = renderSiteShareModalContent();
+            }
+        }
+
+        function copySiteShareUrl() {
+            audioSystem.playSelect();
+            const input = document.getElementById('site-share-url-input');
+            if (input && typeof input.select === 'function') {
+                try { input.select(); } catch (e) {}
+            }
+            copyTextSilently(SITE_SHARE_URL).then((ok) => {
+                if (ok) {
+                    setSiteShareStatus('✓ URLをコピーしました！', 'text-emerald-300');
+                    if (typeof showToast === 'function') showToast('URLをコピーしました！');
+                } else {
+                    setSiteShareStatus('URLを選択してコピーしてください', 'text-amber-300');
+                }
+            });
+        }
+
+        async function shareSiteByUrl() {
+            audioSystem.playSelect();
+            const shareText = 'ドパガキングダムの熱き3v3バトルRPG「ドパキン」で一緒に遊ぼう！';
+            if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+                try {
+                    await navigator.share({
+                        title: 'ドパキン (DOPAKIN RPG)',
+                        text: shareText,
+                        url: SITE_SHARE_URL
+                    });
+                    setSiteShareStatus('✓ サイトURLを共有しました！', 'text-emerald-300');
+                    return;
+                } catch (err) {
+                    if (err && err.name === 'AbortError') return;
+                }
+            }
+            copyTextSilently(SITE_SHARE_URL).then((ok) => {
+                if (ok) {
+                    setSiteShareStatus('✓ この端末では共有メニュー非対応のため、URLをコピーしました！', 'text-emerald-300');
+                    if (typeof showToast === 'function') showToast('URLをコピーしました！');
+                } else {
+                    setSiteShareStatus('下の「URLコピー」または「LINEで送る」をご利用ください', 'text-amber-300');
+                }
+            });
+        }
+
+        async function fetchSiteShareQrBlob() {
+            const candidates = [];
+            if (typeof AssetPreloader !== 'undefined' && AssetPreloader.resolve) {
+                candidates.push(AssetPreloader.resolve(SITE_SHARE_QR_IMAGE));
+            }
+            candidates.push(SITE_SHARE_QR_IMAGE, `/${SITE_SHARE_QR_IMAGE}`);
+            for (const url of candidates) {
+                try {
+                    const res = await fetch(url);
+                    if (res && res.ok) {
+                        const blob = await res.blob();
+                        if (blob && blob.size > 0) return blob;
+                    }
+                } catch (e) {}
+            }
+            return null;
+        }
+
+        async function shareSiteByQrImage() {
+            audioSystem.playSelect();
+            const blob = await fetchSiteShareQrBlob();
+            if (blob && typeof File === 'function' && typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+                try {
+                    const file = new File([blob], 'dopakin-qr.png', { type: blob.type || 'image/png' });
+                    if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+                        await navigator.share({
+                            title: 'ドパキン (DOPAKIN RPG) QRコード',
+                            text: `QRコードまたはURLから「ドパキン」にアクセス！\n${SITE_SHARE_URL}`,
+                            files: [file]
+                        });
+                        setSiteShareStatus('✓ QRコードを共有しました！', 'text-emerald-300');
+                        return;
+                    }
+                } catch (err) {
+                    if (err && err.name === 'AbortError') return;
+                }
+            }
+            await downloadSiteShareQrImage(blob, 'この環境ではQR画像の直接共有に非対応のため、QR画像を保存しました！');
+        }
+
+        async function downloadSiteShareQrImage(preloadedBlob = null, customMsg = '✓ QR画像を保存しました！') {
+            if (!preloadedBlob) audioSystem.playSelect();
+            const blob = preloadedBlob || await fetchSiteShareQrBlob();
+            let objectUrl = null;
+            try {
+                const a = document.createElement('a');
+                if (blob) {
+                    objectUrl = URL.createObjectURL(blob);
+                    a.href = objectUrl;
+                } else {
+                    a.href = SITE_SHARE_QR_IMAGE;
+                }
+                a.download = 'dopakin-qr.png';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setSiteShareStatus(customMsg, 'text-emerald-300');
+                if (typeof showToast === 'function') showToast('QR画像を保存しました！');
+            } catch (e) {
+                setSiteShareStatus('画面のQRコードをそのままカメラで読み取ってください', 'text-amber-300');
+            } finally {
+                if (objectUrl) {
+                    setTimeout(() => URL.revokeObjectURL(objectUrl), 4000);
+                }
+            }
         }
 
         window.onVolumeSliderChange = function(val) {
@@ -13531,6 +13770,13 @@ pasha_dark: {
         window.renderBotModesScreen = renderBotModesScreen;
         window.renderNewBattleCharSelectScreen = renderNewBattleCharSelectScreen;
         window.forceReloadApp = forceReloadApp;
+        window.openSiteShareModal = openSiteShareModal;
+        window.switchSiteShareTab = switchSiteShareTab;
+        window.toggleSiteShareQrZoom = toggleSiteShareQrZoom;
+        window.copySiteShareUrl = copySiteShareUrl;
+        window.shareSiteByUrl = shareSiteByUrl;
+        window.shareSiteByQrImage = shareSiteByQrImage;
+        window.downloadSiteShareQrImage = downloadSiteShareQrImage;
         window.getNewBattleCustomStats = getNewBattleCustomStats;
         window.adjustNewBattleStat = adjustNewBattleStat;
         window.resetNewBattleStats = resetNewBattleStats;
