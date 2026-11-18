@@ -58,6 +58,68 @@
             return cid;
         };
 
+        window.setOnlineClientId = function(cid) {
+            if (!cid || typeof cid !== 'string') return;
+            window._fallbackOnlineClientId = cid;
+            try {
+                sessionStorage.setItem('dopa_online_tab_client_id', cid);
+            } catch (e) {}
+        };
+
+        window.saveOnlineRejoinTicket = function(roomId, roomCode, uid, extra = {}) {
+            if (!uid || (!roomCode && !roomId)) return;
+            try {
+                const payload = {
+                    roomId: roomId || null,
+                    roomCode: roomCode ? String(roomCode).trim() : null,
+                    uid: uid,
+                    playerId: (typeof playerState !== 'undefined' && playerState.playerId) ? playerState.playerId : null,
+                    savedAt: Date.now(),
+                    ...extra
+                };
+                const raw = JSON.stringify(payload);
+                if (payload.roomCode) {
+                    localStorage.setItem('dopa_rejoin_ticket_' + payload.roomCode, raw);
+                }
+                if (payload.roomId) {
+                    localStorage.setItem('dopa_rejoin_room_' + payload.roomId, raw);
+                }
+            } catch (e) {}
+        };
+
+        window.getOnlineRejoinTicket = function(roomCode) {
+            if (!roomCode) return null;
+            try {
+                const raw = localStorage.getItem('dopa_rejoin_ticket_' + String(roomCode).trim());
+                if (!raw) return null;
+                const data = JSON.parse(raw);
+                if (!data || !data.uid) return null;
+                if (data.savedAt && (Date.now() - data.savedAt > 6 * 60 * 60 * 1000)) {
+                    localStorage.removeItem('dopa_rejoin_ticket_' + String(roomCode).trim());
+                    return null;
+                }
+                return data;
+            } catch (e) {
+                return null;
+            }
+        };
+
+        window.clearOnlineRejoinTicket = function(roomCode, roomId) {
+            try {
+                if (roomId) {
+                    const raw = localStorage.getItem('dopa_rejoin_room_' + roomId);
+                    if (raw && !roomCode) {
+                        const parsed = JSON.parse(raw);
+                        if (parsed && parsed.roomCode) roomCode = parsed.roomCode;
+                    }
+                    localStorage.removeItem('dopa_rejoin_room_' + roomId);
+                }
+                if (roomCode) {
+                    localStorage.removeItem('dopa_rejoin_ticket_' + String(roomCode).trim());
+                }
+            } catch (e) {}
+        };
+
         window.initFirebaseOnline = async function() {
             await firebaseReady;
             if (!window.fbAuth || !window._firebaseAuthHelpers) return !!window.fbDb;
@@ -91,7 +153,7 @@
             });
         };
 
-        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.0';
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.1';
         const STATIC_IMAGE_ASSETS = [
             'images/backnormal.webp',
             'images/screen.webp',
@@ -140,9 +202,9 @@
         ];
         const SHELL_SITE_ASSETS = [
             'manifest.json',
-            'style.css?v=2.3.0',
-            'battle-3v3.js?v=2.3.0',
-            'game.js?v=2.3.0'
+            'style.css?v=2.3.1',
+            'battle-3v3.js?v=2.3.1',
+            'game.js?v=2.3.1'
         ];
 
         const AssetPreloader = {
@@ -1927,10 +1989,15 @@ static drawDopagaking(p, isCharged) {
             };
             const t1 = (allySlotTypes || ['human', 'human', 'bot']).map((type, idx) => {
                 if (idx === 0) {
+                    const hostPid = (typeof playerState !== 'undefined' && playerState.playerId) ? playerState.playerId : null;
                     return {
                         type: 'human',
                         uid: hostUid,
+                        originalUid: hostUid,
+                        playerId: hostPid,
+                        originalPlayerId: hostPid,
                         playerName: hostName,
+                        originalPlayerName: hostName,
                         selectedIcon: hostIcon,
                         charConfig: hostCharConfig,
                         ready: false,
@@ -2013,6 +2080,38 @@ static drawDopagaking(p, isCharged) {
             return null;
         }
 
+        function findMyRejoinableSlotInRoom(roomData, candidateUids = [], playerId = null) {
+            const teams = [
+                { teamNum: 1, arr: roomData.team1Slots || [] },
+                { teamNum: 2, arr: roomData.team2Slots || [] }
+            ];
+            for (let cIdx = 0; cIdx < candidateUids.length; cIdx++) {
+                const cand = candidateUids[cIdx];
+                if (!cand) continue;
+                for (let t = 0; t < teams.length; t++) {
+                    const { teamNum, arr } = teams[t];
+                    for (let i = 0; i < arr.length; i++) {
+                        const s = arr[i];
+                        if (s && (s.uid === cand || s.originalUid === cand)) {
+                            return { teamNum, slotIdx: i, slot: s };
+                        }
+                    }
+                }
+            }
+            if (playerId) {
+                for (let t = 0; t < teams.length; t++) {
+                    const { teamNum, arr } = teams[t];
+                    for (let i = 0; i < arr.length; i++) {
+                        const s = arr[i];
+                        if (s && (s.playerId === playerId || s.originalPlayerId === playerId)) {
+                            return { teamNum, slotIdx: i, slot: s };
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
         function proceedFromMultiSetupToMatchmaking() {
             renderOnlineModesScreen();
         }
@@ -2081,6 +2180,7 @@ static drawDopagaking(p, isCharged) {
             }
 
             const myUid = window.getOnlineClientId();
+            const myPlayerId = (typeof playerState !== 'undefined' && playerState.playerId) ? playerState.playerId : null;
             const myName = playerState.playerName || '名無しファイター';
             const myIcon = playerState.selectedIcon || 'courtney';
             const roomCode = generateSixDigitRoomCode();
@@ -2088,6 +2188,7 @@ static drawDopagaking(p, isCharged) {
             const newRoomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', newRoomId);
 
             try {
+                const now = Date.now();
                 const myChar = buildOnlineCharConfig(getSelectedOnlineMultiChar());
                 const roomPayload = {
                     roomId: newRoomId,
@@ -2096,10 +2197,14 @@ static drawDopagaking(p, isCharged) {
                     matchType: 'code',
                     status: 'waiting',
                     hostUid: myUid,
-                    createdAt: Date.now(),
-                    updatedAt: Date.now(),
+                    hostLastSeen: now,
+                    battleHeartbeats: { [myUid]: now },
+                    slotLeaveFlags: {},
+                    slotRejoinAt: {},
+                    createdAt: now,
+                    updatedAt: now,
                     team1Slots: [
-                        { type: 'human', uid: myUid, playerName: myName, selectedIcon: myIcon, charConfig: myChar, ready: false, lastSeen: Date.now() },
+                        { type: 'human', uid: myUid, originalUid: myUid, playerId: myPlayerId, originalPlayerId: myPlayerId, playerName: myName, originalPlayerName: myName, selectedIcon: myIcon, charConfig: myChar, ready: false, lastSeen: now },
                         { type: 'human', uid: null, playerName: '', selectedIcon: 'courtney', charConfig: null, ready: false, lastSeen: 0 },
                         { type: 'human', uid: null, playerName: '', selectedIcon: 'courtney', charConfig: null, ready: false, lastSeen: 0 }
                     ],
@@ -2112,6 +2217,7 @@ static drawDopagaking(p, isCharged) {
                     pendingAction: null
                 };
                 await window.fbSetDoc(newRoomRef, roomPayload);
+                window.saveOnlineRejoinTicket(newRoomId, roomCode, myUid, { teamNum: 1, slotIdx: 0 });
 
                 if (inviteFriendId && playerState.playerId) {
                     try {
@@ -2178,6 +2284,12 @@ static drawDopagaking(p, isCharged) {
             }
 
             const myUid = window.getOnlineClientId();
+            const myPlayerId = (typeof playerState !== 'undefined' && playerState.playerId) ? playerState.playerId : null;
+            const rejoinTicket = window.getOnlineRejoinTicket(code);
+            const candidateUids = [myUid];
+            if (rejoinTicket && rejoinTicket.uid && !candidateUids.includes(rejoinTicket.uid)) {
+                candidateUids.push(rejoinTicket.uid);
+            }
             const myName = playerState.playerName || '名無しファイター';
             const myIcon = playerState.selectedIcon || 'courtney';
             const roomsCol = window.fbCollection(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms');
@@ -2188,14 +2300,16 @@ static drawDopagaking(p, isCharged) {
                 const matches = [];
                 snap.forEach(d => {
                     const rd = d.data();
-                    if (rd && (rd.status === 'waiting' || rd.status === 'preparing')) {
+                    if (!rd) return;
+                    const isEnded = rd.status === 'ended' || (rd.battleState && rd.battleState.battleEnded === true);
+                    if (!isEnded && (rd.status === 'waiting' || rd.status === 'preparing' || rd.status === 'playing')) {
                         matches.push({ id: d.id, data: rd });
                     }
                 });
                 matches.sort((a, b) => (b.data.createdAt || 0) - (a.data.createdAt || 0));
 
                 if (matches.length === 0) {
-                    notifyJoinError(`⚠️ コード「${code}」の待機中ルームが見つかりませんでした。`);
+                    notifyJoinError(`⚠️ コード「${code}」の参加・復帰可能なルームが見つかりませんでした。`);
                     return;
                 }
 
@@ -2205,25 +2319,121 @@ static drawDopagaking(p, isCharged) {
                     const rSnap = await tx.get(roomRef);
                     if (!rSnap.exists()) return { error: 'ルームが存在しません。' };
                     const rd = rSnap.data();
-                    if (rd.status === 'playing' || rd.status === 'ended') {
-                        return { error: 'このルームはすでに対戦開始または終了しています。' };
+                    const now = Date.now();
+                    if (rd.status === 'ended' || (rd.battleState && rd.battleState.battleEnded === true)) {
+                        return { error: 'このルームの対戦はすでに終了しています。' };
                     }
+
+                    // 進行中のバトルへの再接続・途中復帰処理
+                    if (rd.status === 'playing') {
+                        const found = findMyRejoinableSlotInRoom(rd, candidateUids, myPlayerId);
+                        if (!found) {
+                            return { error: 'このルームはすでに対戦開始しています（元の参加者のみ同じルームIDでバトル復帰できます）。' };
+                        }
+                        const slotUid = found.slot.originalUid || found.slot.uid || (rejoinTicket && rejoinTicket.uid) || myUid;
+                        const t1 = (rd.team1Slots || []).map(s => (s ? { ...s } : s));
+                        const t2 = (rd.team2Slots || []).map(s => (s ? { ...s } : s));
+                        const targetArr = found.teamNum === 1 ? t1 : t2;
+                        targetArr[found.slotIdx] = {
+                            ...found.slot,
+                            type: 'human',
+                            uid: slotUid,
+                            originalUid: found.slot.originalUid || slotUid,
+                            playerId: myPlayerId || found.slot.playerId || null,
+                            originalPlayerId: found.slot.originalPlayerId || myPlayerId || found.slot.playerId || null,
+                            playerName: myName,
+                            originalPlayerName: myName,
+                            selectedIcon: myIcon,
+                            botTakeover: false,
+                            ready: true,
+                            lastSeen: now
+                        };
+
+                        const heartbeats = { ...(rd.battleHeartbeats || {}), [slotUid]: now };
+                        const leaveFlags = { ...(rd.slotLeaveFlags || {}), [slotUid]: 0 };
+                        const rejoinMap = { ...(rd.slotRejoinAt || {}), [slotUid]: now };
+
+                        const curHostUid = rd.hostUid;
+                        const hostLeft = !!(rd.hostLeftAt && rd.hostLeftAt > (rd.hostReclaimedAt || 0));
+                        const hostHb = (curHostUid && heartbeats[curHostUid]) ? Math.max(heartbeats[curHostUid], rd.hostLastSeen || 0) : (rd.hostLastSeen || 0);
+                        const hostLeaveFlag = (curHostUid && leaveFlags[curHostUid]) ? leaveFlags[curHostUid] : 0;
+                        const hostRejoinFlag = (curHostUid && rejoinMap[curHostUid]) ? rejoinMap[curHostUid] : 0;
+                        const isCurrentHostAlive = !!(
+                            curHostUid &&
+                            curHostUid !== slotUid &&
+                            !hostLeft &&
+                            !(hostLeaveFlag > hostRejoinFlag) &&
+                            (hostHb > 0 ? (now - hostHb < 16000) : (now - (rd.startedAt || now) < 16000))
+                        );
+
+                        const txUpdates = {
+                            team1Slots: t1,
+                            team2Slots: t2,
+                            battleHeartbeats: heartbeats,
+                            slotLeaveFlags: leaveFlags,
+                            slotRejoinAt: rejoinMap,
+                            updatedAt: now
+                        };
+
+                        if (!isCurrentHostAlive) {
+                            const markInactiveSlotBot = (s) => {
+                                if (!s || s.type !== 'human' || !s.uid || s.uid === slotUid) return s;
+                                const sHb = Math.max(heartbeats[s.uid] || 0, s.lastSeen || 0);
+                                const sLeave = leaveFlags[s.uid] || 0;
+                                const sRejoin = rejoinMap[s.uid] || 0;
+                                const isStaleOrLeft = (s.uid === curHostUid) || (sLeave > sRejoin) || (now - (sHb || rd.startedAt || now) > 16000);
+                                if (!isStaleOrLeft) return s;
+                                return {
+                                    ...s,
+                                    type: 'bot',
+                                    botTakeover: true,
+                                    originalUid: s.originalUid || s.uid,
+                                    originalPlayerId: s.originalPlayerId || s.playerId || null,
+                                    originalPlayerName: s.originalPlayerName || s.playerName || ''
+                                };
+                            };
+                            txUpdates.team1Slots = t1.map(markInactiveSlotBot);
+                            txUpdates.team2Slots = t2.map(markInactiveSlotBot);
+                            txUpdates.hostUid = slotUid;
+                            txUpdates.hostLastSeen = now;
+                            txUpdates.hostReclaimedAt = now;
+                        }
+
+                        tx.update(roomRef, txUpdates);
+                        return {
+                            isResume: true,
+                            resolvedUid: slotUid,
+                            teamNum: found.teamNum,
+                            slotIdx: found.slotIdx,
+                            roomData: { ...rd, ...txUpdates, roomId: target.id }
+                        };
+                    }
+
+                    // 待機・準備中ロビーへの参加処理
                     const existing = findMySlotInRoom(rd, myUid);
-                    if (existing) return { roomData: rd };
+                    if (existing) {
+                        return { resolvedUid: myUid, teamNum: existing.teamNum, slotIdx: existing.slotIdx, roomData: rd };
+                    }
                     const t1 = [...(rd.team1Slots || [])];
                     const t2 = [...(rd.team2Slots || [])];
                     const myChar = buildOnlineCharConfig(getSelectedOnlineMultiChar());
                     let placed = false;
+                    let placedTeamNum = 2;
+                    let placedSlotIdx = 0;
                     for (let i = 0; i < 3 && !placed; i++) {
                         if (t2[i] && t2[i].type === 'human' && !t2[i].uid) {
-                            t2[i] = { ...t2[i], uid: myUid, playerName: myName, selectedIcon: myIcon, charConfig: myChar, ready: false, lastSeen: Date.now() };
+                            t2[i] = { ...t2[i], uid: myUid, originalUid: myUid, playerId: myPlayerId, originalPlayerId: myPlayerId, playerName: myName, originalPlayerName: myName, selectedIcon: myIcon, charConfig: myChar, ready: false, lastSeen: now };
                             placed = true;
+                            placedTeamNum = 2;
+                            placedSlotIdx = i;
                         }
                     }
                     for (let i = 0; i < 3 && !placed; i++) {
                         if (t1[i] && t1[i].type === 'human' && !t1[i].uid) {
-                            t1[i] = { ...t1[i], uid: myUid, playerName: myName, selectedIcon: myIcon, charConfig: myChar, ready: false, lastSeen: Date.now() };
+                            t1[i] = { ...t1[i], uid: myUid, originalUid: myUid, playerId: myPlayerId, originalPlayerId: myPlayerId, playerName: myName, originalPlayerName: myName, selectedIcon: myIcon, charConfig: myChar, ready: false, lastSeen: now };
                             placed = true;
+                            placedTeamNum = 1;
+                            placedSlotIdx = i;
                         }
                     }
                     if (!placed) return { error: 'このルームのプレイヤー枠は満員です。' };
@@ -2233,9 +2443,9 @@ static drawDopagaking(p, isCharged) {
                         team1Slots: t1,
                         team2Slots: t2,
                         status: nextStatus,
-                        updatedAt: Date.now()
+                        updatedAt: now
                     });
-                    return { roomData: { ...rd, team1Slots: t1, team2Slots: t2, status: nextStatus } };
+                    return { resolvedUid: myUid, teamNum: placedTeamNum, slotIdx: placedSlotIdx, roomData: { ...rd, team1Slots: t1, team2Slots: t2, status: nextStatus } };
                 });
 
                 if (joinRes && joinRes.error) {
@@ -2243,7 +2453,19 @@ static drawDopagaking(p, isCharged) {
                     return;
                 }
                 if (joinRes && joinRes.roomData) {
-                    renderOnlineMultiReadyScreen(target.id, joinRes.roomData);
+                    const resolvedUid = joinRes.resolvedUid || myUid;
+                    window.setOnlineClientId(resolvedUid);
+                    window.saveOnlineRejoinTicket(
+                        target.id,
+                        joinRes.roomData.roomCode || code,
+                        resolvedUid,
+                        { teamNum: joinRes.teamNum, slotIdx: joinRes.slotIdx }
+                    );
+                    if (joinRes.isResume) {
+                        await launchOnlineSyncedBattle(target.id, joinRes.roomData, false, { isResume: true });
+                    } else {
+                        renderOnlineMultiReadyScreen(target.id, joinRes.roomData);
+                    }
                 }
             } catch (err) {
                 console.error('Join by code error:', err);
@@ -2357,6 +2579,9 @@ static drawDopagaking(p, isCharged) {
             const latestRd = st.latestRoomData;
             cleanupOnlineLobby();
             closeOnlineLobbyBotCharPicker();
+            if (typeof window.clearOnlineRejoinTicket === 'function') {
+                window.clearOnlineRejoinTicket(latestRd?.roomCode, roomId);
+            }
             if (!isSolo && roomId && window.fbDb && window.fbDoc && !(latestRd && (latestRd.status === 'playing' || latestRd.status === 'ended'))) {
                 try {
                     const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', roomId);
@@ -2367,8 +2592,8 @@ static drawDopagaking(p, isCharged) {
                         if (rd.hostUid === myUid && rd.status !== 'playing') {
                             await window.fbUpdateDoc(roomRef, { status: 'ended', updatedAt: Date.now() });
                         } else if (rd.status !== 'playing') {
-                            const t1 = (rd.team1Slots || []).map(s => (s && s.uid === myUid ? { ...s, uid: null, playerName: '', charConfig: null, ready: false } : s));
-                            const t2 = (rd.team2Slots || []).map(s => (s && s.uid === myUid ? { ...s, uid: null, playerName: '', charConfig: null, ready: false } : s));
+                            const t1 = (rd.team1Slots || []).map(s => (s && s.uid === myUid ? { ...s, uid: null, originalUid: null, playerId: null, originalPlayerId: null, playerName: '', charConfig: null, ready: false } : s));
+                            const t2 = (rd.team2Slots || []).map(s => (s && s.uid === myUid ? { ...s, uid: null, originalUid: null, playerId: null, originalPlayerId: null, playerName: '', charConfig: null, ready: false } : s));
                             await window.fbUpdateDoc(roomRef, { team1Slots: t1, team2Slots: t2, status: 'waiting', updatedAt: Date.now() });
                         }
                     }
@@ -2929,8 +3154,23 @@ static drawDopagaking(p, isCharged) {
                 if (!snap.exists()) return;
                 const rd = snap.data();
                 if (rd.hostUid !== myUid || rd.status === 'playing' || rd.status === 'ended') return;
+                const now = Date.now();
                 const res = finalizeSlotsAndStatus(rd);
-                tx.update(roomRef, { team1Slots: res.t1, team2Slots: res.t2, status: 'playing', startedAt: Date.now(), updatedAt: Date.now() });
+                const heartbeats = { ...(rd.battleHeartbeats || {}) };
+                [...res.t1, ...res.t2].forEach(s => {
+                    if (s && s.type === 'human' && s.uid) heartbeats[s.uid] = now;
+                });
+                tx.update(roomRef, {
+                    team1Slots: res.t1,
+                    team2Slots: res.t2,
+                    battleHeartbeats: heartbeats,
+                    hostLastSeen: now,
+                    slotLeaveFlags: {},
+                    slotRejoinAt: {},
+                    status: 'playing',
+                    startedAt: now,
+                    updatedAt: now
+                });
             }).catch(e => console.warn('Host start battle error:', e));
         }
 
@@ -3209,27 +3449,41 @@ static drawDopagaking(p, isCharged) {
                 const stats = countHumanSlotStats(rd);
                 const myUid = window.getOnlineClientId();
                 if (stats.allReady && rd.hostUid === myUid && rd.status !== 'playing') {
-                    window.fbUpdateDoc(roomRef, { status: 'playing', startedAt: Date.now(), updatedAt: Date.now() }).catch(() => {});
+                    const now = Date.now();
+                    const heartbeats = { ...(rd.battleHeartbeats || {}) };
+                    [...(rd.team1Slots || []), ...(rd.team2Slots || [])].forEach(s => {
+                        if (s && s.type === 'human' && s.uid) heartbeats[s.uid] = now;
+                    });
+                    window.fbUpdateDoc(roomRef, {
+                        status: 'playing',
+                        startedAt: now,
+                        hostLastSeen: now,
+                        battleHeartbeats: heartbeats,
+                        slotLeaveFlags: {},
+                        slotRejoinAt: {},
+                        updatedAt: now
+                    }).catch(() => {});
                 }
                 if ((rd.status === 'playing' || stats.allReady) && window._onlineLobbyState.launchedRoomId !== roomId) {
                     if (rd.status === 'playing') {
                         closeOnlineLobbyBotCharPicker();
                         window._onlineLobbyState.launchedRoomId = roomId;
                         window._onlineLobbyState.launchTimeoutId = setTimeout(() => {
-                            launchOnlineSyncedBattle(roomId, rd);
+                            launchOnlineSyncedBattle(roomId, rd, false, { isResume: !!rd.battleState });
                         }, 600);
                     }
                 }
             });
         }
 
-        async function launchOnlineSyncedBattle(roomId, roomData, isLocalSolo = false) {
+        async function launchOnlineSyncedBattle(roomId, roomData, isLocalSolo = false, launchOptions = {}) {
             audioSystem.playSelect();
             cleanupOnlineLobby();
             closeOnlineLobbyBotCharPicker();
             window.isOnlineBattleMode = true;
             newBattleViewMode = 'main';
             isNewBattleSkillModalOpen = false;
+            const isResume = !!(launchOptions && launchOptions.isResume && roomData && roomData.battleState);
 
             const launchToken = (window._onlineBattleLaunchSeq = (window._onlineBattleLaunchSeq || 0) + 1);
             if (window.AssetPreloader && !window.AssetPreloader.isComplete) {
@@ -3261,12 +3515,17 @@ static drawDopagaking(p, isCharged) {
             let myControlSlots = [0, 1, 2];
 
             if (!is2p) {
-                const found = findMySlotInRoom(roomData, myUid);
+                const found = findMySlotInRoom(roomData, myUid)
+                    || findMyRejoinableSlotInRoom(roomData, [myUid], (typeof playerState !== 'undefined' && playerState.playerId) ? playerState.playerId : null);
                 myTeamNum = found ? found.teamNum : 1;
                 myControlSlots = found ? [found.slotIdx] : [0];
             } else {
                 myTeamNum = isHost ? 1 : 2;
                 myControlSlots = [0, 1, 2];
+            }
+
+            if (!isLocalSolo && roomData && roomData.roomCode && typeof window.saveOnlineRejoinTicket === 'function') {
+                window.saveOnlineRejoinTicket(roomId, roomData.roomCode, myUid, { teamNum: myTeamNum, slotIdx: myControlSlots[0] || 0 });
             }
 
             const fillBotCharConfigs = (slots) => {
@@ -3285,7 +3544,8 @@ static drawDopagaking(p, isCharged) {
             const t1Slots = fillBotCharConfigs(roomData.team1Slots || []);
             const t2Slots = fillBotCharConfigs(roomData.team2Slots || []);
             const hasRemoteHuman = !isLocalSolo && [...t1Slots, ...t2Slots].some(s => s && s.type === 'human' && s.uid && s.uid !== myUid);
-            const useSyncedFirestore = hasRemoteHuman;
+            const hadBotTakeover = [...t1Slots, ...t2Slots].some(s => s && s.botTakeover);
+            const useSyncedFirestore = !isLocalSolo && (hasRemoteHuman || isResume || roomData.matchType === 'code' || hadBotTakeover);
             const myTeamConfigs = (myTeamNum === 1 ? t1Slots : t2Slots).map(s => s.charConfig.charId);
             const oppLeadId = (myTeamNum === 1 ? t2Slots : t1Slots)[0]?.charConfig?.charId || 'pasha';
 
@@ -3294,6 +3554,10 @@ static drawDopagaking(p, isCharged) {
                 isOnlineSynced: useSyncedFirestore,
                 isOnlineHost: isHost,
                 onlineClientId: myUid,
+                roomCode: roomData.roomCode || null,
+                isResume: isResume,
+                resumeBattleState: isResume ? roomData.battleState : null,
+                resumeStartedAt: roomData.startedAt || null,
                 myTeamNum: myTeamNum,
                 myControlSlots: myControlSlots,
                 matchMode: is2p ? '2p' : 'multi',
@@ -3303,8 +3567,8 @@ static drawDopagaking(p, isCharged) {
                 team2Slots: t2Slots,
                 allySlots: (myTeamNum === 1 ? t1Slots : t2Slots).map(s => s.type),
                 enemySlots: (myTeamNum === 1 ? t2Slots : t1Slots).map(s => s.type),
-                allyHumanCount: (myTeamNum === 1 ? t1Slots : t2Slots).filter(s => s.type === 'human').length,
-                enemyHumanCount: (myTeamNum === 1 ? t2Slots : t1Slots).filter(s => s.type === 'human').length
+                allyHumanCount: (myTeamNum === 1 ? t1Slots : t2Slots).filter(s => s.type === 'human' && !s.botTakeover).length,
+                enemyHumanCount: (myTeamNum === 1 ? t2Slots : t1Slots).filter(s => s.type === 'human' && !s.botTakeover).length
             };
 
             activeNewBattle = new BattleEngine(
@@ -3316,6 +3580,7 @@ static drawDopagaking(p, isCharged) {
                 true,
                 battleOptions
             );
+            activeNewBattle.latestRoomData = roomData;
 
             activeNewBattle.onLogUpdate = (msg, colorClass, teamType) => {
                 appendNewBattleLog(msg, colorClass, teamType);
@@ -4696,6 +4961,10 @@ pasha_dark: {
                 this.isOnlineSynced = !!(opts.isOnlineSynced && isOnline && roomId);
                 this.isOnlineHost = !!opts.isOnlineHost;
                 this.onlineClientId = opts.onlineClientId || (typeof window.getOnlineClientId === 'function' ? window.getOnlineClientId() : 'local');
+                this.roomCode = opts.roomCode || null;
+                this.isResume = !!opts.isResume;
+                this.resumeBattleState = opts.resumeBattleState || null;
+                this.resumeStartedAt = opts.resumeStartedAt || null;
                 this.myTeamNum = opts.myTeamNum || myPlayerNum || 1;
                 this.onlineMatchMode = opts.matchMode || '2p';
                 this.allySlots = Array.isArray(opts.allySlots) && opts.allySlots.length === 3 ? [...opts.allySlots] : ['human', 'human', 'human'];
@@ -4910,6 +5179,12 @@ pasha_dark: {
                 this.firestoreUnsub = null;
                 this.lastProcessedTurn = 0;
                 this.heartbeatTimer = null;
+                this.healthMonitorTimer = null;
+                this._listenerRetryTimer = null;
+                this._listenerRetryCount = 0;
+                this._netFailCount = 0;
+                this._hostReclaimAttemptedAt = 0;
+                this._pageHideHandler = null;
                 this.currentTurnLogs = [];
                 this.battleLogs = [];
                 this.onlineSyncStarted = false;
@@ -4918,6 +5193,141 @@ pasha_dark: {
                 this.elapsedSeconds = 0;
                 this.elapsedTimerId = null;
                 this.onElapsedTimerUpdate = null;
+
+                if (this.isResume && this.resumeBattleState && this.isNewBattle) {
+                    const bs = this.resumeBattleState;
+                    this.turn = bs.turn || 1;
+                    this.isSuddenDeath = !!bs.isSuddenDeath;
+                    this.firstStrikerTeam = bs.firstStrikerTeam || 1;
+                    this.firstStrikerPlayerNum = (this.firstStrikerTeam === this.myTeamNum) ? 1 : 2;
+                    this.turnCanonicalOrder = Array.isArray(bs.turnCanonicalOrder) && bs.turnCanonicalOrder.length === 2
+                        ? [...bs.turnCanonicalOrder]
+                        : (this.firstStrikerTeam === 1 ? [1, 2] : [2, 1]);
+                    this.turnCanonicalPhase = bs.turnCanonicalPhase || 0;
+                    this.turnCanonicalSlot = bs.turnCanonicalSlot || 0;
+                    this.onlineStepSeq = bs.stepSeq || 0;
+                    this._onlinePublishSeq = bs.seq || 0;
+                    this.lastAppliedOnlineSeq = bs.seq || 0;
+                    this.onlineAwaitingTeam = bs.awaitingTeam !== undefined ? bs.awaitingTeam : null;
+                    this.onlineAwaitingSlot = bs.awaitingSlot !== undefined ? bs.awaitingSlot : null;
+                    this.onlineAwaitingUid = bs.awaitingUid || null;
+                    this.isProcessing = false;
+                    this.waitingForOpponent = (!this.isOnlineHost && this.onlineAwaitingUid !== null && this.onlineAwaitingUid !== this.onlineClientId);
+                    if (bs.battleData && typeof bs.battleData === 'object') {
+                        this.battleData = { ...this.battleData, ...bs.battleData };
+                    }
+                    if (Array.isArray(bs.team1Chars) && this.team1Fighters) {
+                        bs.team1Chars.forEach((st, idx) => {
+                            if (this.team1Fighters[idx]) this.deserializePlayer(this.team1Fighters[idx], st);
+                        });
+                    }
+                    if (Array.isArray(bs.team2Chars) && this.team2Fighters) {
+                        bs.team2Chars.forEach((st, idx) => {
+                            if (this.team2Fighters[idx]) this.deserializePlayer(this.team2Fighters[idx], st);
+                        });
+                    }
+                    if (this.team1Slots && this.team1Fighters) {
+                        this.team1Slots.forEach((sl, idx) => this.applySlotMetaToFighter(this.team1Fighters[idx], sl, 1, idx));
+                    }
+                    if (this.team2Slots && this.team2Fighters) {
+                        this.team2Slots.forEach((sl, idx) => this.applySlotMetaToFighter(this.team2Fighters[idx], sl, 2, idx));
+                    }
+                    this.updateOnlineRoleCounts();
+
+                    if (this.onlineAwaitingTeam === this.myTeamNum && this.myControlSlots.includes(this.onlineAwaitingSlot)) {
+                        this.activeAllyIndex = this.onlineAwaitingSlot;
+                        this.currentControllingAllyIndex = this.onlineAwaitingSlot;
+                        this.p1 = this.allies[this.onlineAwaitingSlot] || this.allies[0];
+                    } else {
+                        const fallbackIdx = this.controlSingleAllyOnly
+                            ? (this.myControlSlots[0] || 0)
+                            : (this.myControlSlots.find(idx => this.allies[idx] && this.allies[idx].hp > 0) ?? (this.myControlSlots[0] || 0));
+                        this.p1 = this.allies[fallbackIdx] || this.allies[0];
+                    }
+
+                    if (Array.isArray(bs.events)) {
+                        this._onlineEventBuffer = [...bs.events];
+                        bs.events.forEach(ev => {
+                            if (!ev || typeof ev.seq !== 'number') return;
+                            if (ev.seq > this._onlineEventSeq) this._onlineEventSeq = ev.seq;
+                            if (ev.seq > this.lastAppliedOnlineEventSeq) this.lastAppliedOnlineEventSeq = ev.seq;
+                            if (ev.type === 'log') {
+                                const localTeamType = ev.canonicalTeam === 0
+                                    ? 'system'
+                                    : (ev.canonicalTeam === this.myTeamNum ? 'ally' : 'enemy');
+                                let msgText = ev.msg || '';
+                                if (ev.hostTeamNum && ev.hostTeamNum !== this.myTeamNum) {
+                                    msgText = msgText
+                                        .replace(/【味方】/g, '[[TMP_ENEMY]]')
+                                        .replace(/【敵】/g, '【味方】')
+                                        .replace(/\[\[TMP_ENEMY\]\]/g, '【敵】')
+                                        .replace(/【味方チーム】/g, '[[TMP_ENEMY_T]]')
+                                        .replace(/【敵チーム】/g, '【味方チーム】')
+                                        .replace(/\[\[TMP_ENEMY_T\]\]/g, '【敵チーム】')
+                                        .replace(/味方チーム/g, '[[TMP_E_PLAIN]]')
+                                        .replace(/敵チーム/g, '味方チーム')
+                                        .replace(/\[\[TMP_E_PLAIN\]\]/g, '敵チーム');
+                                }
+                                this.battleLogs.push({ msg: msgText, colorClass: ev.colorClass, teamType: localTeamType });
+                            }
+                        });
+                    }
+                    this.battleLogs.push({
+                        msg: `🟢 ルームID${this.roomCode ? `「${this.roomCode}」` : ''}から進行中のバトルに復帰しました！（ターン ${this.turn}）`,
+                        colorClass: 'text-emerald-300 font-bold',
+                        teamType: 'system'
+                    });
+                    if (this.resumeStartedAt) {
+                        this.elapsedSeconds = Math.max(0, Math.floor((Date.now() - this.resumeStartedAt) / 1000));
+                    }
+                }
+            }
+
+            applySlotMetaToFighter(fighter, slot, teamNum, slotIdx) {
+                if (!fighter) return;
+                const isMyTeam = (teamNum === this.myTeamNum);
+                const isSlotBot = !slot || slot.type === 'bot' || !!slot.botTakeover || !slot.uid;
+                fighter.ownerUid = slot ? (slot.uid || slot.originalUid || null) : null;
+                fighter.ownerName = slot ? (slot.playerName || slot.originalPlayerName || '') : '';
+                if (isMyTeam) {
+                    if (!this.controlSingleAllyOnly) {
+                        fighter.roleType = 'you';
+                        fighter.roleBadge = slotIdx === 0 ? 'LEADER' : `${slotIdx + 1}体目`;
+                        fighter.isBot = false;
+                    } else if (this.myControlSlots.includes(slotIdx) && !isSlotBot) {
+                        fighter.roleType = 'you';
+                        fighter.roleBadge = 'YOU';
+                        fighter.isBot = false;
+                    } else if (isSlotBot) {
+                        fighter.roleType = 'bot';
+                        fighter.roleBadge = (slot && slot.botTakeover) ? 'BOT(代打)' : 'BOT';
+                        fighter.isBot = true;
+                    } else {
+                        fighter.roleType = 'ally_player';
+                        fighter.roleBadge = slot.playerName ? slot.playerName.slice(0, 6) : `味方P${slotIdx + 1}`;
+                        fighter.isBot = false;
+                    }
+                } else {
+                    if (isSlotBot) {
+                        fighter.roleType = 'bot';
+                        fighter.roleBadge = (slot && slot.botTakeover) ? 'BOT(代打)' : 'BOT';
+                        fighter.isBot = true;
+                    } else {
+                        fighter.roleType = (this.isOnlineSynced || this.isOnlineBattleMode) ? 'enemy_player' : 'bot';
+                        fighter.roleBadge = !this.controlSingleAllyOnly
+                            ? (slotIdx === 0 ? 'BOSS' : ((this.isOnlineSynced || this.isOnlineBattleMode) ? `敵${slotIdx + 1}` : 'BOT'))
+                            : (slot.playerName ? slot.playerName.slice(0, 6) : `敵P${slotIdx + 1}`);
+                        fighter.isBot = !(this.isOnlineSynced || this.isOnlineBattleMode);
+                    }
+                }
+            }
+
+            updateOnlineRoleCounts() {
+                if (!this.allies || !this.enemies) return;
+                this.allyHumanCount = this.allies.filter(a => a && !a.isBot).length;
+                this.allyBotCount = Math.max(0, 3 - this.allyHumanCount);
+                this.enemyHumanCount = this.enemies.filter(e => e && !e.isBot).length;
+                this.enemyBotCount = Math.max(0, 3 - this.enemyHumanCount);
             }
 
             isMyTurnOnline() {
@@ -4929,9 +5339,12 @@ pasha_dark: {
                 return this.p1Action === null;
             }
 
-            startElapsedTimer() {
+            startElapsedTimer(initialSeconds = 0) {
                 this.stopElapsedTimer();
-                this.elapsedSeconds = 0;
+                this.elapsedSeconds = Math.max(0, Math.floor(initialSeconds || 0));
+                if (this.onElapsedTimerUpdate) {
+                    this.onElapsedTimerUpdate(this.elapsedSeconds);
+                }
                 this.elapsedTimerId = setInterval(() => {
                     this.elapsedSeconds++;
                     if (this.onElapsedTimerUpdate) {
@@ -5192,7 +5605,7 @@ pasha_dark: {
                 if (this.isNewBattle && this.isOnlineSynced) {
                     this.checkPashaPassive();
                     this.initOnline3v3Sync();
-                    this.startElapsedTimer();
+                    this.startElapsedTimer(this.elapsedSeconds || 0);
                     if (this.onStateChange) this.onStateChange(this);
                     return;
                 }
@@ -5274,52 +5687,610 @@ pasha_dark: {
                 }
             }
 
+            async notifyOnlineDeparture(reason = 'exit', useTx = false) {
+                if (!this.roomId || !window.fbDb || !window.fbDoc || !this.onlineClientId) return;
+                const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', this.roomId);
+                const myUid = this.onlineClientId;
+                const now = Date.now();
+                const baseUpdates = {
+                    [`slotLeaveFlags.${myUid}`]: now,
+                    [`battleHeartbeats.${myUid}`]: 0,
+                    updatedAt: now
+                };
+                if (this.isOnlineHost) {
+                    baseUpdates.hostLeftAt = now;
+                }
+                if (!useTx || !this.isOnlineHost || !window.fbRunTransaction) {
+                    try {
+                        await window.fbUpdateDoc(roomRef, baseUpdates);
+                    } catch (e) {}
+                    return;
+                }
+                try {
+                    await window.fbRunTransaction(window.fbDb, async (tx) => {
+                        const snap = await tx.get(roomRef);
+                        if (!snap.exists()) return;
+                        const rd = snap.data();
+                        if (!rd || rd.status === 'ended' || (rd.battleState && rd.battleState.battleEnded)) return;
+
+                        const t1 = (rd.team1Slots || []).map(s => {
+                            if (s && s.uid === myUid && s.type === 'human') {
+                                return {
+                                    ...s,
+                                    type: 'bot',
+                                    botTakeover: true,
+                                    originalUid: s.originalUid || s.uid,
+                                    originalPlayerId: s.originalPlayerId || s.playerId || null,
+                                    originalPlayerName: s.originalPlayerName || s.playerName || ''
+                                };
+                            }
+                            return s;
+                        });
+                        const t2 = (rd.team2Slots || []).map(s => {
+                            if (s && s.uid === myUid && s.type === 'human') {
+                                return {
+                                    ...s,
+                                    type: 'bot',
+                                    botTakeover: true,
+                                    originalUid: s.originalUid || s.uid,
+                                    originalPlayerId: s.originalPlayerId || s.playerId || null,
+                                    originalPlayerName: s.originalPlayerName || s.playerName || ''
+                                };
+                            }
+                            return s;
+                        });
+
+                        const heartbeats = { ...(rd.battleHeartbeats || {}), [myUid]: 0 };
+                        const leaveFlags = { ...(rd.slotLeaveFlags || {}), [myUid]: now };
+                        const rejoinMap = rd.slotRejoinAt || {};
+
+                        let nextHostUid = rd.hostUid;
+                        let promoted = false;
+                        if (rd.hostUid === myUid) {
+                            const candidates = [...t1, ...t2].filter(s => {
+                                if (!s || s.type !== 'human' || !s.uid || s.uid === myUid || s.botTakeover) return false;
+                                if ((leaveFlags[s.uid] || 0) > (rejoinMap[s.uid] || 0)) return false;
+                                const hb = Math.max(heartbeats[s.uid] || 0, s.lastSeen || 0);
+                                return hb === 0 ? (now - (rd.startedAt || now) < 16000) : (now - hb < 16000);
+                            });
+                            if (candidates.length > 0) {
+                                nextHostUid = candidates[0].uid;
+                                promoted = true;
+                            }
+                        }
+
+                        const bsUpdate = rd.battleState ? { ...rd.battleState } : null;
+                        if (bsUpdate) {
+                            if (Array.isArray(bsUpdate.team1Chars)) {
+                                bsUpdate.team1Chars = bsUpdate.team1Chars.map((c, idx) =>
+                                    (t1[idx] && t1[idx].botTakeover) ? { ...c, isBot: true } : c
+                                );
+                            }
+                            if (Array.isArray(bsUpdate.team2Chars)) {
+                                bsUpdate.team2Chars = bsUpdate.team2Chars.map((c, idx) =>
+                                    (t2[idx] && t2[idx].botTakeover) ? { ...c, isBot: true } : c
+                                );
+                            }
+                        }
+
+                        const txPayload = {
+                            team1Slots: t1,
+                            team2Slots: t2,
+                            battleHeartbeats: heartbeats,
+                            slotLeaveFlags: leaveFlags,
+                            updatedAt: now
+                        };
+                        if (bsUpdate) txPayload.battleState = bsUpdate;
+                        if (promoted) {
+                            txPayload.hostUid = nextHostUid;
+                            txPayload.hostLastSeen = now;
+                            txPayload.hostReclaimedAt = now;
+                        } else if (rd.hostUid === myUid) {
+                            txPayload.hostLeftAt = now;
+                        }
+                        tx.update(roomRef, txPayload);
+                    });
+                } catch (e) {
+                    try { await window.fbUpdateDoc(roomRef, baseUpdates); } catch (_) {}
+                }
+            }
+
+            syncRejoinedHumansFromRoomData(data) {
+                if (!data || !this.team1Slots || !this.team2Slots) return false;
+                let changed = false;
+                const checkTeam = (teamNum, remoteSlots, localSlots, fighters) => {
+                    if (!Array.isArray(remoteSlots) || !Array.isArray(fighters)) return;
+                    for (let i = 0; i < remoteSlots.length; i++) {
+                        const rSlot = remoteSlots[i];
+                        const lSlot = localSlots[i];
+                        const fighter = fighters[i];
+                        if (!rSlot || !fighter) continue;
+                        if (rSlot.type === 'human' && !rSlot.botTakeover && rSlot.uid && (fighter.isBot || (lSlot && lSlot.botTakeover))) {
+                            localSlots[i] = { ...rSlot };
+                            this.applySlotMetaToFighter(fighter, rSlot, teamNum, i);
+                            this.log(`🟢 ${rSlot.playerName || fighter.charName} がオンライン対戦に復帰しました！（BOT → 人間操作）`, 'text-emerald-300 font-bold');
+                            changed = true;
+                        } else if (rSlot.type === 'bot' && rSlot.botTakeover && !fighter.isBot && lSlot && lSlot.type === 'human') {
+                            localSlots[i] = { ...rSlot };
+                            this.applySlotMetaToFighter(fighter, rSlot, teamNum, i);
+                            changed = true;
+                        }
+                    }
+                };
+                checkTeam(1, data.team1Slots, this.team1Slots, this.team1Fighters);
+                checkTeam(2, data.team2Slots, this.team2Slots, this.team2Fighters);
+                if (changed) {
+                    this.updateOnlineRoleCounts();
+                    if (this.onStateChange) this.onStateChange(this);
+                }
+                return changed;
+            }
+
+            async checkOnlineParticipantHealth(data) {
+                if (!this.isOnlineSynced || !this.isOnlineHost || !data || this.battleEnded) return;
+                if (this._checkingHealth) return;
+                this._checkingHealth = true;
+                try {
+                    const now = Date.now();
+                    const heartbeats = data.battleHeartbeats || {};
+                    const leaveFlags = data.slotLeaveFlags || {};
+                    const rejoinMap = data.slotRejoinAt || {};
+                    const graceFloor = Math.max(data.startedAt || 0, data.hostReclaimedAt || 0, this._hostStartedAt || 0);
+                    let convertedAny = false;
+                    let awaitedConverted = null;
+
+                    const scanTeam = (teamNum, localSlots, fighters) => {
+                        if (!Array.isArray(localSlots) || !Array.isArray(fighters)) return;
+                        for (let i = 0; i < localSlots.length; i++) {
+                            const sl = localSlots[i];
+                            const fighter = fighters[i];
+                            if (!sl || sl.type !== 'human' || !sl.uid || sl.uid === this.onlineClientId || sl.botTakeover) continue;
+
+                            const uid = sl.uid;
+                            const rejoinedAt = rejoinMap[uid] || 0;
+                            const leaveAt = leaveFlags[uid] || 0;
+                            const explicitlyLeft = leaveAt > rejoinedAt && leaveAt >= (data.startedAt || 0) - 5000;
+                            const lastHb = Math.max(heartbeats[uid] || 0, sl.lastSeen || 0, rejoinedAt);
+                            const refGrace = Math.max(graceFloor, rejoinedAt);
+                            const hbTimedOut = (now - refGrace > 15000) && (now - (lastHb || refGrace) > 15000);
+
+                            if (explicitlyLeft || hbTimedOut) {
+                                const displayName = sl.originalPlayerName || sl.playerName || (fighter ? fighter.charName : `P${i + 1}`);
+                                localSlots[i] = {
+                                    ...sl,
+                                    type: 'bot',
+                                    botTakeover: true,
+                                    originalUid: sl.originalUid || uid,
+                                    originalPlayerId: sl.originalPlayerId || sl.playerId || null,
+                                    originalPlayerName: displayName
+                                };
+                                if (fighter) {
+                                    this.applySlotMetaToFighter(fighter, localSlots[i], teamNum, i);
+                                }
+                                this.log(
+                                    `🤖 ${displayName} (${fighter ? fighter.charName : ''}) の${explicitlyLeft ? '退出/サイト終了' : '通信切断'}を検知したため、自動でBOT操作に切り替えました！（ルームID再入力で復帰可能）`,
+                                    'text-amber-300 font-bold'
+                                );
+                                convertedAny = true;
+                                if (this.onlineAwaitingTeam === teamNum && this.onlineAwaitingSlot === i && this.onlineAwaitingUid === uid) {
+                                    awaitedConverted = { teamNum, slotIdx: i, uid, fighter };
+                                }
+                            }
+                        }
+                    };
+
+                    scanTeam(1, this.team1Slots, this.team1Fighters);
+                    scanTeam(2, this.team2Slots, this.team2Fighters);
+
+                    if (convertedAny) {
+                        this.updateOnlineRoleCounts();
+                        const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', this.roomId);
+                        if (awaitedConverted && !this._processingRemoteAction && !this.battleEnded) {
+                            if (this._hostRemoteWaitTimeout) {
+                                clearTimeout(this._hostRemoteWaitTimeout);
+                                this._hostRemoteWaitTimeout = null;
+                            }
+                            const { teamNum, slotIdx, uid, fighter } = awaitedConverted;
+                            const teamArr = teamNum === 1 ? this.team1Fighters : this.team2Fighters;
+                            const oppArr = teamNum === 1 ? this.team2Fighters : this.team1Fighters;
+                            const livingOpp = oppArr.filter(o => o && o.hp > 0);
+                            const stepSeqSnap = this.onlineStepSeq;
+                            if (!fighter || fighter.hp <= 0 || livingOpp.length === 0) {
+                                await this.publishOnlineBattleState(roomRef, { team1Slots: this.team1Slots, team2Slots: this.team2Slots });
+                                this.turnCanonicalSlot++;
+                                await this.advanceOnlineHostStep();
+                            } else {
+                                if (!this.botAdapter) this.botAdapter = new BotInputAdapter();
+                                const botSkill = fighter.eggplantReady
+                                    ? 'momo_eggplant_burst'
+                                    : (fighter.isResting ? 'rest' : this.botAdapter.getDecision(fighter, livingOpp[0]));
+                                const skill = (fighter.skills && fighter.skills.find(s => s.id === botSkill)) || (fighter.skills && fighter.skills[0]);
+                                const targetPool = (skill && skill.targetType === 'single_ally') ? teamArr.filter(a => a && a.hp > 0) : livingOpp;
+                                let defender = targetPool[Math.floor(Math.random() * Math.max(1, targetPool.length))] || livingOpp[0];
+                                const targetTeam = (skill && skill.targetType === 'single_ally') ? teamNum : (teamNum === 1 ? 2 : 1);
+                                const targetArr = targetTeam === 1 ? this.team1Fighters : this.team2Fighters;
+                                const targetSlot = Math.max(0, targetArr.indexOf(defender));
+
+                                await this.publishOnlineBattleState(roomRef, { team1Slots: this.team1Slots, team2Slots: this.team2Slots });
+                                this._processingRemoteAction = true;
+                                try {
+                                    await this.processOnlineHostHumanAction({
+                                        stepSeq: stepSeqSnap,
+                                        uid,
+                                        teamNum,
+                                        slotIdx,
+                                        skillId: botSkill,
+                                        targetTeam,
+                                        targetSlot
+                                    });
+                                } finally {
+                                    this._processingRemoteAction = false;
+                                }
+                            }
+                        } else {
+                            await this.publishOnlineBattleState(roomRef, { team1Slots: this.team1Slots, team2Slots: this.team2Slots });
+                            if (this.onStateChange) this.onStateChange(this);
+                        }
+                    }
+                } finally {
+                    this._checkingHealth = false;
+                }
+            }
+
+            async checkHostHealthAndMigrate(data) {
+                if (!this.isOnlineSynced || this.isOnlineHost || !data || this.battleEnded) return;
+                if (this._attemptingHostTakeover) return;
+
+                if (data.hostUid === this.onlineClientId) {
+                    await this.promoteToOnlineHost(data);
+                    return;
+                }
+
+                const now = Date.now();
+                const curHostUid = data.hostUid;
+                const heartbeats = data.battleHeartbeats || {};
+                const leaveFlags = data.slotLeaveFlags || {};
+                const rejoinMap = data.slotRejoinAt || {};
+
+                const hostLeft = !!(data.hostLeftAt && data.hostLeftAt > (data.hostReclaimedAt || 0));
+                const hostLeaveFlag = (curHostUid && (leaveFlags[curHostUid] || 0) > (rejoinMap[curHostUid] || 0));
+                const hostHb = Math.max(
+                    (curHostUid && heartbeats[curHostUid]) ? heartbeats[curHostUid] : 0,
+                    data.hostLastSeen || 0
+                );
+                const graceRef = Math.max(data.startedAt || 0, data.hostReclaimedAt || 0);
+                const hostTimedOut = (now - graceRef > 15000) && (hostHb > 0 ? (now - hostHb > 15000) : true);
+
+                if (!hostLeft && !hostLeaveFlag && !hostTimedOut) return;
+
+                const allSlots = [...(data.team1Slots || []), ...(data.team2Slots || [])];
+                const activeCandidates = allSlots.filter(s => {
+                    if (!s || s.type !== 'human' || !s.uid || s.uid === curHostUid || s.botTakeover) return false;
+                    if ((leaveFlags[s.uid] || 0) > (rejoinMap[s.uid] || 0)) return false;
+                    const hb = Math.max(heartbeats[s.uid] || 0, s.lastSeen || 0, rejoinMap[s.uid] || 0);
+                    return hb > 0 ? (now - hb < 16000) : (now - graceRef < 16000);
+                });
+
+                const primaryUid = activeCandidates.length > 0 ? activeCandidates[0].uid : this.onlineClientId;
+                const deadSince = Math.max(data.hostLeftAt || 0, hostHb || graceRef);
+                if (primaryUid !== this.onlineClientId && (now - deadSince < 19000)) {
+                    return;
+                }
+                if (now - (this._hostReclaimAttemptedAt || 0) < 3500) return;
+
+                this._attemptingHostTakeover = true;
+                this._hostReclaimAttemptedAt = now;
+                try {
+                    const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', this.roomId);
+                    const result = await window.fbRunTransaction(window.fbDb, async (tx) => {
+                        const snap = await tx.get(roomRef);
+                        if (!snap.exists()) return null;
+                        const rd = snap.data();
+                        if (!rd || rd.status === 'ended' || (rd.battleState && rd.battleState.battleEnded)) return null;
+                        if (rd.hostUid === this.onlineClientId) return { rd, alreadyHost: true };
+
+                        const txNow = Date.now();
+                        const txHb = (rd.hostUid && rd.battleHeartbeats?.[rd.hostUid]) ? Math.max(rd.battleHeartbeats[rd.hostUid], rd.hostLastSeen || 0) : (rd.hostLastSeen || 0);
+                        const txLeft = !!(rd.hostLeftAt && rd.hostLeftAt > (rd.hostReclaimedAt || 0));
+                        const txHostFlag = !!(rd.hostUid && (rd.slotLeaveFlags?.[rd.hostUid] || 0) > (rd.slotRejoinAt?.[rd.hostUid] || 0));
+                        if (!txLeft && !txHostFlag && txHb > 0 && (txNow - txHb < 14000)) {
+                            return null;
+                        }
+
+                        const markOldHostBot = (arr) => (arr || []).map(s => {
+                            if (s && s.uid === rd.hostUid && s.type === 'human') {
+                                return {
+                                    ...s,
+                                    type: 'bot',
+                                    botTakeover: true,
+                                    originalUid: s.originalUid || s.uid,
+                                    originalPlayerId: s.originalPlayerId || s.playerId || null,
+                                    originalPlayerName: s.originalPlayerName || s.playerName || ''
+                                };
+                            }
+                            return s;
+                        });
+                        const t1 = markOldHostBot(rd.team1Slots);
+                        const t2 = markOldHostBot(rd.team2Slots);
+                        const txPayload = {
+                            hostUid: this.onlineClientId,
+                            hostLastSeen: txNow,
+                            hostReclaimedAt: txNow,
+                            team1Slots: t1,
+                            team2Slots: t2,
+                            [`battleHeartbeats.${this.onlineClientId}`]: txNow,
+                            updatedAt: txNow
+                        };
+                        tx.update(roomRef, txPayload);
+                        return { rd: { ...rd, ...txPayload, team1Slots: t1, team2Slots: t2 } };
+                    });
+                    if (result && result.rd) {
+                        await this.promoteToOnlineHost(result.rd);
+                    }
+                } catch (e) {
+                    console.warn('Host migration attempt error:', e);
+                } finally {
+                    this._attemptingHostTakeover = false;
+                }
+            }
+
+            async promoteToOnlineHost(data) {
+                if (!this.isOnlineSynced || this.isOnlineHost || this.battleEnded) return;
+                if (data && data.battleState && typeof data.battleState.seq === 'number' && data.battleState.seq > this.lastAppliedOnlineSeq) {
+                    await this.applyOnlineBattleState(data.battleState, data);
+                }
+                if (this.battleEnded) return;
+                this.isOnlineHost = true;
+                this._hostStartedAt = Date.now();
+                this._processingRemoteAction = false;
+                this.waitingForOpponent = false;
+                this.isProcessing = false;
+                if (data) {
+                    this.latestRoomData = data;
+                    this.syncRejoinedHumansFromRoomData(data);
+                }
+                this.log('👑 前のホストの接続が切れたため、あなたが進行ホストを引き継ぎました！（旧ホストはBOT操作）', 'text-amber-300 font-bold');
+                await this.resumeOnlineHostLoop();
+            }
+
+            async resumeOnlineHostLoop() {
+                if (!this.isOnlineSynced || !this.isOnlineHost || this.battleEnded) return;
+                const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', this.roomId);
+                this._stepGen = (this._stepGen || 0) + 1;
+                const myGen = this._stepGen;
+
+                if (this._hostRemoteWaitTimeout) {
+                    clearTimeout(this._hostRemoteWaitTimeout);
+                    this._hostRemoteWaitTimeout = null;
+                }
+
+                if (this.onlineAwaitingTeam !== null && typeof this.onlineAwaitingSlot === 'number') {
+                    const teamNum = this.onlineAwaitingTeam;
+                    const slotIdx = this.onlineAwaitingSlot;
+                    const teamArr = teamNum === 1 ? this.team1Fighters : this.team2Fighters;
+                    const slotsArr = teamNum === 1 ? this.team1Slots : this.team2Slots;
+                    const actor = teamArr && teamArr[slotIdx];
+                    const slotMeta = slotsArr && slotsArr[slotIdx];
+
+                    if (!actor || actor.hp <= 0) {
+                        this.turnCanonicalSlot++;
+                        await this.advanceOnlineHostStep();
+                        return;
+                    }
+
+                    const isNowBot = !slotMeta || slotMeta.type === 'bot' || !!slotMeta.botTakeover || actor.isBot || !slotMeta.uid;
+                    if (isNowBot) {
+                        const oppArr = teamNum === 1 ? this.team2Fighters : this.team1Fighters;
+                        const livingOpp = oppArr.filter(o => o && o.hp > 0);
+                        if (livingOpp.length === 0) {
+                            await this.checkWinner();
+                            await this.publishOnlineBattleState(roomRef, { team1Slots: this.team1Slots, team2Slots: this.team2Slots, pendingAction: null });
+                            return;
+                        }
+                        if (!this.botAdapter) this.botAdapter = new BotInputAdapter();
+                        const botSkill = actor.eggplantReady
+                            ? 'momo_eggplant_burst'
+                            : (actor.isResting ? 'rest' : this.botAdapter.getDecision(actor, livingOpp[0]));
+                        const skill = (actor.skills && actor.skills.find(s => s.id === botSkill)) || (actor.skills && actor.skills[0]);
+                        const targetPool = (skill && skill.targetType === 'single_ally') ? teamArr.filter(a => a && a.hp > 0) : livingOpp;
+                        const defender = targetPool[Math.floor(Math.random() * Math.max(1, targetPool.length))] || livingOpp[0];
+                        const targetTeam = (skill && skill.targetType === 'single_ally') ? teamNum : (teamNum === 1 ? 2 : 1);
+                        const targetArr = targetTeam === 1 ? this.team1Fighters : this.team2Fighters;
+                        const targetSlot = Math.max(0, targetArr.indexOf(defender));
+
+                        this._processingRemoteAction = true;
+                        try {
+                            await this.publishOnlineBattleState(roomRef, { team1Slots: this.team1Slots, team2Slots: this.team2Slots });
+                            await this.processOnlineHostHumanAction({
+                                stepSeq: this.onlineStepSeq,
+                                uid: this.onlineAwaitingUid || slotMeta?.uid || 'bot',
+                                teamNum,
+                                slotIdx,
+                                skillId: botSkill,
+                                targetTeam,
+                                targetSlot
+                            });
+                        } finally {
+                            this._processingRemoteAction = false;
+                        }
+                        return;
+                    }
+
+                    if (teamNum === this.myTeamNum && this.myControlSlots.includes(slotIdx)) {
+                        this.activeAllyIndex = slotIdx;
+                        this.currentControllingAllyIndex = slotIdx;
+                        this.p1 = actor;
+                        this.isProcessing = false;
+                        this.waitingForOpponent = false;
+                        this.onlineAwaitingUid = slotMeta.uid;
+                        await this.publishOnlineBattleState(roomRef, { team1Slots: this.team1Slots, team2Slots: this.team2Slots, pendingAction: null });
+                        this.startTimer();
+                        if (this.onStateChange) this.onStateChange(this);
+                        return;
+                    }
+
+                    // 他のリモート人間プレイヤーの行動を待機中にホストを引き継いだ場合
+                    this.isProcessing = false;
+                    this.waitingForOpponent = true;
+                    this.onlineAwaitingUid = slotMeta.uid;
+                    const waitSeq = this.onlineStepSeq;
+                    await this.publishOnlineBattleState(roomRef, { team1Slots: this.team1Slots, team2Slots: this.team2Slots, pendingAction: null });
+                    if (this.onStateChange) this.onStateChange(this);
+                    this._hostRemoteWaitTimeout = setTimeout(async () => {
+                        this._hostRemoteWaitTimeout = null;
+                        if (this.battleEnded || myGen !== this._stepGen || this.onlineStepSeq !== waitSeq) return;
+                        if (this.onlineAwaitingTeam !== teamNum || this.onlineAwaitingSlot !== slotIdx) return;
+                        const oppArr = teamNum === 1 ? this.team2Fighters : this.team1Fighters;
+                        const livingOpp = oppArr.filter(o => o && o.hp > 0);
+                        const defTarget = livingOpp[Math.floor(Math.random() * Math.max(1, livingOpp.length))] || oppArr[0];
+                        const fallbackSkill = this.botAdapter.getDecision(actor, defTarget);
+                        this.log(`⏰ ${actor.charName} の応答がないため自動選択を実行します！`, 'text-amber-300');
+                        await this.processOnlineHostHumanAction({
+                            stepSeq: waitSeq,
+                            uid: slotMeta.uid,
+                            teamNum,
+                            slotIdx,
+                            skillId: fallbackSkill,
+                            targetTeam: teamNum === 1 ? 2 : 1,
+                            targetSlot: oppArr.indexOf(defTarget) >= 0 ? oppArr.indexOf(defTarget) : 0
+                        });
+                    }, 24000);
+                    return;
+                }
+
+                this.isProcessing = false;
+                this.waitingForOpponent = false;
+                await this.publishOnlineBattleState(roomRef, { team1Slots: this.team1Slots, team2Slots: this.team2Slots });
+                if (this.turnCanonicalPhase >= 2) {
+                    this.endTurnPhase();
+                    this.onlineStepSeq++;
+                    await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                    await this.startOnlineHostTurn();
+                } else {
+                    await this.advanceOnlineHostStep();
+                }
+            }
+
             async initOnline3v3Sync() {
                 if (this.onlineSyncStarted || !this.roomId || !window.fbDb) return;
                 this.onlineSyncStarted = true;
+                this._hostStartedAt = Date.now();
                 const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', this.roomId);
 
-                this.heartbeatTimer = setInterval(() => {
+                this._pageHideHandler = () => {
+                    if (!this.battleEnded && this.isOnlineSynced) {
+                        this.notifyOnlineDeparture('pagehide', false);
+                    }
+                };
+                window.addEventListener('pagehide', this._pageHideHandler);
+
+                this.heartbeatTimer = setInterval(async () => {
                     if (this.battleEnded || !this.isOnlineSynced) return;
-                    const hbPayload = { [`battleHeartbeats.${this.onlineClientId}`]: Date.now() };
-                    if (this.isOnlineHost) hbPayload.hostLastSeen = Date.now();
-                    window.fbUpdateDoc(roomRef, hbPayload).catch(() => {});
-                }, 4000);
-
-                this.firestoreUnsub = window.fbOnSnapshot(roomRef, (snapshot) => {
-                    const data = snapshot.data ? snapshot.data() : null;
-                    if (!data) return;
-                    this.latestRoomData = data;
-
-                    if (this.isOnlineHost) {
-                        const pa = data.pendingAction;
-                        if (
-                            pa &&
-                            pa.stepSeq === this.onlineStepSeq &&
-                            this.onlineAwaitingTeam !== null &&
-                            pa.uid === this.onlineAwaitingUid &&
-                            !this._processingRemoteAction &&
-                            !this.battleEnded
-                        ) {
-                            this._processingRemoteAction = true;
-                            this.processOnlineHostHumanAction(pa).finally(() => {
-                                this._processingRemoteAction = false;
-                            });
+                    const now = Date.now();
+                    const hbPayload = { [`battleHeartbeats.${this.onlineClientId}`]: now };
+                    if (this.isOnlineHost) hbPayload.hostLastSeen = now;
+                    try {
+                        await window.fbUpdateDoc(roomRef, hbPayload);
+                        this._netFailCount = 0;
+                    } catch (e) {
+                        this._netFailCount = (this._netFailCount || 0) + 1;
+                        if (this._netFailCount === 1) {
+                            this.log('⚠️ 通信が不安定です… 再接続を試みています', 'text-amber-300 text-xs');
                         }
-                    } else {
-                        if (data.hostLastSeen && (Date.now() - data.hostLastSeen > 28000) && !this.battleEnded && this.isOnlineSynced) {
-                            this.log('⚠️ ホストとの接続が切断されたため、BOT戦へ切り替えます。', 'text-amber-400 font-bold');
+                        if (this._netFailCount >= 4 && !this.battleEnded && this.isOnlineSynced) {
+                            this.log('⚠️ インターネット通信エラーが継続したため、一時的にBOTモードへ切り替えます（同じルームIDを入力すると復帰できます）。', 'text-amber-400 font-bold');
                             this.fallbackToBotMode();
-                            return;
-                        }
-                        if (data.battleState && typeof data.battleState.seq === 'number' && data.battleState.seq > this.lastAppliedOnlineSeq) {
-                            this.applyOnlineBattleState(data.battleState, data);
                         }
                     }
-                }, (err) => {
-                    console.error('Online 3v3 listener error:', err);
-                    this.fallbackToBotMode();
-                });
+                }, 4000);
+
+                this.healthMonitorTimer = setInterval(() => {
+                    if (this.battleEnded || !this.isOnlineSynced || !this.latestRoomData) return;
+                    if (this.isOnlineHost) {
+                        this.checkOnlineParticipantHealth(this.latestRoomData);
+                    } else {
+                        this.checkHostHealthAndMigrate(this.latestRoomData);
+                    }
+                }, 3000);
+
+                const attachOnlineListener = () => {
+                    if (this.battleEnded || !this.isOnlineSynced) return;
+                    if (this.firestoreUnsub) {
+                        this.firestoreUnsub();
+                        this.firestoreUnsub = null;
+                    }
+                    this.firestoreUnsub = window.fbOnSnapshot(roomRef, async (snapshot) => {
+                        const data = snapshot.data ? snapshot.data() : null;
+                        if (!data) return;
+                        this._listenerRetryCount = 0;
+                        this._netFailCount = 0;
+                        this.latestRoomData = data;
+
+                        if (this.isOnlineHost) {
+                            const hadSlotChange = this.syncRejoinedHumansFromRoomData(data);
+                            if (hadSlotChange && !this._processingRemoteAction && !this.battleEnded) {
+                                await this.publishOnlineBattleState(roomRef);
+                            }
+                            this.checkOnlineParticipantHealth(data);
+                            const pa = data.pendingAction;
+                            if (
+                                pa &&
+                                pa.stepSeq === this.onlineStepSeq &&
+                                this.onlineAwaitingTeam !== null &&
+                                pa.uid === this.onlineAwaitingUid &&
+                                !this._processingRemoteAction &&
+                                !this.battleEnded
+                            ) {
+                                this._processingRemoteAction = true;
+                                this.processOnlineHostHumanAction(pa).finally(() => {
+                                    this._processingRemoteAction = false;
+                                });
+                            }
+                        } else {
+                            this.syncRejoinedHumansFromRoomData(data);
+                            if (data.battleState && typeof data.battleState.seq === 'number' && data.battleState.seq > this.lastAppliedOnlineSeq) {
+                                await this.applyOnlineBattleState(data.battleState, data);
+                            }
+                            if (!this.battleEnded && this.isOnlineSynced) {
+                                await this.checkHostHealthAndMigrate(data);
+                            }
+                        }
+                    }, (err) => {
+                        console.error('Online 3v3 listener error:', err);
+                        this._listenerRetryCount = (this._listenerRetryCount || 0) + 1;
+                        if (this._listenerRetryCount <= 3 && !this.battleEnded && this.isOnlineSynced) {
+                            this.log(`⚠️ 通信エラーにより再同期を試行中 (${this._listenerRetryCount}/3)...`, 'text-amber-300 text-xs');
+                            if (this._listenerRetryTimer) clearTimeout(this._listenerRetryTimer);
+                            this._listenerRetryTimer = setTimeout(() => {
+                                this._listenerRetryTimer = null;
+                                attachOnlineListener();
+                            }, 2500);
+                        } else {
+                            this.log('⚠️ インターネットエラーが続いたためBOT進行へ切り替えます（再度ルームIDを入力すると復帰できます）。', 'text-amber-400 font-bold');
+                            this.fallbackToBotMode();
+                        }
+                    });
+                };
+
+                attachOnlineListener();
+
+                const initNow = Date.now();
+                const initHb = {
+                    [`battleHeartbeats.${this.onlineClientId}`]: initNow,
+                    [`slotLeaveFlags.${this.onlineClientId}`]: 0,
+                    [`slotRejoinAt.${this.onlineClientId}`]: initNow
+                };
+                if (this.isOnlineHost) initHb.hostLastSeen = initNow;
+                window.fbUpdateDoc(roomRef, initHb).catch(() => {});
+
+                if (this.isResume) {
+                    if (this.isOnlineHost) {
+                        await this.resumeOnlineHostLoop();
+                    } else if (this.isMyTurnOnline()) {
+                        this.startTimer();
+                    }
+                    return;
+                }
 
                 if (this.isOnlineHost) {
                     const t1Total = (this.team1Fighters || []).reduce((sum, c) => sum + (c ? (c.maxHp || c.hp || 0) : 0), 0);
@@ -5359,6 +6330,7 @@ pasha_dark: {
                         turn: this.turn,
                         isSuddenDeath: !!this.isSuddenDeath,
                         firstStrikerTeam: this.firstStrikerTeam,
+                        turnCanonicalOrder: Array.isArray(this.turnCanonicalOrder) ? [...this.turnCanonicalOrder] : [1, 2],
                         turnCanonicalPhase: this.turnCanonicalPhase,
                         turnCanonicalSlot: this.turnCanonicalSlot,
                         awaitingTeam: this.onlineAwaitingTeam,
@@ -5370,18 +6342,24 @@ pasha_dark: {
                         battleEnded: !!this.battleEnded,
                         winningTeam: this.winningTeam !== undefined ? this.winningTeam : null,
                         winnerText: this.winnerText || '',
+                        battleData: { ...(this.battleData || {}) },
                         team1Chars: (this.team1Fighters || []).map(f => this.serializePlayer(f)),
                         team2Chars: (this.team2Fighters || []).map(f => this.serializePlayer(f)),
                         events: [...(this._onlineEventBuffer || [])],
                         updatedAt: Date.now()
                     },
-                    hostLastSeen: Date.now()
+                    hostLastSeen: Date.now(),
+                    updatedAt: Date.now()
                 };
+                if (this.battleEnded) {
+                    payload.status = 'ended';
+                }
                 if (extraFields && typeof extraFields === 'object') {
                     Object.assign(payload, extraFields);
                 }
                 try {
                     await window.fbUpdateDoc(roomRef, payload);
+                    this._netFailCount = 0;
                 } catch (e) {
                     console.error('publishOnlineBattleState error:', e);
                 }
@@ -5786,6 +6764,9 @@ pasha_dark: {
                     this.stopElapsedTimer();
                     this.waitingForOpponent = false;
                     this.battleEnded = true;
+                    if (typeof window.clearOnlineRejoinTicket === 'function') {
+                        window.clearOnlineRejoinTicket(this.roomCode, this.roomId);
+                    }
                     const livingAllies = (this.allies || []).filter(a => a && a.hp > 0);
                     const livingEnemies = (this.enemies || []).filter(e => e && e.hp > 0);
                     let result = 'draw';
@@ -5958,6 +6939,10 @@ pasha_dark: {
                     clearTimeout(this._hostRemoteWaitTimeout);
                     this._hostRemoteWaitTimeout = null;
                 }
+                if (this._listenerRetryTimer) {
+                    clearTimeout(this._listenerRetryTimer);
+                    this._listenerRetryTimer = null;
+                }
                 if (this.firestoreUnsub) {
                     this.firestoreUnsub();
                     this.firestoreUnsub = null;
@@ -5965,6 +6950,14 @@ pasha_dark: {
                 if (this.heartbeatTimer) {
                     clearInterval(this.heartbeatTimer);
                     this.heartbeatTimer = null;
+                }
+                if (this.healthMonitorTimer) {
+                    clearInterval(this.healthMonitorTimer);
+                    this.healthMonitorTimer = null;
+                }
+                if (this._pageHideHandler) {
+                    window.removeEventListener('pagehide', this._pageHideHandler);
+                    this._pageHideHandler = null;
                 }
                 this.waitingForOpponent = false;
                 if (this.isNewBattle) {
@@ -6260,11 +7253,24 @@ pasha_dark: {
                         this.p1Action = skillId;
                         if (this.onStateChange) this.onStateChange(this);
                         const roomRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'rooms', this.roomId);
-                        try {
-                            await window.fbUpdateDoc(roomRef, { pendingAction: actionObj });
-                        } catch (e) {
-                            console.error('Online 3v3 pendingAction submit error:', e);
-                            this.fallbackToBotMode();
+                        let sentOk = false;
+                        for (let attempt = 0; attempt < 3; attempt++) {
+                            try {
+                                await window.fbUpdateDoc(roomRef, { pendingAction: actionObj });
+                                sentOk = true;
+                                this._netFailCount = 0;
+                                break;
+                            } catch (e) {
+                                console.warn(`Online 3v3 pendingAction submit error (attempt ${attempt + 1}):`, e);
+                                await new Promise(r => setTimeout(r, 450 * (attempt + 1)));
+                            }
+                        }
+                        if (!sentOk) {
+                            this._netFailCount = (this._netFailCount || 0) + 2;
+                            this.log('⚠️ 送信エラーが発生しました（通信が切れた場合は自動でBOT操作になり、ルームID再入力で復帰できます）', 'text-amber-400 text-xs');
+                            if (this._netFailCount >= 4) {
+                                this.fallbackToBotMode();
+                            }
                         }
                     }
                     return;
@@ -7849,6 +8855,9 @@ pasha_dark: {
                     this.winnerText = winnerText;
                     this.stopTimer();
                     this.stopElapsedTimer();
+                    if (typeof window.clearOnlineRejoinTicket === 'function') {
+                        window.clearOnlineRejoinTicket(this.roomCode, this.roomId);
+                    }
 
                     let result = 'draw';
                     if (this.isNewBattle) {
@@ -8040,6 +9049,10 @@ pasha_dark: {
                     clearTimeout(this._hostRemoteWaitTimeout);
                     this._hostRemoteWaitTimeout = null;
                 }
+                if (this._listenerRetryTimer) {
+                    clearTimeout(this._listenerRetryTimer);
+                    this._listenerRetryTimer = null;
+                }
                 if (this.firestoreUnsub) {
                     this.firestoreUnsub();
                     this.firestoreUnsub = null;
@@ -8048,6 +9061,14 @@ pasha_dark: {
                 if (this.heartbeatTimer) {
                     clearInterval(this.heartbeatTimer);
                     this.heartbeatTimer = null;
+                }
+                if (this.healthMonitorTimer) {
+                    clearInterval(this.healthMonitorTimer);
+                    this.healthMonitorTimer = null;
+                }
+                if (this._pageHideHandler) {
+                    window.removeEventListener('pagehide', this._pageHideHandler);
+                    this._pageHideHandler = null;
                 }
             }
         }
@@ -8959,13 +9980,22 @@ pasha_dark: {
             renderNewBattleScreen();
         }
 
-        function returnFromNewBattle() {
+        async function returnFromNewBattle() {
             audioSystem.playSelect();
             const existing = document.getElementById('battle-result-overlay');
             if (existing) existing.remove();
             const wasOnline = (window.isOnlineBattleMode || (activeNewBattle && activeNewBattle.isOnlineBattleMode));
             if (activeNewBattle) {
+                const shouldNotifyLeave = !!(activeNewBattle.isOnlineSynced && !activeNewBattle.battleEnded);
                 activeNewBattle.battleEnded = true;
+                if (shouldNotifyLeave) {
+                    try {
+                        await Promise.race([
+                            activeNewBattle.notifyOnlineDeparture('exit', true),
+                            new Promise(r => setTimeout(r, 1200))
+                        ]);
+                    } catch (e) {}
+                }
                 activeNewBattle.destroy();
                 activeNewBattle.stopElapsedTimer();
                 activeNewBattle = null;
@@ -9376,7 +10406,7 @@ pasha_dark: {
                     ? '🚪 オンライン対戦から退出'
                     : (isRun ? '🏃 戦闘離脱・選択' : '⚠️ 操作キャラクター戦闘不能！');
                 const bodyText = isOnlineBattlePopup
-                    ? '現在のオンライン対戦を退出してモード選択へ戻りますか？'
+                    ? ('現在のオンライン対戦を退出してモード選択へ戻りますか？' + (activeNewBattle && activeNewBattle.roomCode ? `<br><span class="text-amber-300 font-bold">※退出後は自動でBOT操作になり、ルームID「${activeNewBattle.roomCode}」を再入力すると途中復帰できます。</span>` : ''))
                     : (isRun
                         ? '逃げ出しますか？ バトルをスキップして結果を見るか、残っているキャラクターで戦い続けるか選択できます。'
                         : '現在の操作キャラクターが倒れました。<br>どう行動しますか？');
@@ -9424,10 +10454,11 @@ pasha_dark: {
                     ${(() => {
                         const isOnline = (window.isOnlineBattleMode || (activeNewBattle && activeNewBattle.isOnlineBattleMode));
                         let modeLabel = '⚔️ 3v3';
+                        const roomCodeTag = (isOnline && activeNewBattle && activeNewBattle.roomCode) ? ` [ID:${activeNewBattle.roomCode}]` : '';
                         if (isOnline && activeNewBattle && activeNewBattle.controlSingleAllyOnly) {
-                            modeLabel = `🌐 ${activeNewBattle.allyHumanCount}vs${activeNewBattle.enemyHumanCount} (1体操作・BOT味方${activeNewBattle.allyBotCount}/敵${activeNewBattle.enemyBotCount})`;
+                            modeLabel = `🌐${roomCodeTag} ${activeNewBattle.allyHumanCount}vs${activeNewBattle.enemyHumanCount} (BOT味${activeNewBattle.allyBotCount}/敵${activeNewBattle.enemyBotCount})`;
                         } else if (isOnline) {
-                            modeLabel = '🌐 オンライン2人戦 (3体操作)';
+                            modeLabel = `🌐${roomCodeTag} オンライン2人戦 (3体操作)`;
                         }
                         return `
                     <div class="w-full h-7 md:h-9 flex items-center justify-between gap-1 md:gap-2 px-1.5 md:px-3 bg-slate-900/95 rounded-lg border border-slate-700 shadow-md z-20 shrink-0 overflow-hidden">
