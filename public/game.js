@@ -119,10 +119,12 @@
                                 CharacterRenderer.drawCharacter(cvs, id.replace('usage-cvs-', ''));
                             } else if (id.startsWith('op-cvs-')) {
                                 CharacterRenderer.drawCharacter(cvs, id.replace('op-cvs-', ''));
-                            } else if ((id === 'header-profile-icon' || id === 'home-profile-icon' || id === 'new-battle-profile-icon') && typeof playerState !== 'undefined') {
+                            } else if ((id === 'header-profile-icon' || id === 'home-profile-icon' || id === 'new-battle-profile-icon' || id === 'friend-self-cvs') && typeof playerState !== 'undefined') {
                                 CharacterRenderer.drawCharacter(cvs, playerState.selectedIcon || 'courtney');
                             } else if (id === 'profile-main-icon' && typeof playerState !== 'undefined') {
                                 CharacterRenderer.drawCharacter(cvs, playerState.selectedIcon || 'courtney');
+                            } else if ((id.startsWith('friend-item-cvs-') || id === 'friend-detail-cvs') && cvs.dataset && cvs.dataset.charId) {
+                                CharacterRenderer.drawCharacter(cvs, cvs.dataset.charId);
                             } else if (id === 'zukan-detail-cvs') {
                                 const currentDetailId = window.lastZukanDetailId || 'courtney';
                                 CharacterRenderer.drawCharacter(cvs, currentDetailId);
@@ -1766,13 +1768,17 @@ static drawDopagaking(p, isCharged) {
             renderOnlineMultiReadyScreen('LOCAL_SOLO', roomData);
         }
 
-        async function createOnlineCodeRoom(mode = 'multi') {
+        async function createOnlineCodeRoom(mode = 'multi', inviteFriendId = null, inviteFriendName = '') {
             audioSystem.playSelect();
             setOnlineMatchStatus('🔑 ルームコードを発行中...', 'text-amber-300 font-bold');
 
             await window.initFirebaseOnline();
             if (!window.fbDb || !window.fbSetDoc) {
-                setOnlineMatchStatus('⚠️ オンラインサーバーに接続できませんでした。', 'text-red-400 font-bold');
+                if (inviteFriendId) {
+                    showModal('接続エラー', 'オンラインサーバーに接続できませんでした。');
+                } else {
+                    setOnlineMatchStatus('⚠️ オンラインサーバーに接続できませんでした。', 'text-red-400 font-bold');
+                }
                 return;
             }
 
@@ -1808,26 +1814,68 @@ static drawDopagaking(p, isCharged) {
                     pendingAction: null
                 };
                 await window.fbSetDoc(newRoomRef, roomPayload);
+
+                if (inviteFriendId && playerState.playerId) {
+                    try {
+                        const targetBoxRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'friend_boxes', inviteFriendId);
+                        await window.fbSetDoc(targetBoxRef, {
+                            roomInvites: {
+                                [playerState.playerId]: {
+                                    roomId: newRoomId,
+                                    roomCode: roomCode,
+                                    fromId: playerState.playerId,
+                                    fromName: myName,
+                                    fromIcon: myIcon,
+                                    sentAt: Date.now()
+                                }
+                            },
+                            updatedAt: Date.now()
+                        }, { merge: true });
+                    } catch (invErr) {
+                        console.warn('Friend room invite notify failed:', invErr);
+                    }
+                }
+
                 renderOnlineMultiReadyScreen(newRoomId, roomPayload);
+                if (inviteFriendId) {
+                    const toastEl = document.getElementById('room-code-copy-toast');
+                    if (toastEl) {
+                        toastEl.innerText = `✓ ${inviteFriendName || inviteFriendId}に招待を送信しました！`;
+                        setTimeout(() => { if (toastEl) toastEl.innerText = ''; }, 3000);
+                    }
+                }
             } catch (err) {
                 console.error('Create code room error:', err);
-                setOnlineMatchStatus('⚠️ ルーム作成に失敗しました。もう一度お試しください。', 'text-red-400 font-bold');
+                if (inviteFriendId) {
+                    showModal('作成失敗', '対戦ルームの作成に失敗しました。もう一度お試しください。');
+                } else {
+                    setOnlineMatchStatus('⚠️ ルーム作成に失敗しました。もう一度お試しください。', 'text-red-400 font-bold');
+                }
             }
         }
 
-        async function joinOnlineRoomByCode(mode = 'multi') {
+        async function joinOnlineRoomByCode(mode = 'multi', directCode = null) {
             audioSystem.playSelect();
             const input = document.getElementById('online-room-code-input');
-            const code = input ? input.value.trim() : '';
+            const code = directCode ? String(directCode).trim() : (input ? input.value.trim() : '');
+            const notifyJoinError = (msg) => {
+                if (directCode) {
+                    showModal('⚠️ ルーム参加エラー', msg);
+                } else {
+                    setOnlineMatchStatus(msg, 'text-red-400 font-bold');
+                }
+            };
             if (!code || code.length < 4) {
-                setOnlineMatchStatus('⚠️ 6桁のルームコードを入力してください！', 'text-red-400 font-bold');
+                notifyJoinError('⚠️ 6桁のルームコードを入力してください！');
                 return;
             }
-            setOnlineMatchStatus(`🔍 コード「${code}」のルームを検索中...`, 'text-sky-300 font-bold');
+            if (!directCode) {
+                setOnlineMatchStatus(`🔍 コード「${code}」のルームを検索中...`, 'text-sky-300 font-bold');
+            }
 
             await window.initFirebaseOnline();
             if (!window.fbDb || !window.fbCollection || !window.fbWhere || !window.fbRunTransaction) {
-                setOnlineMatchStatus('⚠️ オンラインサーバーに接続できませんでした。', 'text-red-400 font-bold');
+                notifyJoinError('⚠️ オンラインサーバーに接続できませんでした。');
                 return;
             }
 
@@ -1849,7 +1897,7 @@ static drawDopagaking(p, isCharged) {
                 matches.sort((a, b) => (b.data.createdAt || 0) - (a.data.createdAt || 0));
 
                 if (matches.length === 0) {
-                    setOnlineMatchStatus(`⚠️ コード「${code}」の待機中ルームが見つかりませんでした。`, 'text-red-400 font-bold');
+                    notifyJoinError(`⚠️ コード「${code}」の待機中ルームが見つかりませんでした。`);
                     return;
                 }
 
@@ -1893,7 +1941,7 @@ static drawDopagaking(p, isCharged) {
                 });
 
                 if (joinRes && joinRes.error) {
-                    setOnlineMatchStatus('⚠️ ' + joinRes.error, 'text-red-400 font-bold');
+                    notifyJoinError('⚠️ ' + joinRes.error);
                     return;
                 }
                 if (joinRes && joinRes.roomData) {
@@ -1901,7 +1949,7 @@ static drawDopagaking(p, isCharged) {
                 }
             } catch (err) {
                 console.error('Join by code error:', err);
-                setOnlineMatchStatus('⚠️ ルーム参加中にエラーが発生しました。', 'text-red-400 font-bold');
+                notifyJoinError('⚠️ ルーム参加中にエラーが発生しました。');
             }
         }
 
@@ -9559,9 +9607,795 @@ pasha_dark: {
             showModal("🛒 ストア", "DOPAストア機能は現在準備中です。\nガチャや毎日のボーナスでDOPAを集めてお待ちください！");
         }
 
+        window._friendState = window._friendState || {
+            activeTab: 'list', // 'list' | 'incoming' | 'outgoing'
+            loading: false,
+            statusMsg: '',
+            statusColor: 'text-slate-300',
+            lastSyncedProfileSig: '',
+            box: {
+                friends: {},
+                incomingRequests: {},
+                outgoingRequests: {},
+                roomInvites: {}
+            }
+        };
+
+        function escapeFriendHtml(str) {
+            return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function normalizeFriendPlayerId(raw) {
+            const clean = String(raw || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+            if (!clean) return '';
+            if (/^\d{4}$/.test(clean)) return 'DP-' + clean;
+            if (/^DP\d{4}$/.test(clean)) return 'DP-' + clean.slice(2);
+            return clean;
+        }
+
+        function getFriendBoxStorageKey(myId) {
+            return 'dopa_friend_box_cache_' + (myId || 'DP-LOCAL');
+        }
+
+        function loadLocalFriendBoxCache() {
+            const myId = playerState.playerId || 'DP-1004';
+            try {
+                const raw = localStorage.getItem(getFriendBoxStorageKey(myId));
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    window._friendState.box = {
+                        friends: parsed.friends || {},
+                        incomingRequests: parsed.incomingRequests || {},
+                        outgoingRequests: parsed.outgoingRequests || {},
+                        roomInvites: parsed.roomInvites || {}
+                    };
+                }
+            } catch (e) {}
+        }
+
+        function saveLocalFriendBoxCache() {
+            const myId = playerState.playerId || 'DP-1004';
+            try {
+                localStorage.setItem(getFriendBoxStorageKey(myId), JSON.stringify(window._friendState.box));
+            } catch (e) {}
+        }
+
+        function setFriendActionStatus(msg, colorClass = 'text-amber-300') {
+            window._friendState.statusMsg = msg;
+            window._friendState.statusColor = colorClass;
+            const el = document.getElementById('friend-action-status');
+            if (el) {
+                el.className = `text-[10px] font-mono min-h-[14px] ${colorClass}`;
+                el.innerText = msg;
+            }
+        }
+
+        async function syncMyPublicFriendProfile(force = false) {
+            const myId = playerState.playerId;
+            if (!myId || !window.fbDb || !window.fbDoc || !window.fbSetDoc) return;
+            const payload = {
+                playerId: myId,
+                playerName: playerState.playerName || '名無しファイター',
+                selectedIcon: playerState.selectedIcon || 'dopagaking',
+                totalBattles: playerState.totalBattles || 0,
+                wins: playerState.wins || 0,
+                losses: playerState.losses || 0,
+                startDate: playerState.startDate || '2026/10/14',
+                updatedAt: Date.now()
+            };
+            const sig = JSON.stringify([payload.playerId, payload.playerName, payload.selectedIcon, payload.totalBattles, payload.wins, payload.losses]);
+            if (!force && window._friendState.lastSyncedProfileSig === sig) return;
+            try {
+                const playerRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'players', myId);
+                await window.fbSetDoc(playerRef, payload, { merge: true });
+                window._friendState.lastSyncedProfileSig = sig;
+            } catch (e) {
+                console.warn('Sync friend public profile failed:', e);
+            }
+        }
+
+        async function fetchMyFriendBoxFromServer(showLoadingStatus = false) {
+            const myId = playerState.playerId;
+            if (!myId) return;
+            if (showLoadingStatus) {
+                window._friendState.loading = true;
+                renderFriendScreenContent();
+            }
+            const ok = await window.initFirebaseOnline();
+            if (!ok || !window.fbDb || !window.fbDoc || !window.fbGetDoc) {
+                window._friendState.loading = false;
+                if (showLoadingStatus) {
+                    setFriendActionStatus('⚠️ オンラインサーバーに接続できませんでした。', 'text-red-400');
+                }
+                renderFriendScreenContent();
+                return;
+            }
+            await syncMyPublicFriendProfile(false);
+            try {
+                const boxRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'friend_boxes', myId);
+                const snap = await window.fbGetDoc(boxRef);
+                if (snap.exists()) {
+                    const data = snap.data() || {};
+                    window._friendState.box = {
+                        friends: data.friends || {},
+                        incomingRequests: data.incomingRequests || {},
+                        outgoingRequests: data.outgoingRequests || {},
+                        roomInvites: data.roomInvites || {}
+                    };
+                    saveLocalFriendBoxCache();
+                }
+                window._friendState.loading = false;
+                if (showLoadingStatus) {
+                    window._friendState.statusMsg = '✓ 最新のフレンド情報を取得しました';
+                    window._friendState.statusColor = 'text-emerald-300';
+                }
+                renderFriendScreenContent();
+            } catch (e) {
+                console.warn('Fetch friend box failed:', e);
+                window._friendState.loading = false;
+                window._friendState.statusMsg = '⚠️ フレンド情報の取得に失敗しました';
+                window._friendState.statusColor = 'text-red-400';
+                renderFriendScreenContent();
+            }
+        }
+
+        function setFriendScreenTab(tab) {
+            audioSystem.playSelect();
+            window._friendState.activeTab = tab;
+            renderFriendScreenContent();
+        }
+
+        function refreshFriendScreenData() {
+            audioSystem.playSelect();
+            fetchMyFriendBoxFromServer(true);
+        }
+
+        async function shareMyFriendId() {
+            audioSystem.playSelect();
+            const myId = playerState.playerId || 'DP-1004';
+            const myName = playerState.playerName || '名無しファイター';
+            const shareText = `【ドパキン】フレンドになろう！\nプレイヤー名: ${myName}\nフレンドID: ${myId}\nホーム画面の「フレンド」からIDを入力して申請してね！`;
+            if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+                try {
+                    await navigator.share({
+                        title: 'ドパキン フレンド招待',
+                        text: shareText
+                    });
+                    setFriendActionStatus('✓ フレンドIDを共有しました！', 'text-emerald-300');
+                    return;
+                } catch (err) {
+                    if (err && err.name === 'AbortError') return;
+                }
+            }
+            copyTextSilently(shareText).then(() => {
+                setFriendActionStatus('✓ 紹介テキストをコピーしました！', 'text-emerald-300');
+            });
+            const lineUrl = `https://line.me/R/share?text=${encodeURIComponent(shareText)}`;
+            const safeEscapedText = escapeFriendHtml(shareText);
+            showModal('📤 フレンドIDを共有', `
+                <div class="space-y-3 text-center">
+                    <div class="text-xs text-slate-300 font-mono">下のメッセージをLINEやSNSで送れます（コピー済み）</div>
+                    <textarea readonly rows="3" class="pixel-box bg-slate-950 border-purple-500 text-amber-200 text-xs font-mono w-full p-2 outline-none resize-none">${safeEscapedText}</textarea>
+                    <div class="flex flex-wrap justify-center gap-2">
+                        <a href="${lineUrl}" target="_blank" rel="noopener noreferrer" class="pixel-btn pixel-btn-success px-4 py-2 text-xs font-bold font-pixel inline-flex items-center gap-1.5 no-underline">
+                            💬 LINEで送る
+                        </a>
+                        <button type="button" onclick="copyMyFriendInviteText()" class="pixel-btn pixel-btn-primary px-4 py-2 text-xs font-bold font-pixel">
+                            📋 文章コピー
+                        </button>
+                    </div>
+                </div>
+            `);
+        }
+
+        function copyMyFriendInviteText() {
+            audioSystem.playSelect();
+            const myId = playerState.playerId || 'DP-1004';
+            const myName = playerState.playerName || '名無しファイター';
+            const shareText = `【ドパキン】フレンドになろう！\nプレイヤー名: ${myName}\nフレンドID: ${myId}\nホーム画面の「フレンド」からIDを入力して申請してね！`;
+            copyTextSilently(shareText).then(() => {
+                setFriendActionStatus('✓ 紹介テキストをコピーしました！', 'text-emerald-300');
+                showToast('招待文をコピーしました！');
+            });
+        }
+
+        async function sendFriendRequestById() {
+            audioSystem.playSelect();
+            const inputEl = document.getElementById('friend-search-id-input');
+            const rawVal = inputEl ? inputEl.value : '';
+            const targetId = normalizeFriendPlayerId(rawVal);
+            const myId = playerState.playerId || 'DP-1004';
+            if (!targetId) {
+                setFriendActionStatus('⚠️ プレイヤーID（例: DP-1234）を入力してください', 'text-red-400');
+                return;
+            }
+            if (targetId === myId) {
+                setFriendActionStatus('⚠️ 自分自身のIDには申請できません', 'text-red-400');
+                return;
+            }
+            const box = window._friendState.box;
+            if (box.friends && box.friends[targetId]) {
+                setFriendActionStatus(`⚠️ ${targetId} とはすでにフレンドです`, 'text-amber-300');
+                return;
+            }
+            if (box.outgoingRequests && box.outgoingRequests[targetId]) {
+                setFriendActionStatus(`⚠️ ${targetId} にはすでに申請済みです`, 'text-amber-300');
+                return;
+            }
+            setFriendActionStatus(`🔍 ${targetId} を検索中...`, 'text-sky-300');
+
+            const ok = await window.initFirebaseOnline();
+            if (!ok || !window.fbDb || !window.fbDoc || !window.fbGetDoc || !window.fbSetDoc) {
+                setFriendActionStatus('⚠️ サーバーに接続できませんでした', 'text-red-400');
+                return;
+            }
+            await syncMyPublicFriendProfile(false);
+
+            try {
+                const targetPlayerRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'players', targetId);
+                const targetSnap = await window.fbGetDoc(targetPlayerRef);
+                if (!targetSnap.exists()) {
+                    setFriendActionStatus(`⚠️ ID「${targetId}」が見つかりません（相手が一度フレンド画面を開くと登録されます）`, 'text-red-400');
+                    return;
+                }
+                const tp = targetSnap.data() || {};
+                const targetName = tp.playerName || '名無しファイター';
+                const targetIcon = tp.selectedIcon || 'dopagaking';
+                const now = Date.now();
+
+                // If they already sent us a request, accept mutually immediately!
+                if (box.incomingRequests && box.incomingRequests[targetId]) {
+                    await acceptFriendRequest(targetId);
+                    if (inputEl) inputEl.value = '';
+                    return;
+                }
+
+                const myBoxRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'friend_boxes', myId);
+                const targetBoxRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'friend_boxes', targetId);
+
+                const outgoingEntry = {
+                    playerId: targetId,
+                    playerName: targetName,
+                    selectedIcon: targetIcon,
+                    requestedAt: now
+                };
+                const incomingEntry = {
+                    playerId: myId,
+                    playerName: playerState.playerName || '名無しファイター',
+                    selectedIcon: playerState.selectedIcon || 'dopagaking',
+                    requestedAt: now
+                };
+
+                await Promise.all([
+                    window.fbSetDoc(myBoxRef, { outgoingRequests: { [targetId]: outgoingEntry }, updatedAt: now }, { merge: true }),
+                    window.fbSetDoc(targetBoxRef, { incomingRequests: { [myId]: incomingEntry }, updatedAt: now }, { merge: true })
+                ]);
+
+                window._friendState.box.outgoingRequests = { ...(window._friendState.box.outgoingRequests || {}), [targetId]: outgoingEntry };
+                saveLocalFriendBoxCache();
+                if (inputEl) inputEl.value = '';
+                window._friendState.statusMsg = `✓ ${targetName}（${targetId}）にフレンド申請を送りました！`;
+                window._friendState.statusColor = 'text-emerald-300';
+                renderFriendScreenContent();
+            } catch (err) {
+                console.warn('Send friend request error:', err);
+                setFriendActionStatus('⚠️ フレンド申請の送信に失敗しました', 'text-red-400');
+            }
+        }
+
+        async function acceptFriendRequest(fromId) {
+            audioSystem.playSelect();
+            const myId = playerState.playerId || 'DP-1004';
+            if (!fromId || !window.fbDb || !window.fbRunTransaction) return;
+            setFriendActionStatus('⏳ 承認処理中...', 'text-sky-300');
+            try {
+                const now = Date.now();
+                const myBoxRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'friend_boxes', myId);
+                const fromBoxRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'friend_boxes', fromId);
+                const reqData = (window._friendState.box.incomingRequests && window._friendState.box.incomingRequests[fromId]) || {
+                    playerId: fromId,
+                    playerName: fromId,
+                    selectedIcon: 'dopagaking'
+                };
+
+                await window.fbRunTransaction(window.fbDb, async (tx) => {
+                    const mySnap = await tx.get(myBoxRef);
+                    const fromSnap = await tx.get(fromBoxRef);
+                    const myBox = mySnap.exists() ? { ...(mySnap.data() || {}) } : {};
+                    const fromBox = fromSnap.exists() ? { ...(fromSnap.data() || {}) } : {};
+
+                    const myFriends = { ...(myBox.friends || {}) };
+                    const myIncoming = { ...(myBox.incomingRequests || {}) };
+                    const myOutgoing = { ...(myBox.outgoingRequests || {}) };
+                    const incEntry = myIncoming[fromId] || reqData;
+                    myFriends[fromId] = {
+                        playerId: fromId,
+                        playerName: incEntry.playerName || reqData.playerName || fromId,
+                        selectedIcon: incEntry.selectedIcon || reqData.selectedIcon || 'dopagaking',
+                        addedAt: now
+                    };
+                    delete myIncoming[fromId];
+                    delete myOutgoing[fromId];
+
+                    const fromFriends = { ...(fromBox.friends || {}) };
+                    const fromIncoming = { ...(fromBox.incomingRequests || {}) };
+                    const fromOutgoing = { ...(fromBox.outgoingRequests || {}) };
+                    fromFriends[myId] = {
+                        playerId: myId,
+                        playerName: playerState.playerName || '名無しファイター',
+                        selectedIcon: playerState.selectedIcon || 'dopagaking',
+                        addedAt: now
+                    };
+                    delete fromIncoming[myId];
+                    delete fromOutgoing[myId];
+
+                    tx.set(myBoxRef, {
+                        friends: myFriends,
+                        incomingRequests: myIncoming,
+                        outgoingRequests: myOutgoing,
+                        roomInvites: myBox.roomInvites || {},
+                        updatedAt: now
+                    });
+                    tx.set(fromBoxRef, {
+                        friends: fromFriends,
+                        incomingRequests: fromIncoming,
+                        outgoingRequests: fromOutgoing,
+                        roomInvites: fromBox.roomInvites || {},
+                        updatedAt: now
+                    });
+                });
+
+                const box = window._friendState.box;
+                const friends = { ...(box.friends || {}) };
+                const incoming = { ...(box.incomingRequests || {}) };
+                const outgoing = { ...(box.outgoingRequests || {}) };
+                friends[fromId] = {
+                    playerId: fromId,
+                    playerName: reqData.playerName || fromId,
+                    selectedIcon: reqData.selectedIcon || 'dopagaking',
+                    addedAt: now
+                };
+                delete incoming[fromId];
+                delete outgoing[fromId];
+                window._friendState.box = { ...box, friends, incomingRequests: incoming, outgoingRequests: outgoing };
+                saveLocalFriendBoxCache();
+                window._friendState.statusMsg = `✓ ${reqData.playerName || fromId}とフレンドになりました！`;
+                window._friendState.statusColor = 'text-emerald-300';
+                window._friendState.activeTab = 'list';
+                renderFriendScreenContent();
+            } catch (err) {
+                console.warn('Accept friend error:', err);
+                setFriendActionStatus('⚠️ 承認に失敗しました', 'text-red-400');
+            }
+        }
+
+        async function rejectFriendRequest(fromId) {
+            audioSystem.playSelect();
+            const myId = playerState.playerId || 'DP-1004';
+            if (!fromId || !window.fbDb || !window.fbRunTransaction) return;
+            try {
+                const now = Date.now();
+                const myBoxRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'friend_boxes', myId);
+                const fromBoxRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'friend_boxes', fromId);
+                await window.fbRunTransaction(window.fbDb, async (tx) => {
+                    const mySnap = await tx.get(myBoxRef);
+                    const fromSnap = await tx.get(fromBoxRef);
+                    if (mySnap.exists()) {
+                        const myBox = { ...(mySnap.data() || {}) };
+                        const myIncoming = { ...(myBox.incomingRequests || {}) };
+                        delete myIncoming[fromId];
+                        tx.set(myBoxRef, { ...myBox, incomingRequests: myIncoming, updatedAt: now });
+                    }
+                    if (fromSnap.exists()) {
+                        const fromBox = { ...(fromSnap.data() || {}) };
+                        const fromOutgoing = { ...(fromBox.outgoingRequests || {}) };
+                        delete fromOutgoing[myId];
+                        tx.set(fromBoxRef, { ...fromBox, outgoingRequests: fromOutgoing, updatedAt: now });
+                    }
+                });
+                const incoming = { ...(window._friendState.box.incomingRequests || {}) };
+                delete incoming[fromId];
+                window._friendState.box.incomingRequests = incoming;
+                saveLocalFriendBoxCache();
+                window._friendState.statusMsg = '申請を拒否しました';
+                window._friendState.statusColor = 'text-slate-300';
+                renderFriendScreenContent();
+            } catch (err) {
+                console.warn('Reject friend error:', err);
+                setFriendActionStatus('⚠️ 操作に失敗しました', 'text-red-400');
+            }
+        }
+
+        async function cancelOutgoingFriendRequest(toId) {
+            audioSystem.playSelect();
+            const myId = playerState.playerId || 'DP-1004';
+            if (!toId || !window.fbDb || !window.fbRunTransaction) return;
+            try {
+                const now = Date.now();
+                const myBoxRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'friend_boxes', myId);
+                const toBoxRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'friend_boxes', toId);
+                await window.fbRunTransaction(window.fbDb, async (tx) => {
+                    const mySnap = await tx.get(myBoxRef);
+                    const toSnap = await tx.get(toBoxRef);
+                    if (mySnap.exists()) {
+                        const myBox = { ...(mySnap.data() || {}) };
+                        const myOutgoing = { ...(myBox.outgoingRequests || {}) };
+                        delete myOutgoing[toId];
+                        tx.set(myBoxRef, { ...myBox, outgoingRequests: myOutgoing, updatedAt: now });
+                    }
+                    if (toSnap.exists()) {
+                        const toBox = { ...(toSnap.data() || {}) };
+                        const toIncoming = { ...(toBox.incomingRequests || {}) };
+                        delete toIncoming[myId];
+                        tx.set(toBoxRef, { ...toBox, incomingRequests: toIncoming, updatedAt: now });
+                    }
+                });
+                const outgoing = { ...(window._friendState.box.outgoingRequests || {}) };
+                delete outgoing[toId];
+                window._friendState.box.outgoingRequests = outgoing;
+                saveLocalFriendBoxCache();
+                window._friendState.statusMsg = 'フレンド申請を取り消しました';
+                window._friendState.statusColor = 'text-slate-300';
+                renderFriendScreenContent();
+            } catch (err) {
+                console.warn('Cancel outgoing error:', err);
+                setFriendActionStatus('⚠️ 取り消しに失敗しました', 'text-red-400');
+            }
+        }
+
+        function confirmRemoveFriend(friendId, friendName) {
+            audioSystem.playSelect();
+            showConfirmModal('フレンド解除', `「${friendName || friendId}」をフレンドから削除しますか？`, () => {
+                removeFriendById(friendId);
+            }, '削除する');
+        }
+
+        async function removeFriendById(friendId) {
+            const myId = playerState.playerId || 'DP-1004';
+            if (!friendId || !window.fbDb || !window.fbRunTransaction) return;
+            try {
+                const now = Date.now();
+                const myBoxRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'friend_boxes', myId);
+                const otherBoxRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'friend_boxes', friendId);
+                await window.fbRunTransaction(window.fbDb, async (tx) => {
+                    const mySnap = await tx.get(myBoxRef);
+                    const otherSnap = await tx.get(otherBoxRef);
+                    if (mySnap.exists()) {
+                        const myBox = { ...(mySnap.data() || {}) };
+                        const myFriends = { ...(myBox.friends || {}) };
+                        delete myFriends[friendId];
+                        tx.set(myBoxRef, { ...myBox, friends: myFriends, updatedAt: now });
+                    }
+                    if (otherSnap.exists()) {
+                        const otherBox = { ...(otherSnap.data() || {}) };
+                        const otherFriends = { ...(otherBox.friends || {}) };
+                        delete otherFriends[myId];
+                        tx.set(otherBoxRef, { ...otherBox, friends: otherFriends, updatedAt: now });
+                    }
+                });
+                const friends = { ...(window._friendState.box.friends || {}) };
+                delete friends[friendId];
+                window._friendState.box.friends = friends;
+                saveLocalFriendBoxCache();
+                window._friendState.statusMsg = 'フレンドを削除しました';
+                window._friendState.statusColor = 'text-slate-300';
+                renderFriendScreenContent();
+            } catch (err) {
+                console.warn('Remove friend error:', err);
+                setFriendActionStatus('⚠️ フレンド削除に失敗しました', 'text-red-400');
+            }
+        }
+
+        async function openFriendDetailModal(friendId) {
+            audioSystem.playSelect();
+            const cached = (window._friendState.box.friends && window._friendState.box.friends[friendId]) || {
+                playerId: friendId,
+                playerName: friendId,
+                selectedIcon: 'dopagaking'
+            };
+            let info = { ...cached, totalBattles: '-', wins: '-', losses: '-', winRate: '-', startDate: '-' };
+            if (window.fbDb && window.fbDoc && window.fbGetDoc) {
+                try {
+                    const pRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'players', friendId);
+                    const pSnap = await window.fbGetDoc(pRef);
+                    if (pSnap.exists()) {
+                        const d = pSnap.data() || {};
+                        const tb = d.totalBattles || 0;
+                        const w = d.wins || 0;
+                        const l = d.losses || 0;
+                        const wr = tb > 0 ? ((w / tb) * 100).toFixed(1) + '%' : '0.0%';
+                        info = {
+                            playerId: friendId,
+                            playerName: d.playerName || cached.playerName,
+                            selectedIcon: d.selectedIcon || cached.selectedIcon,
+                            totalBattles: tb,
+                            wins: w,
+                            losses: l,
+                            winRate: wr,
+                            startDate: d.startDate || '-'
+                        };
+                        if (window._friendState.box.friends && window._friendState.box.friends[friendId]) {
+                            window._friendState.box.friends[friendId].playerName = info.playerName;
+                            window._friendState.box.friends[friendId].selectedIcon = info.selectedIcon;
+                            saveLocalFriendBoxCache();
+                        }
+                    }
+                } catch (e) {}
+            }
+            const safeName = escapeFriendHtml(info.playerName);
+            const html = `
+                <div class="flex flex-col items-center space-y-2.5 p-1 w-full">
+                    <div class="flex items-center gap-3 bg-slate-950 p-2.5 rounded border border-purple-500/60 w-full">
+                        <canvas id="friend-detail-cvs" data-char-id="${escapeFriendHtml(info.selectedIcon)}" width="64" height="64" class="pixel-box bg-slate-900 rounded w-14 h-14 shrink-0"></canvas>
+                        <div class="text-left min-w-0 flex-1">
+                            <h3 class="text-sm font-bold text-amber-300 font-pixel truncate">${safeName}</h3>
+                            <div class="text-[11px] text-slate-300 font-mono">ID: ${escapeFriendHtml(info.playerId)}</div>
+                            <div class="text-[10px] text-slate-400 font-mono">開始日: ${escapeFriendHtml(info.startDate)}</div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-4 gap-1.5 w-full text-center font-mono text-xs">
+                        <div class="bg-slate-950 p-1.5 rounded border border-slate-800">
+                            <div class="text-slate-400 text-[9px]">総対戦</div>
+                            <div class="text-amber-300 font-bold text-xs">${info.totalBattles}</div>
+                        </div>
+                        <div class="bg-slate-950 p-1.5 rounded border border-slate-800">
+                            <div class="text-slate-400 text-[9px]">勝利</div>
+                            <div class="text-emerald-400 font-bold text-xs">${info.wins}</div>
+                        </div>
+                        <div class="bg-slate-950 p-1.5 rounded border border-slate-800">
+                            <div class="text-slate-400 text-[9px]">敗北</div>
+                            <div class="text-red-400 font-bold text-xs">${info.losses}</div>
+                        </div>
+                        <div class="bg-slate-950 p-1.5 rounded border border-slate-800">
+                            <div class="text-slate-400 text-[9px]">勝率</div>
+                            <div class="text-cyan-400 font-bold text-xs">${info.winRate}</div>
+                        </div>
+                    </div>
+                    <button type="button" onclick="closeModal(); inviteFriendToBattleRoom('${escapeFriendHtml(info.playerId)}', '${safeName}')" class="pixel-btn pixel-btn-success w-full py-2 text-xs font-bold font-pixel">
+                        ⚔️ ルームを作成して対戦招待する
+                    </button>
+                </div>
+            `;
+            showModal('👥 フレンド詳細', html);
+            setTimeout(() => {
+                const cvs = document.getElementById('friend-detail-cvs');
+                if (cvs) CharacterRenderer.drawCharacter(cvs, info.selectedIcon || 'dopagaking');
+            }, 30);
+        }
+
+        async function dismissFriendRoomInvite(fromId) {
+            const myId = playerState.playerId || 'DP-1004';
+            const invites = { ...(window._friendState.box.roomInvites || {}) };
+            delete invites[fromId];
+            window._friendState.box.roomInvites = invites;
+            saveLocalFriendBoxCache();
+            renderFriendScreenContent();
+            if (window.fbDb && window.fbDoc && window.fbGetDoc && window.fbSetDoc) {
+                try {
+                    const myBoxRef = window.fbDoc(window.fbDb, 'artifacts', window.fbAppId, 'public', 'data', 'friend_boxes', myId);
+                    const snap = await window.fbGetDoc(myBoxRef);
+                    if (snap.exists()) {
+                        const myBox = { ...(snap.data() || {}) };
+                        const nextInvites = { ...(myBox.roomInvites || {}) };
+                        delete nextInvites[fromId];
+                        await window.fbSetDoc(myBoxRef, { ...myBox, roomInvites: nextInvites, updatedAt: Date.now() });
+                    }
+                } catch (e) {}
+            }
+        }
+
+        async function joinFriendRoomInvite(roomCode, fromId) {
+            await dismissFriendRoomInvite(fromId);
+            joinOnlineRoomByCode('multi', roomCode);
+        }
+
+        function inviteFriendToBattleRoom(friendId, friendName) {
+            createOnlineCodeRoom('multi', friendId, friendName);
+        }
+
+        function renderFriendScreenContent() {
+            const container = document.getElementById('screen-container');
+            if (!container) return;
+
+            const st = window._friendState;
+            const box = st.box || {};
+            const myId = playerState.playerId || 'DP-1004';
+            const myName = playerState.playerName || '名無しファイター';
+            const myIcon = playerState.selectedIcon || 'dopagaking';
+
+            const friendsList = Object.values(box.friends || {}).sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+            const incomingList = Object.values(box.incomingRequests || {}).sort((a, b) => (b.requestedAt || 0) - (a.requestedAt || 0));
+            const outgoingList = Object.values(box.outgoingRequests || {}).sort((a, b) => (b.requestedAt || 0) - (a.requestedAt || 0));
+            const now = Date.now();
+            const activeInvites = Object.values(box.roomInvites || {})
+                .filter(inv => inv && inv.roomCode && (!inv.sentAt || (now - inv.sentAt) < 15 * 60 * 1000))
+                .sort((a, b) => (b.sentAt || 0) - (a.sentAt || 0));
+
+            let tabListHtml = '';
+            if (st.loading && friendsList.length === 0 && incomingList.length === 0 && outgoingList.length === 0) {
+                tabListHtml = `<div class="text-center py-6 text-xs font-mono text-sky-300 animate-pulse">⏳ フレンド情報を読み込み中...</div>`;
+            } else if (st.activeTab === 'list') {
+                if (friendsList.length === 0) {
+                    tabListHtml = `
+                        <div class="text-center py-5 space-y-1.5 text-slate-400">
+                            <div class="text-2xl">👥</div>
+                            <div class="text-xs font-bold text-slate-300">まだフレンドがいません</div>
+                            <div class="text-[10px] font-mono">左のフォームに相手の「DP-XXXX」を入力して申請するか、<br>自分のIDを共有しよう！</div>
+                        </div>
+                    `;
+                } else {
+                    tabListHtml = friendsList.map(f => {
+                        const fId = escapeFriendHtml(f.playerId);
+                        const fName = escapeFriendHtml(f.playerName || f.playerId);
+                        const fIcon = escapeFriendHtml(f.selectedIcon || 'dopagaking');
+                        return `
+                            <div class="pixel-box bg-slate-950 border-slate-700 px-2.5 py-1.5 flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <canvas id="friend-item-cvs-list-${fId}" data-char-id="${fIcon}" width="36" height="36" class="w-9 h-9 rounded bg-slate-900 border border-purple-500/60 shrink-0"></canvas>
+                                    <div class="min-w-0">
+                                        <div class="text-xs font-bold text-amber-300 truncate">${fName}</div>
+                                        <div class="text-[10px] text-slate-400 font-mono">ID: ${fId}</div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <button type="button" onclick="inviteFriendToBattleRoom('${fId}', '${fName}')" class="pixel-btn pixel-btn-success px-2 py-1 text-[10px] font-bold whitespace-nowrap" title="対戦ルームを作って招待">⚔️ 対戦</button>
+                                    <button type="button" onclick="openFriendDetailModal('${fId}')" class="pixel-btn pixel-btn-primary px-2 py-1 text-[10px] font-bold whitespace-nowrap">📊 詳細</button>
+                                    <button type="button" onclick="confirmRemoveFriend('${fId}', '${fName}')" class="pixel-btn pixel-btn-danger px-2 py-1 text-[10px] font-bold whitespace-nowrap" title="フレンド削除">✕</button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } else if (st.activeTab === 'incoming') {
+                if (incomingList.length === 0) {
+                    tabListHtml = `<div class="text-center py-6 text-xs font-mono text-slate-400">届いているフレンド申請はありません</div>`;
+                } else {
+                    tabListHtml = incomingList.map(r => {
+                        const rId = escapeFriendHtml(r.playerId);
+                        const rName = escapeFriendHtml(r.playerName || r.playerId);
+                        const rIcon = escapeFriendHtml(r.selectedIcon || 'dopagaking');
+                        return `
+                            <div class="pixel-box bg-slate-950 border-amber-500/70 px-2.5 py-1.5 flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <canvas id="friend-item-cvs-in-${rId}" data-char-id="${rIcon}" width="36" height="36" class="w-9 h-9 rounded bg-slate-900 border border-amber-500/60 shrink-0"></canvas>
+                                    <div class="min-w-0">
+                                        <div class="text-xs font-bold text-white truncate">${rName}</div>
+                                        <div class="text-[10px] text-amber-300 font-mono">ID: ${rId}</div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <button type="button" onclick="acceptFriendRequest('${rId}')" class="pixel-btn pixel-btn-success px-2.5 py-1 text-[10px] font-bold whitespace-nowrap">✅ 承認</button>
+                                    <button type="button" onclick="rejectFriendRequest('${rId}')" class="pixel-btn pixel-btn-danger px-2 py-1 text-[10px] font-bold whitespace-nowrap">✕ 拒否</button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } else {
+                if (outgoingList.length === 0) {
+                    tabListHtml = `<div class="text-center py-6 text-xs font-mono text-slate-400">送信中のフレンド申請はありません</div>`;
+                } else {
+                    tabListHtml = outgoingList.map(r => {
+                        const rId = escapeFriendHtml(r.playerId);
+                        const rName = escapeFriendHtml(r.playerName || r.playerId);
+                        const rIcon = escapeFriendHtml(r.selectedIcon || 'dopagaking');
+                        return `
+                            <div class="pixel-box bg-slate-950 border-slate-700 px-2.5 py-1.5 flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <canvas id="friend-item-cvs-out-${rId}" data-char-id="${rIcon}" width="36" height="36" class="w-9 h-9 rounded bg-slate-900 border border-slate-600 shrink-0"></canvas>
+                                    <div class="min-w-0">
+                                        <div class="text-xs font-bold text-slate-200 truncate">${rName}</div>
+                                        <div class="text-[10px] text-slate-400 font-mono">ID: ${rId}（承認待ち）</div>
+                                    </div>
+                                </div>
+                                <button type="button" onclick="cancelOutgoingFriendRequest('${rId}')" class="pixel-btn px-2 py-1 text-[10px] bg-slate-800 border-slate-500 text-slate-200 font-bold whitespace-nowrap shrink-0">取り消し</button>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+
+            const invitesBannerHtml = activeInvites.length > 0 ? `
+                <div class="space-y-1 mb-1.5 shrink-0">
+                    ${activeInvites.map(inv => `
+                        <div class="pixel-box bg-emerald-950/85 border-emerald-400 px-2 py-1.5 flex items-center justify-between gap-2">
+                            <div class="text-[10px] font-mono text-emerald-200 truncate min-w-0">
+                                ⚔️ <b>${escapeFriendHtml(inv.fromName || inv.fromId)}</b> から対戦招待 (ID: <span class="text-amber-300 font-bold">${escapeFriendHtml(inv.roomCode)}</span>)
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <button type="button" onclick="joinFriendRoomInvite('${escapeFriendHtml(inv.roomCode)}', '${escapeFriendHtml(inv.fromId)}')" class="pixel-btn pixel-btn-success px-2 py-0.5 text-[10px] font-bold whitespace-nowrap">参加 ▶</button>
+                                <button type="button" onclick="dismissFriendRoomInvite('${escapeFriendHtml(inv.fromId)}')" class="pixel-btn pixel-btn-danger px-1.5 py-0.5 text-[10px] font-bold">✕</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            ` : '';
+
+            const tabTitle = st.activeTab === 'list'
+                ? `👥 フレンド一覧 (${friendsList.length}人)`
+                : (st.activeTab === 'incoming' ? `📩 届いた申請 (${incomingList.length}件)` : `⏳ 申請中 (${outgoingList.length}件)`);
+
+            container.innerHTML = `
+                <div class="flex flex-col w-full max-w-6xl mx-auto py-1 px-2 space-y-1.5 h-full overflow-hidden">
+                    <div class="flex justify-between items-center w-full px-1 flex-shrink-0 gap-2">
+                        <h2 class="text-xs sm:text-base font-bold text-purple-300 font-pixel whitespace-nowrap">👥 フレンド</h2>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <button type="button" onclick="refreshFriendScreenData()" class="pixel-btn pixel-btn-primary px-2.5 py-0.5 text-[11px] font-bold whitespace-nowrap">${st.loading ? '⏳ 更新中' : '🔄 更新'}</button>
+                            <button type="button" onclick="renderHomeScreen()" class="pixel-btn px-3 py-0.5 text-[11px] font-bold whitespace-nowrap">ホームに戻る</button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full flex-1 min-h-0 overflow-hidden">
+                        <!-- 左カラム: 自分のID共有 + ID検索申請 + タブ切替 -->
+                        <div class="flex flex-col space-y-1.5 overflow-y-auto max-h-full pr-0.5">
+                            <div class="pixel-box-gold p-2 bg-amber-950/75 w-full flex items-center justify-between gap-2 shrink-0">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <canvas id="friend-self-cvs" width="44" height="44" class="pixel-box bg-slate-950 rounded w-11 h-11 border border-amber-400 shrink-0"></canvas>
+                                    <div class="min-w-0 text-left">
+                                        <div class="text-xs font-bold text-amber-300 truncate">${escapeFriendHtml(myName)}</div>
+                                        <div class="text-[11px] text-slate-200 font-mono">あなたのID: <b class="text-amber-300">${escapeFriendHtml(myId)}</b></div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <button type="button" onclick="copyPlayerId('${escapeFriendHtml(myId)}')" class="pixel-btn pixel-btn-primary px-2 py-1 text-[10px] font-bold whitespace-nowrap">📋 コピー</button>
+                                    <button type="button" onclick="shareMyFriendId()" class="pixel-btn pixel-btn-purple px-2 py-1 text-[10px] font-bold whitespace-nowrap">📤 共有</button>
+                                </div>
+                            </div>
+
+                            <div class="pixel-box p-2 bg-slate-900/95 border-purple-500/70 w-full space-y-1.5 shrink-0">
+                                <div class="text-[11px] font-pixel font-bold text-purple-300">➕ フレンドIDで検索・申請</div>
+                                <div class="flex items-center gap-1.5">
+                                    <input id="friend-search-id-input" type="text" maxlength="10" placeholder="例: DP-1234" onkeydown="if(event.key==='Enter') sendFriendRequestById();" class="pixel-box bg-slate-950 px-2.5 py-1 text-xs font-mono font-bold text-amber-300 flex-1 min-w-0 outline-none border-purple-500/70 uppercase">
+                                    <button type="button" onclick="sendFriendRequestById()" class="pixel-btn pixel-btn-purple px-3 py-1 text-xs font-bold whitespace-nowrap shrink-0">申請 ▶</button>
+                                </div>
+                                <div id="friend-action-status" class="text-[10px] font-mono min-h-[14px] ${st.statusColor || 'text-slate-300'}">${escapeFriendHtml(st.statusMsg || '相手の4桁数字またはDP-XXXXを入力してください')}</div>
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-1 shrink-0">
+                                <button type="button" onclick="setFriendScreenTab('list')" class="pixel-btn ${st.activeTab === 'list' ? 'pixel-btn-purple border-amber-400' : 'bg-slate-800 text-slate-300 border-slate-700'} py-1.5 text-[10px] font-bold whitespace-nowrap">
+                                    👥 一覧 (${friendsList.length})
+                                </button>
+                                <button type="button" onclick="setFriendScreenTab('incoming')" class="pixel-btn ${st.activeTab === 'incoming' ? 'pixel-btn-warning border-amber-400' : (incomingList.length > 0 ? 'bg-amber-950 text-amber-300 border-amber-500' : 'bg-slate-800 text-slate-300 border-slate-700')} py-1.5 text-[10px] font-bold whitespace-nowrap">
+                                    📩 受信 (${incomingList.length})
+                                </button>
+                                <button type="button" onclick="setFriendScreenTab('outgoing')" class="pixel-btn ${st.activeTab === 'outgoing' ? 'pixel-btn-primary border-amber-400' : 'bg-slate-800 text-slate-300 border-slate-700'} py-1.5 text-[10px] font-bold whitespace-nowrap">
+                                    ⏳ 申請中 (${outgoingList.length})
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 右カラム: フレンドリスト / 申請リスト + スクロール -->
+                        <div class="pixel-box p-2 bg-slate-900/95 border-slate-700 w-full flex flex-col h-full min-h-0 overflow-hidden">
+                            ${invitesBannerHtml}
+                            <div class="flex items-center justify-between border-b border-slate-800 pb-1 mb-1.5 shrink-0">
+                                <h3 class="text-[11px] font-bold text-purple-300 font-pixel">${tabTitle}</h3>
+                            </div>
+                            <div class="flex-1 min-h-0 overflow-y-auto pr-1 space-y-1.5">
+                                ${tabListHtml}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            setTimeout(() => {
+                const selfCvs = document.getElementById('friend-self-cvs');
+                if (selfCvs) CharacterRenderer.drawCharacter(selfCvs, myIcon);
+                document.querySelectorAll('canvas[id^="friend-item-cvs-"]').forEach(cvs => {
+                    if (cvs.dataset && cvs.dataset.charId) {
+                        CharacterRenderer.drawCharacter(cvs, cvs.dataset.charId);
+                    }
+                });
+            }, 20);
+        }
+
         function openFriendModal() {
             audioSystem.playSelect();
-            showModal("👥 フレンド", "フレンド・ランキング機能は現在準備中です。\n今後のアップデートをお楽しみに！");
+            loadLocalFriendBoxCache();
+            window._friendState.statusMsg = '相手の4桁数字またはDP-XXXXを入力してください';
+            window._friendState.statusColor = 'text-slate-300';
+            renderFriendScreenContent();
+            fetchMyFriendBoxFromServer(true);
         }
 
         function forceReloadApp() {
@@ -10735,6 +11569,22 @@ pasha_dark: {
 
         window.copyPlayerId = copyPlayerId;
         window.openReloginModal = openReloginModal;
+        window.openFriendModal = openFriendModal;
+        window.refreshFriendScreenData = refreshFriendScreenData;
+        window.setFriendScreenTab = setFriendScreenTab;
+        window.shareMyFriendId = shareMyFriendId;
+        window.copyMyFriendInviteText = copyMyFriendInviteText;
+        window.setFriendActionStatus = setFriendActionStatus;
+        window.sendFriendRequestById = sendFriendRequestById;
+        window.acceptFriendRequest = acceptFriendRequest;
+        window.rejectFriendRequest = rejectFriendRequest;
+        window.cancelOutgoingFriendRequest = cancelOutgoingFriendRequest;
+        window.confirmRemoveFriend = confirmRemoveFriend;
+        window.removeFriendById = removeFriendById;
+        window.openFriendDetailModal = openFriendDetailModal;
+        window.inviteFriendToBattleRoom = inviteFriendToBattleRoom;
+        window.joinFriendRoomInvite = joinFriendRoomInvite;
+        window.dismissFriendRoomInvite = dismissFriendRoomInvite;
         window.renderBotModesScreen = renderBotModesScreen;
         window.renderNewBattleCharSelectScreen = renderNewBattleCharSelectScreen;
         window.forceReloadApp = forceReloadApp;
