@@ -153,7 +153,7 @@
             });
         };
 
-        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.8';
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.11';
         const STATIC_IMAGE_ASSETS = [
             'assets/aistudio/image_6db88de4.png',
             'images/backnormal.webp',
@@ -203,9 +203,9 @@
         ];
         const SHELL_SITE_ASSETS = [
             'manifest.json',
-            'style.css?v=2.3.8',
-            'battle-3v3.js?v=2.3.8',
-            'game.js?v=2.3.8'
+            'style.css?v=2.3.11',
+            'battle-3v3.js?v=2.3.11',
+            'game.js?v=2.3.11'
         ];
 
         const AssetPreloader = {
@@ -12563,10 +12563,10 @@ pasha_dark: {
                                 <span class="text-[10px] text-slate-400 font-mono">URL / QRコード</span>
                             </div>
                             <div class="grid grid-cols-2 gap-1.5">
-                                <button onclick="openSiteShareModal('url')" class="pixel-btn pixel-btn-primary text-[11px] px-2 py-1 font-bold whitespace-nowrap">
+                                <button onclick="handleSettingsUrlShareClick()" class="pixel-btn pixel-btn-primary text-[11px] px-2 py-1 font-bold whitespace-nowrap">
                                     🔗 URLで共有
                                 </button>
-                                <button onclick="openSiteShareModal('qr')" class="pixel-btn pixel-btn-success text-[11px] px-2 py-1 font-bold whitespace-nowrap">
+                                <button onclick="openFullscreenQrShare()" class="pixel-btn pixel-btn-success text-[11px] px-2 py-1 font-bold whitespace-nowrap">
                                     📱 QRで共有
                                 </button>
                             </div>
@@ -12628,6 +12628,9 @@ pasha_dark: {
                 : SITE_SHARE_QR_IMAGE;
             const shareText = `ドパガキングダムの熱き3v3バトルRPG「ドパキン」で一緒に遊ぼう！\n${SITE_SHARE_URL}`;
             const lineUrl = `https://line.me/R/share?text=${encodeURIComponent(shareText)}`;
+            const mailSubject = encodeURIComponent('【ドパキン】一緒に3v3バトルで遊ぼう！');
+            const mailBody = encodeURIComponent(`ドパガキングダムの熱き3v3バトルRPG「ドパキン」\nこちらからすぐ遊べます！\n${SITE_SHARE_URL}`);
+            const mailUrl = `mailto:?subject=${mailSubject}&body=${mailBody}`;
 
             const urlTabBtnClass = activeTab === 'url'
                 ? 'pixel-btn pixel-btn-primary text-xs px-3 py-1.5 font-bold flex-1 ring-2 ring-amber-300'
@@ -12639,18 +12642,21 @@ pasha_dark: {
             const urlSectionHtml = `
                 <div class="pixel-box bg-slate-950/90 border border-sky-500/70 p-3 space-y-2.5 text-center">
                     <p class="text-[11px] text-slate-300 font-mono leading-relaxed">
-                        サイトのURLをコピーまたはSNS・LINEでそのまま送信できます。
+                        LINE・メールなどでURLをそのまま共有できます。
                     </p>
                     <input type="text" id="site-share-url-input" readonly value="${SITE_SHARE_URL}" onclick="this.select()" class="pixel-box bg-slate-900 border-sky-600 text-amber-300 text-xs font-mono w-full px-2.5 py-2 text-center outline-none select-all">
                     <div class="flex flex-wrap justify-center gap-2">
-                        <button type="button" onclick="shareSiteByUrl()" class="pixel-btn pixel-btn-primary px-3.5 py-1.5 text-xs font-bold font-pixel">
-                            📤 アプリで共有
+                        <button type="button" onclick="shareSiteByUrl()" class="pixel-btn pixel-btn-primary px-3 py-1.5 text-xs font-bold font-pixel">
+                            📤 共有画面を開く
                         </button>
-                        <button type="button" onclick="copySiteShareUrl()" class="pixel-btn pixel-btn-warning px-3.5 py-1.5 text-xs font-bold font-pixel">
+                        <button type="button" onclick="copySiteShareUrl()" class="pixel-btn pixel-btn-warning px-3 py-1.5 text-xs font-bold font-pixel">
                             📋 URLコピー
                         </button>
-                        <a href="${lineUrl}" target="_blank" rel="noopener noreferrer" class="pixel-btn pixel-btn-success px-3.5 py-1.5 text-xs font-bold font-pixel inline-flex items-center gap-1 no-underline">
+                        <a href="${lineUrl}" target="_blank" rel="noopener noreferrer" class="pixel-btn pixel-btn-success px-3 py-1.5 text-xs font-bold font-pixel inline-flex items-center gap-1 no-underline">
                             💬 LINEで送る
+                        </a>
+                        <a href="${mailUrl}" class="pixel-btn bg-slate-800 border-sky-400 text-sky-200 px-3 py-1.5 text-xs font-bold font-pixel inline-flex items-center gap-1 no-underline">
+                            ✉️ メールで送る
                         </a>
                     </div>
                 </div>
@@ -12663,11 +12669,11 @@ pasha_dark: {
                         カメラで読み取るか、QR画像を共有・保存して友達に送れます。
                     </p>
                     <div class="flex flex-col items-center justify-center gap-1.5">
-                        <div onclick="toggleSiteShareQrZoom()" title="タップで拡大・縮小" class="bg-white p-2 rounded-lg inline-block shadow-lg border-2 border-amber-400 cursor-pointer transition-transform active:scale-95">
+                        <div onclick="openFullscreenQrShare()" title="タップで横画面いっぱいに表示" class="bg-white p-2 rounded-lg inline-block shadow-lg border-2 border-amber-400 cursor-pointer transition-transform active:scale-95">
                             <img id="site-share-qr-img" src="${qrSrc}" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='/${SITE_SHARE_QR_IMAGE}';}" alt="ドパキン共有QRコード" class="${qrSizeClass} object-contain block mx-auto" style="image-rendering: pixelated;">
                         </div>
-                        <button type="button" onclick="toggleSiteShareQrZoom()" class="text-[10px] text-amber-300 underline font-mono">
-                            ${qrZoomed ? '🔍 通常サイズに戻す' : '🔍 QRコードを拡大表示'}
+                        <button type="button" onclick="openFullscreenQrShare()" class="text-[10px] text-amber-300 underline font-mono">
+                            🔍 横画面で大きく表示する
                         </button>
                     </div>
                     <div class="text-[10px] text-sky-300 font-mono break-all">${SITE_SHARE_URL}</div>
@@ -12688,8 +12694,8 @@ pasha_dark: {
                         <button type="button" onclick="switchSiteShareTab('url')" class="${urlTabBtnClass}">
                             🔗 URLで共有
                         </button>
-                        <button type="button" onclick="switchSiteShareTab('qr')" class="${qrTabBtnClass}">
-                            📱 QRコードで共有
+                        <button type="button" onclick="openFullscreenQrShare()" class="${qrTabBtnClass}">
+                            📱 QRで大きく表示
                         </button>
                     </div>
                     ${activeTab === 'qr' ? qrSectionHtml : urlSectionHtml}
@@ -12698,17 +12704,117 @@ pasha_dark: {
             `;
         }
 
-        function openSiteShareModal(tab = 'url') {
+        async function handleSettingsUrlShareClick(fromQrOverlay = false) {
+            audioSystem.playSelect();
+            const shareText = 'ドパガキングダムの熱き3v3バトルRPG「ドパキン」で一緒に遊ぼう！';
+            if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+                try {
+                    await navigator.share({
+                        title: 'ドパキン (DOPAKIN RPG)',
+                        text: shareText,
+                        url: SITE_SHARE_URL
+                    });
+                    if (typeof showToast === 'function') showToast('✓ URLを共有しました！');
+                    return;
+                } catch (err) {
+                    if (err && err.name === 'AbortError') return;
+                }
+            }
+            if (fromQrOverlay) closeFullscreenQrShare(true);
+            closeSettingsPanel(true);
+            copyTextSilently(SITE_SHARE_URL);
+            window._siteShareActiveTab = 'url';
+            window._siteShareQrExpanded = false;
+            showModal('📤 URLを共有', renderSiteShareModalContent());
+            setSiteShareStatus('✓ URLをコピーしました！LINEやメールボタンからも送信できます', 'text-emerald-300');
+        }
+
+        function closeFullscreenQrShare(silent = false) {
+            if (!silent) audioSystem.playSelect();
+            const existing = document.getElementById('qr-fullscreen-overlay');
+            if (existing) existing.remove();
+            const modalOverlay = document.getElementById('modal-overlay');
+            const settingsBackdrop = document.getElementById('settings-backdrop');
+            const anyOpen = (modalOverlay && !modalOverlay.classList.contains('hidden')) || (settingsBackdrop && !settingsBackdrop.classList.contains('hidden'));
+            if (!anyOpen) {
+                document.body.classList.remove('modal-open');
+            }
+        }
+
+        function openFullscreenQrShare() {
             audioSystem.playSelect();
             closeSettingsPanel(true);
-            window._siteShareActiveTab = tab === 'qr' ? 'qr' : 'url';
-            window._siteShareQrExpanded = false;
-            showModal('📤 サイトを共有', renderSiteShareModalContent());
+            closeModal();
+            const oldOverlay = document.getElementById('qr-fullscreen-overlay');
+            if (oldOverlay) oldOverlay.remove();
+
+            const qrSrc = (typeof AssetPreloader !== 'undefined' && AssetPreloader.resolve)
+                ? AssetPreloader.resolve(SITE_SHARE_QR_IMAGE)
+                : SITE_SHARE_QR_IMAGE;
+
+            const overlay = document.createElement('div');
+            overlay.id = 'qr-fullscreen-overlay';
+            overlay.className = 'fixed inset-0 z-[9998] bg-slate-950/95 flex items-center justify-center p-3 sm:p-5 select-none';
+            overlay.onclick = (e) => {
+                if (e.target === overlay) closeFullscreenQrShare();
+            };
+
+            overlay.innerHTML = `
+                <div class="w-full h-full max-w-4xl flex flex-row items-center justify-center gap-4 sm:gap-8 relative">
+                    <div class="shrink-0 flex items-center justify-center">
+                        <div class="bg-white p-2.5 sm:p-4 rounded-2xl border-4 border-amber-400 shadow-[0_0_32px_rgba(251,191,36,0.35)] flex items-center justify-center">
+                            <img src="${qrSrc}" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='/${SITE_SHARE_QR_IMAGE}';}" alt="ドパキン共有QRコード" style="width: min(76vh, 52vw, 390px); height: min(76vh, 52vw, 390px); image-rendering: pixelated;" class="object-contain block">
+                        </div>
+                    </div>
+
+                    <div class="flex-1 min-w-0 max-w-xs flex flex-col justify-center gap-2.5 text-left">
+                        <div class="pixel-box bg-slate-900/95 border-2 border-emerald-400 p-3 space-y-2">
+                            <div class="flex items-center justify-between gap-2">
+                                <h3 class="text-sm sm:text-base font-bold text-amber-300 font-pixel">📱 QRコードで共有</h3>
+                            </div>
+                            <p class="text-[11px] sm:text-xs text-slate-200 font-mono leading-relaxed">
+                                ほかの人のスマホカメラでこのQRコードを読み取ってもらうと、そのまま「ドパキン」を開けます！
+                            </p>
+                            <div class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[10px] text-sky-300 font-mono break-all select-all">
+                                ${SITE_SHARE_URL}
+                            </div>
+                            <div id="site-share-status" class="text-[11px] font-bold min-h-[16px] text-emerald-300"></div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button type="button" onclick="shareSiteByQrImage()" class="pixel-btn pixel-btn-success py-2 px-2 text-[11px] font-bold font-pixel whitespace-nowrap">
+                                📤 画像を共有
+                            </button>
+                            <button type="button" onclick="downloadSiteShareQrImage()" class="pixel-btn pixel-btn-primary py-2 px-2 text-[11px] font-bold font-pixel whitespace-nowrap">
+                                💾 画像を保存
+                            </button>
+                        </div>
+                        <button type="button" onclick="closeFullscreenQrShare()" class="pixel-btn pixel-btn-danger w-full py-2 px-3 text-xs font-bold font-pixel">
+                            ✕ 閉じる
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(overlay);
+            document.body.classList.add('modal-open');
+        }
+
+        function openSiteShareModal(tab = 'url') {
+            if (tab === 'qr') {
+                openFullscreenQrShare();
+                return;
+            }
+            handleSettingsUrlShareClick();
         }
 
         function switchSiteShareTab(tab) {
+            if (tab === 'qr') {
+                openFullscreenQrShare();
+                return;
+            }
             audioSystem.playSelect();
-            window._siteShareActiveTab = tab === 'qr' ? 'qr' : 'url';
+            window._siteShareActiveTab = 'url';
             const bodyEl = document.getElementById('modal-body');
             if (bodyEl) {
                 bodyEl.innerHTML = renderSiteShareModalContent();
@@ -12716,12 +12822,7 @@ pasha_dark: {
         }
 
         function toggleSiteShareQrZoom() {
-            audioSystem.playSelect();
-            window._siteShareQrExpanded = !window._siteShareQrExpanded;
-            const bodyEl = document.getElementById('modal-body');
-            if (bodyEl) {
-                bodyEl.innerHTML = renderSiteShareModalContent();
-            }
+            openFullscreenQrShare();
         }
 
         function copySiteShareUrl() {
@@ -12942,77 +13043,73 @@ pasha_dark: {
             const showUsage = window._profileShowUsage || false;
 
             container.innerHTML = `
-                <div class="flex flex-col items-center justify-start w-full max-w-6xl mx-auto py-1 px-2 space-y-1.5 h-full overflow-hidden">
-                    <div class="flex justify-between items-center w-full px-1 flex-shrink-0">
-                        <h2 class="text-xs sm:text-base font-bold text-amber-300 font-pixel">👑 プレイヤープロフィール</h2>
-                        <button onclick="renderHomeScreen()" class="pixel-btn px-3 py-0.5 text-[11px] font-bold">ホームに戻る</button>
+                <div class="flex flex-col items-center justify-start w-full max-w-6xl mx-auto py-1 px-2 gap-1.5 h-full min-h-0 overflow-hidden select-none">
+                    <div class="flex justify-between items-center w-full px-1 shrink-0">
+                        <h2 class="text-xs sm:text-base font-bold text-amber-300 font-pixel truncate">👑 プレイヤープロフィール</h2>
+                        <button onclick="renderHomeScreen()" class="pixel-btn px-3 py-1 text-[11px] font-bold shrink-0">ホームに戻る</button>
                     </div>
                     
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 w-full flex-1 min-h-0 items-stretch overflow-hidden">
+                    <div class="grid grid-cols-2 gap-2 sm:gap-3 w-full flex-1 min-h-0 items-stretch overflow-hidden">
                         <!-- 左側エリア：プロフィール・勝利数等 ＆ 切り替えボタン -->
-                        <div class="flex flex-col space-y-2 overflow-y-auto max-h-full pr-1 shrink-0">
-                            <div class="pixel-box-gold p-3 bg-amber-950/80 w-full space-y-2">
-                                <div class="flex items-center gap-3 w-full">
+                        <div class="flex flex-col justify-between gap-1.5 h-full min-h-0 overflow-y-auto pr-0.5">
+                            <div class="pixel-box-gold p-2 sm:p-3 bg-amber-950/85 w-full flex-1 flex flex-col justify-between gap-1.5 min-h-0">
+                                <div class="flex items-center gap-2 sm:gap-3 w-full min-w-0">
                                     <div class="flex flex-col items-center gap-1 shrink-0">
-                                        <canvas id="profile-main-icon" width="64" height="64" class="pixel-box bg-slate-950 rounded cursor-pointer border-2 border-amber-400 w-16 h-16 shadow-lg" onclick="openIconSelectModal()" title="クリックしてアイコン変更"></canvas>
-                                        <button onclick="openIconSelectModal()" class="pixel-btn pixel-btn-primary px-2.5 py-0.5 text-[10px] font-bold">変更</button>
+                                        <canvas id="profile-main-icon" width="64" height="64" class="pixel-box bg-slate-950 rounded cursor-pointer border-2 border-amber-400 w-12 h-12 sm:w-16 sm:h-16 shadow-lg" onclick="openIconSelectModal()" title="クリックしてアイコン変更"></canvas>
+                                        <button onclick="openIconSelectModal()" class="pixel-btn pixel-btn-primary px-2 py-0.5 text-[9px] sm:text-[10px] font-bold">変更</button>
                                     </div>
-                                    <div class="flex flex-col justify-center space-y-1 text-left flex-1 min-w-0">
-                                        <div class="flex items-center gap-1.5 flex-wrap">
-                                            <input id="profile-name-input" type="text" value="${playerState.playerName || ''}" maxlength="12" class="pixel-box bg-slate-950 px-2 py-0.5 text-xs font-bold text-amber-300 w-28 sm:w-36 outline-none border-amber-600">
-                                            <button onclick="savePlayerName()" class="pixel-btn pixel-btn-primary px-2 py-0.5 text-[11px] font-bold shrink-0">保存</button>
+                                    <div class="flex flex-col justify-center gap-1 text-left flex-1 min-w-0">
+                                        <div class="flex items-center gap-1 sm:gap-1.5 min-w-0">
+                                            <input id="profile-name-input" type="text" value="${playerState.playerName || ''}" maxlength="12" class="pixel-box bg-slate-950 px-2 py-1 text-xs font-bold text-amber-300 flex-1 min-w-0 max-w-[150px] outline-none border-amber-600">
+                                            <button onclick="savePlayerName()" class="pixel-btn pixel-btn-primary px-2 py-1 text-[10px] sm:text-[11px] font-bold shrink-0">保存</button>
                                         </div>
-                                         <div class="flex items-center gap-2 flex-wrap">
-                                             <span class="text-[11px] text-slate-300 font-mono">ID: <span id="profile-player-id-text">${playerState.playerId || 'DP-1004'}</span></span>
-                                             <button onclick="copyPlayerId('${playerState.playerId || 'DP-1004'}')" class="pixel-btn pixel-btn-primary px-1.5 py-0.5 text-[9px] font-bold">📋 コピー</button>
-                                         </div>
+                                        <div class="flex items-center gap-1.5 flex-wrap">
+                                            <span class="text-[10px] sm:text-[11px] text-slate-300 font-mono">ID: <span id="profile-player-id-text">${playerState.playerId || 'DP-1004'}</span></span>
+                                            <button onclick="copyPlayerId('${playerState.playerId || 'DP-1004'}')" class="pixel-btn pixel-btn-primary px-1.5 py-0.5 text-[9px] font-bold">📋 コピー</button>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div class="flex flex-col justify-center space-y-1.5 w-full font-mono text-xs border-t border-amber-800/60 pt-2">
-                                    <div class="flex justify-between items-center text-[11px]">
-                                        <span class="text-slate-300">始めた日: <b class="text-amber-300">${playerState.startDate || '2026/10/14'}</b></span>
-                                        <span class="text-amber-200">DOPA: <b class="text-amber-400 font-pixel">${formatDopa(playerState.dopa)}</b></span>
+                                <div class="flex flex-col justify-center gap-1.5 w-full font-mono text-xs border-t border-amber-800/60 pt-1.5">
+                                    <div class="flex justify-between items-center text-[10px] sm:text-[11px] gap-2">
+                                        <span class="text-slate-300 truncate">始めた日: <b class="text-amber-300">${playerState.startDate || '2026/10/14'}</b></span>
+                                        <span class="text-amber-200 shrink-0">DOPA: <b class="text-amber-400 font-pixel">${formatDopa(playerState.dopa)}</b></span>
                                     </div>
-                                    <div class="grid grid-cols-4 gap-1.5 text-center text-xs">
-                                        <div class="bg-slate-950 px-1 py-1 rounded border border-amber-800/55">
+                                    <div class="grid grid-cols-4 gap-1 sm:gap-1.5 text-center">
+                                        <div class="bg-slate-950 px-1 py-1 sm:py-1.5 rounded border border-amber-800/55">
                                             <div class="text-slate-400 text-[9px]">総対戦</div>
-                                            <div class="text-amber-300 font-bold text-xs">${playerState.totalBattles}</div>
+                                            <div class="text-amber-300 font-bold text-xs sm:text-sm">${playerState.totalBattles}</div>
                                         </div>
-                                        <div class="bg-slate-950 px-1 py-1 rounded border border-amber-800/55">
+                                        <div class="bg-slate-950 px-1 py-1 sm:py-1.5 rounded border border-amber-800/55">
                                             <div class="text-slate-400 text-[9px]">勝利</div>
-                                            <div class="text-emerald-400 font-bold text-xs">${playerState.wins}</div>
+                                            <div class="text-emerald-400 font-bold text-xs sm:text-sm">${playerState.wins}</div>
                                         </div>
-                                        <div class="bg-slate-950 px-1 py-1 rounded border border-amber-800/55">
+                                        <div class="bg-slate-950 px-1 py-1 sm:py-1.5 rounded border border-amber-800/55">
                                             <div class="text-slate-400 text-[9px]">敗北</div>
-                                            <div class="text-red-400 font-bold text-xs">${playerState.losses}</div>
+                                            <div class="text-red-400 font-bold text-xs sm:text-sm">${playerState.losses}</div>
                                         </div>
-                                        <div class="bg-slate-950 px-1 py-1 rounded border border-amber-800/55">
+                                        <div class="bg-slate-950 px-1 py-1 sm:py-1.5 rounded border border-amber-800/55">
                                             <div class="text-slate-400 text-[9px]">勝率</div>
-                                            <div class="text-cyan-400 font-bold text-xs">${winRate}%</div>
+                                            <div class="text-cyan-400 font-bold text-xs sm:text-sm">${winRate}%</div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
                             <!-- キャラクター使用率 / 過去の戦績 切り替えボタン -->
-                            <div class="w-full grid grid-cols-2 gap-1.5">
-                                <button onclick="setProfileTab('history')" class="pixel-btn ${!showUsage ? 'pixel-btn-primary border-amber-400' : 'bg-slate-800 text-slate-300 border-slate-700'} py-1.5 text-[11px] font-bold flex items-center justify-center gap-1">
+                            <div class="w-full grid grid-cols-2 gap-1.5 shrink-0">
+                                <button onclick="setProfileTab('history')" class="pixel-btn ${!showUsage ? 'pixel-btn-primary border-amber-400' : 'bg-slate-800 text-slate-300 border-slate-700'} py-1.5 sm:py-2 text-[10px] sm:text-xs font-bold flex items-center justify-center gap-1 whitespace-nowrap">
                                     <span>📜 過去の戦績</span>
                                 </button>
-                                <button onclick="setProfileTab('usage')" class="pixel-btn ${showUsage ? 'pixel-btn-warning border-amber-400' : 'bg-slate-800 text-slate-300 border-slate-700'} py-1.5 text-[11px] font-bold flex items-center justify-center gap-1">
+                                <button onclick="setProfileTab('usage')" class="pixel-btn ${showUsage ? 'pixel-btn-warning border-amber-400' : 'bg-slate-800 text-slate-300 border-slate-700'} py-1.5 sm:py-2 text-[10px] sm:text-xs font-bold flex items-center justify-center gap-1 whitespace-nowrap">
                                     <span>📊 キャラ使用率</span>
                                 </button>
-                            </div>
-
-                            <div class="pt-1">
-                                <button onclick="confirmResetPlayerProfile()" class="pixel-btn pixel-btn-danger px-3 py-1 text-[11px] font-bold w-full">⚠️ データ初期化</button>
                             </div>
                         </div>
 
                         <!-- 右側エリア：切り替え表示 (戦績 ⇔ キャラクター使用率) とスクロール対応 -->
-                        <div class="pixel-box p-2.5 bg-slate-900 w-full flex flex-col h-full min-h-0 overflow-hidden">
-                            <h3 class="text-[11px] font-bold text-amber-300 font-pixel mb-1.5 flex-shrink-0">${showUsage ? '📊 キャラクター使用率' : '📜 過去の戦歴 (最大50件)'}</h3>
+                        <div class="pixel-box p-2 sm:p-2.5 bg-slate-900 w-full flex flex-col h-full min-h-0 overflow-hidden">
+                            <h3 class="text-[10px] sm:text-xs font-bold text-amber-300 font-pixel mb-1.5 flex-shrink-0">${showUsage ? '📊 キャラクター使用率' : '📜 過去の戦歴 (最大50件)'}</h3>
                             <div class="flex-1 min-h-0 overflow-y-auto pr-1 space-y-1.5">
                                 ${showUsage ? usageHtml : historyHtml}
                             </div>
@@ -13939,6 +14036,9 @@ pasha_dark: {
         window.renderBotModesScreen = renderBotModesScreen;
         window.renderNewBattleCharSelectScreen = renderNewBattleCharSelectScreen;
         window.forceReloadApp = forceReloadApp;
+        window.handleSettingsUrlShareClick = handleSettingsUrlShareClick;
+        window.openFullscreenQrShare = openFullscreenQrShare;
+        window.closeFullscreenQrShare = closeFullscreenQrShare;
         window.openSiteShareModal = openSiteShareModal;
         window.switchSiteShareTab = switchSiteShareTab;
         window.toggleSiteShareQrZoom = toggleSiteShareQrZoom;
