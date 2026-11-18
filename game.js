@@ -1899,30 +1899,102 @@ static drawDopagaking(p, isCharged) {
             }
         }
 
-        function copyOnlineRoomCode(code) {
-            audioSystem.playSelect();
-            const showToast = () => {
-                const el = document.getElementById('room-code-copy-toast');
-                if (el) {
-                    el.innerText = '✓ コピーしました！';
-                    setTimeout(() => { if (el) el.innerText = ''; }, 1800);
-                }
-            };
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(code).then(showToast).catch(() => {
+        function copyTextSilently(text) {
+            return new Promise((resolve) => {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(() => resolve(true)).catch(() => {
+                        try {
+                            const ta = document.createElement('textarea');
+                            ta.value = text;
+                            ta.style.position = 'fixed';
+                            ta.style.opacity = '0';
+                            document.body.appendChild(ta);
+                            ta.select();
+                            document.execCommand('copy');
+                            ta.remove();
+                            resolve(true);
+                        } catch (e) {
+                            resolve(false);
+                        }
+                    });
+                } else {
                     try {
                         const ta = document.createElement('textarea');
-                        ta.value = code;
+                        ta.value = text;
                         ta.style.position = 'fixed';
                         ta.style.opacity = '0';
                         document.body.appendChild(ta);
                         ta.select();
                         document.execCommand('copy');
                         ta.remove();
-                        showToast();
-                    } catch (e) {}
-                });
+                        resolve(true);
+                    } catch (e) {
+                        resolve(false);
+                    }
+                }
+            });
+        }
+
+        function copyOnlineRoomCode(code, customToast = '✓ コピーしました！') {
+            audioSystem.playSelect();
+            const showToast = () => {
+                const el = document.getElementById('room-code-copy-toast');
+                if (el) {
+                    el.innerText = customToast;
+                    setTimeout(() => { if (el) el.innerText = ''; }, 1800);
+                }
+            };
+            copyTextSilently(code).then((ok) => {
+                if (ok) showToast();
+            });
+        }
+
+        async function shareOnlineRoomCode(code) {
+            audioSystem.playSelect();
+            const shareText = `【ドパキン】オンライン対戦のルームを作成しました！\nルームID: ${code}\n「ルームIDを入力して参加」から ${code} を入力して参加してね！`;
+
+            if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+                try {
+                    await navigator.share({
+                        title: 'ドパキン オンライン対戦招待',
+                        text: shareText
+                    });
+                    const el = document.getElementById('room-code-copy-toast');
+                    if (el) {
+                        el.innerText = '✓ 共有しました！';
+                        setTimeout(() => { if (el) el.innerText = ''; }, 1800);
+                    }
+                    return;
+                } catch (err) {
+                    if (err && err.name === 'AbortError') {
+                        return;
+                    }
+                    // Web Share unsupported or blocked in iframe -> fall through to share modal + copy
+                }
             }
+
+            copyTextSilently(shareText);
+            const lineUrl = `https://line.me/R/share?text=${encodeURIComponent(shareText)}`;
+            const safeEscapedText = shareText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            showModal('📤 ルームIDを共有', `
+                <div class="space-y-3 text-center">
+                    <div class="text-xs text-slate-300 font-mono">下のメッセージをLINEやSNSでフレンドに送信できます（コピー済み）</div>
+                    <textarea readonly rows="3" class="pixel-box bg-slate-950 border-sky-500 text-amber-200 text-xs font-mono w-full p-2 outline-none resize-none">${safeEscapedText}</textarea>
+                    <div class="flex flex-wrap justify-center gap-2">
+                        <a href="${lineUrl}" target="_blank" rel="noopener noreferrer" class="pixel-btn pixel-btn-success px-4 py-2 text-xs font-bold font-pixel inline-flex items-center gap-1.5 no-underline">
+                            💬 LINEで送る
+                        </a>
+                        <button type="button" onclick="copyOnlineRoomInviteText('${code}')" class="pixel-btn pixel-btn-primary px-4 py-2 text-xs font-bold font-pixel">
+                            📋 文章コピー
+                        </button>
+                    </div>
+                </div>
+            `);
+        }
+
+        function copyOnlineRoomInviteText(code) {
+            const shareText = `【ドパキン】オンライン対戦のルームを作成しました！\nルームID: ${code}\n「ルームIDを入力して参加」から ${code} を入力して参加してね！`;
+            copyOnlineRoomCode(shareText, '✓ 招待文をコピーしました！');
         }
 
         async function cancelOnlineRoomAndReturn(mode = 'multi') {
@@ -2598,7 +2670,15 @@ static drawDopagaking(p, isCharged) {
                                 <h2 class="text-sky-300 font-pixel text-xs sm:text-base font-bold whitespace-nowrap truncate">🛡️ 対戦準備画面（編成・BOT設定）</h2>
                                 ${roomData.roomCode ? `
                                     <span class="bg-amber-950 border border-amber-400 text-amber-300 font-mono font-bold text-xs px-2 py-0.5 rounded whitespace-nowrap">ID: ${roomData.roomCode}</span>
-                                    <button type="button" onclick="copyOnlineRoomCode('${roomData.roomCode}')" class="pixel-btn pixel-btn-primary px-2 py-0.5 text-[10px] font-bold whitespace-nowrap">📋</button>
+                                    <button type="button" onclick="shareOnlineRoomCode('${roomData.roomCode}')" class="pixel-btn pixel-btn-primary px-2 py-0.5 text-[10px] font-bold whitespace-nowrap inline-flex items-center justify-center" title="ルームIDを共有" aria-label="ルームIDを共有">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
+                                            <circle cx="18" cy="5" r="3"></circle>
+                                            <circle cx="6" cy="12" r="3"></circle>
+                                            <circle cx="18" cy="19" r="3"></circle>
+                                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                                        </svg>
+                                    </button>
                                     <span id="room-code-copy-toast" class="text-[10px] text-emerald-300 font-bold"></span>
                                 ` : `<span class="bg-slate-900 border border-sky-500/60 text-sky-300 font-mono text-[10px] px-2 py-0.5 rounded whitespace-nowrap">${roomData.matchType === 'solo' ? 'ソロ練習' : 'フレンド対戦'}</span>`}
                             </div>
@@ -2841,6 +2921,8 @@ static drawDopagaking(p, isCharged) {
         window.createOnlineCodeRoom = createOnlineCodeRoom;
         window.joinOnlineRoomByCode = joinOnlineRoomByCode;
         window.copyOnlineRoomCode = copyOnlineRoomCode;
+        window.shareOnlineRoomCode = shareOnlineRoomCode;
+        window.copyOnlineRoomInviteText = copyOnlineRoomInviteText;
         window.cancelOnlineRoomAndReturn = cancelOnlineRoomAndReturn;
         window.hostFill2pWithBotsAndStart = hostFill2pWithBotsAndStart;
         window.renderOnlineWaitingRoomScreen = renderOnlineWaitingRoomScreen;
