@@ -91,18 +91,311 @@
             });
         };
 
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.0';
+        const STATIC_IMAGE_ASSETS = [
+            'images/backnormal.webp',
+            'images/screen.webp',
+            'images/title-1.webp',
+            'images/DOPAGAKINGDOM.png',
+            'dopaAI/normal.webp',
+            'dopaAI/rough.webp',
+            'asaiomizu/asaiomizu.webp',
+            'asaiomizu/asaiomizu2.webp',
+            'asaiomizu/asaiomizu3.webp',
+            'courtney/ALT.webp',
+            'courtney/ALT11.webp',
+            'courtney/ALT2.webp',
+            'courtney/ALT3.webp',
+            'courtney/ALTchange2.webp',
+            'dopagaking/dopagaking.webp',
+            'dopagaking/dopagakingALL.webp',
+            'dopagaking/dopagakingDIE.webp',
+            'dopagaking/dopagakingchange.webp',
+            'dopagaking/dopagakingcharge.webp',
+            'dopagaking/dopakaking11.webp',
+            'iwaba/ganban.webp',
+            'iwaba/ganbanALL.webp',
+            'iwaba/ganbanDIE.webp',
+            'moenan/moenan.webp',
+            'moenan/moenanALL.webp',
+            'moenan/moenanDIE.webp',
+            'moenan/moenancat.webp',
+            'momopin/momopin.webp',
+            'momopin/momopinALL.webp',
+            'momopin/momopinDIE.webp',
+            'momopin/momopinNASU.webp',
+            'momopin/chargenasu.webp',
+            'ndaihyo/ndaihyou.webp',
+            'ndaihyo/ndaihyouALL.webp',
+            'ndaihyo/ndaihyouDIE.webp',
+            'pasha/pasha.webp',
+            'pasha/pashaALL.webp',
+            'pasha/pashaDIE.webp',
+            'pasha/pasha-dark.webp',
+            'pasha/pasha-darkALL.webp',
+            'pasha/pasha-darkDIE.webp',
+            'pasha-dark/pasha-dark.webp',
+            'pasha-dark/pasha-darkALL.webp',
+            'pasha-dark/pasha-darkDIE.webp'
+        ];
+        const SHELL_SITE_ASSETS = [
+            'manifest.json',
+            'style.css?v=2.3.0',
+            'battle-3v3.js?v=2.3.0',
+            'game.js?v=2.3.0'
+        ];
+
+        const AssetPreloader = {
+            blobMap: {},
+            isComplete: false,
+            loadedCount: 0,
+            totalCount: 0,
+            _activePromise: null,
+            _badgeHideTimer: null,
+
+            normalizePath(src) {
+                if (!src || typeof src !== 'string') return '';
+                return src.trim().replace(/^\.\//, '').replace(/^\//, '');
+            },
+
+            resolve(src) {
+                if (!src || typeof src !== 'string') return src;
+                if (src.startsWith('blob:') || src.startsWith('data:') || src.startsWith('http')) return src;
+                const clean = this.normalizePath(src);
+                if (clean && this.blobMap[clean]) {
+                    return this.blobMap[clean];
+                }
+                return src;
+            },
+
+            getAllImageAssets() {
+                const set = new Set();
+                STATIC_IMAGE_ASSETS.forEach(p => {
+                    const clean = this.normalizePath(p);
+                    if (clean) set.add(clean);
+                });
+                if (typeof CHARACTER_DATA === 'object' && CHARACTER_DATA) {
+                    Object.values(CHARACTER_DATA).forEach(c => {
+                        if (!c) return;
+                        [c.image, c.allImage, c.dieImage, c.chargedImage].forEach(p => {
+                            const clean = this.normalizePath(p);
+                            if (clean) set.add(clean);
+                        });
+                    });
+                }
+                if (typeof EXTRA_ICONS === 'object' && EXTRA_ICONS) {
+                    Object.values(EXTRA_ICONS).forEach(item => {
+                        if (!item || !item.image) return;
+                        const clean = this.normalizePath(item.image);
+                        if (clean) set.add(clean);
+                    });
+                }
+                return Array.from(set);
+            },
+
+            updateProgressUI(doneCount, totalCount, finished = false) {
+                const existing = document.getElementById('asset-preload-badge');
+                if (finished) {
+                    if (existing) {
+                        existing.innerHTML = `<span class="text-emerald-300 font-bold">✅ 端末データ読込完了 (${totalCount}/${totalCount})</span>`;
+                        if (this._badgeHideTimer) clearTimeout(this._badgeHideTimer);
+                        this._badgeHideTimer = setTimeout(() => {
+                            const el = document.getElementById('asset-preload-badge');
+                            if (el) el.remove();
+                        }, 1400);
+                    }
+                    return;
+                }
+                const pct = totalCount > 0 ? Math.min(100, Math.round((doneCount / totalCount) * 100)) : 0;
+                let el = existing;
+                if (!el && document.body) {
+                    el = document.createElement('div');
+                    el.id = 'asset-preload-badge';
+                    el.className = 'fixed bottom-2 right-2 z-[9990] pointer-events-none bg-slate-950/95 border border-sky-400/80 text-sky-200 px-2.5 py-1.5 rounded-lg shadow-xl text-[10px] font-mono flex flex-col gap-1 min-w-[170px]';
+                    document.body.appendChild(el);
+                }
+                if (el) {
+                    el.innerHTML = `
+                        <div class="flex items-center justify-between gap-2">
+                            <span>📦 データ読込中</span>
+                            <span class="text-amber-300 font-bold">${doneCount}/${totalCount} (${pct}%)</span>
+                        </div>
+                        <div class="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-full bg-emerald-400 transition-all duration-150" style="width:${pct}%"></div>
+                        </div>
+                    `;
+                }
+            },
+
+            async fetchAssetToMemory(cleanPath, cacheStorage) {
+                let response = null;
+                const retryDelays = [0, 250, 650];
+                for (let attempt = 0; attempt < retryDelays.length; attempt++) {
+                    if (retryDelays[attempt] > 0) {
+                        await new Promise(r => setTimeout(r, retryDelays[attempt]));
+                    }
+                    try {
+                        const res = await fetch(cleanPath, { cache: 'no-cache', credentials: 'same-origin' });
+                        if (res && res.ok) {
+                            response = res;
+                            break;
+                        }
+                    } catch (e) {}
+                }
+
+                if (response && cacheStorage) {
+                    try {
+                        await cacheStorage.put(cleanPath, response.clone());
+                    } catch (e) {}
+                } else if (!response && cacheStorage) {
+                    try {
+                        const cachedRes = await cacheStorage.match(cleanPath);
+                        if (cachedRes && cachedRes.ok) {
+                            response = cachedRes;
+                        }
+                    } catch (e) {}
+                }
+
+                if (response) {
+                    try {
+                        const blob = await response.blob();
+                        if (blob && blob.size > 0) {
+                            const newBlobUrl = URL.createObjectURL(blob);
+                            this.blobMap[cleanPath] = newBlobUrl;
+                        }
+                    } catch (e) {}
+                }
+
+                const resolvedSrc = this.blobMap[cleanPath] || cleanPath;
+                await new Promise((resolve) => {
+                    const img = new Image();
+                    let done = false;
+                    const finish = (ok) => {
+                        if (done) return;
+                        done = true;
+                        img.isLoaded = ok;
+                        img.hasError = !ok;
+                        if (ok && typeof CharacterRenderer !== 'undefined') {
+                            CharacterRenderer.imageCache[cleanPath] = img;
+                        }
+                        resolve();
+                    };
+                    img.onload = async () => {
+                        try {
+                            if (typeof img.decode === 'function') {
+                                await img.decode();
+                            }
+                        } catch (e) {}
+                        finish(true);
+                    };
+                    img.onerror = () => finish(false);
+                    img.src = resolvedSrc;
+                    setTimeout(() => finish(!!img.complete && img.naturalWidth > 0), 4000);
+                });
+            },
+
+            async cacheShellAssets(cacheStorage) {
+                if (!cacheStorage) return;
+                await Promise.all(SHELL_SITE_ASSETS.map(async (url) => {
+                    try {
+                        const res = await fetch(url, { cache: 'no-cache', credentials: 'same-origin' });
+                        if (res && res.ok) {
+                            await cacheStorage.put(url, res.clone());
+                        }
+                    } catch (e) {}
+                }));
+            },
+
+            async preloadAll(opts = {}) {
+                const { showBanner = true, forceRefresh = false } = opts || {};
+                if (this._activePromise && !forceRefresh) {
+                    return this._activePromise;
+                }
+                const run = (async () => {
+                    this.isComplete = false;
+                    let cacheStorage = null;
+                    try {
+                        if (typeof caches !== 'undefined' && caches.open) {
+                            const keys = await caches.keys();
+                            await Promise.all(keys.map(k => k !== ASSET_CACHE_NAME ? caches.delete(k) : Promise.resolve()));
+                            cacheStorage = await caches.open(ASSET_CACHE_NAME);
+                        }
+                    } catch (e) {}
+
+                    const allImages = this.getAllImageAssets();
+                    this.totalCount = allImages.length;
+                    this.loadedCount = 0;
+                    if (showBanner) {
+                        this.updateProgressUI(0, this.totalCount, false);
+                    }
+
+                    const shellPromise = this.cacheShellAssets(cacheStorage);
+                    const queue = [...allImages];
+                    const concurrency = 6;
+                    const workers = Array.from({ length: Math.min(concurrency, Math.max(1, queue.length)) }, async () => {
+                        while (queue.length > 0) {
+                            const nextPath = queue.shift();
+                            if (!nextPath) break;
+                            await this.fetchAssetToMemory(nextPath, cacheStorage);
+                            this.loadedCount++;
+                            if (showBanner) {
+                                this.updateProgressUI(this.loadedCount, this.totalCount, false);
+                            }
+                        }
+                    });
+
+                    await Promise.all([...workers, shellPromise]);
+                    this.isComplete = true;
+                    if (showBanner) {
+                        this.updateProgressUI(this.totalCount, this.totalCount, true);
+                    }
+                    if (typeof renderNewBattleScreen === 'function' && typeof activeNewBattle !== 'undefined' && activeNewBattle) {
+                        renderNewBattleScreen();
+                    }
+                })();
+
+                this._activePromise = run;
+                try {
+                    await run;
+                } finally {
+                    if (this._activePromise === run) {
+                        this._activePromise = null;
+                    }
+                }
+                return true;
+            },
+
+            async ensureReady(maxWaitMs = 5000) {
+                if (this.isComplete) return true;
+                const p = this._activePromise || this.preloadAll({ showBanner: true });
+                await Promise.race([
+                    p,
+                    new Promise(resolve => setTimeout(resolve, maxWaitMs))
+                ]);
+                return this.isComplete;
+            }
+        };
+        window.AssetPreloader = AssetPreloader;
+        window.resolveAssetSrc = (src) => AssetPreloader.resolve(src);
+
         class CharacterRenderer {
             // 4. 画像のキャッシュ管理用オブジェクト
             static imageCache = {};
 
             static getImage(src) {
                 if (!src) return null;
-                if (!this.imageCache[src]) {
+                const cleanKey = AssetPreloader.normalizePath(src) || src;
+                const cached = this.imageCache[cleanKey];
+                if (cached && cached.hasError) {
+                    delete this.imageCache[cleanKey];
+                }
+                if (!this.imageCache[cleanKey]) {
                     const img = new Image();
                     img.isLoaded = false;
                     img.hasError = false;
                     img.onload = () => { 
-                        img.isLoaded = true; 
+                        img.isLoaded = true;
+                        img.hasError = false;
                         if (typeof updateBattleUI === 'function') updateBattleUI();
                         // DOM上の全キャンバスを再描画して最新画像を確実に反映
                         document.querySelectorAll('canvas').forEach(cvs => {
@@ -152,12 +445,17 @@
                         }
                     };
                     img.onerror = () => { 
+                        if (img.src && img.src.startsWith('blob:') && cleanKey && img.dataset.fallbackTried !== '1') {
+                            img.dataset.fallbackTried = '1';
+                            img.src = cleanKey;
+                            return;
+                        }
                         img.hasError = true; 
                     };
-                    img.src = src;
-                    this.imageCache[src] = img;
+                    img.src = AssetPreloader.resolve(src);
+                    this.imageCache[cleanKey] = img;
                 }
-                return this.imageCache[src];
+                return this.imageCache[cleanKey];
             }
 
             static drawCharacter(canvas, charId, isMiniZou = false, isCharged = false, isDead = false) {
@@ -964,7 +1262,7 @@ static drawDopagaking(p, isCharged) {
                                     <div class="absolute -top-4 left-1/2 -translate-x-1/2 bg-amber-500 text-slate-950 font-pixel text-[10px] px-3 py-1 rounded font-bold">
                                         🌟 決定版・神バランス調整版 EX 🌟
                                     </div>
-                                     <img src="images/title-1.webp" alt="DOPAGA KINGDOM" class="w-full max-w-lg sm:max-w-xl mx-auto object-contain mb-3">
+                                     <img src="${resolveAssetSrc('images/title-1.webp')}" alt="DOPAGA KINGDOM" class="w-full max-w-lg sm:max-w-xl mx-auto object-contain mb-3">
                                     <p class="text-xs sm:text-sm text-amber-100 font-mono mb-6">
                                         王国に真の平和を取り戻せ！<br>最強の王者の座を掴むのは誰だ――？
                                     </p>
@@ -2925,13 +3223,29 @@ static drawDopagaking(p, isCharged) {
             });
         }
 
-        function launchOnlineSyncedBattle(roomId, roomData, isLocalSolo = false) {
+        async function launchOnlineSyncedBattle(roomId, roomData, isLocalSolo = false) {
             audioSystem.playSelect();
             cleanupOnlineLobby();
             closeOnlineLobbyBotCharPicker();
             window.isOnlineBattleMode = true;
             newBattleViewMode = 'main';
             isNewBattleSkillModalOpen = false;
+
+            const launchToken = (window._onlineBattleLaunchSeq = (window._onlineBattleLaunchSeq || 0) + 1);
+            if (window.AssetPreloader && !window.AssetPreloader.isComplete) {
+                const container = document.getElementById('screen-container');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-white p-6 text-center gap-3">
+                            <div class="text-3xl animate-bounce">📦</div>
+                            <div class="text-sm sm:text-base font-pixel font-bold text-amber-300">バトルデータを端末に読み込み中...</div>
+                            <div class="text-xs font-mono text-slate-400">表示エラー防止のため全キャラクター・背景画像を準備しています</div>
+                        </div>
+                    `;
+                }
+                await window.AssetPreloader.ensureReady(5000);
+                if (launchToken !== window._onlineBattleLaunchSeq) return;
+            }
 
             if (activeNewBattle) {
                 activeNewBattle.battleEnded = true;
@@ -7881,8 +8195,8 @@ pasha_dark: {
                     <!-- 背景画像 "screen" (エンドレスにゆっくり横へスクロール、ボタンやroughよりも後ろ) -->
                     <div class="absolute inset-0 overflow-hidden pointer-events-none z-0">
                         <div class="absolute inset-y-0 left-0 flex animate-endless-scroll h-full w-[200%]">
-                            <img src="images/screen.webp" alt="screen" class="w-1/2 h-full object-cover">
-                            <img src="images/screen.webp" alt="screen" class="w-1/2 h-full object-cover">
+                            <img src="${resolveAssetSrc('images/screen.webp')}" alt="screen" class="w-1/2 h-full object-cover">
+                            <img src="${resolveAssetSrc('images/screen.webp')}" alt="screen" class="w-1/2 h-full object-cover">
                         </div>
                     </div>
 
@@ -7897,7 +8211,7 @@ pasha_dark: {
                     </div>
 
                     <!-- 画像 "rough" を画面右下に配置 -->
-                    <img src="dopaAI/rough.webp" alt="rough" class="absolute bottom-0 right-2 sm:right-4 w-36 sm:w-52 object-contain pointer-events-none z-10 opacity-95">
+                    <img src="${resolveAssetSrc('dopaAI/rough.webp')}" alt="rough" class="absolute bottom-0 right-2 sm:right-4 w-36 sm:w-52 object-contain pointer-events-none z-10 opacity-95">
 
                     <!-- 画面上端：DOPA、プロフィール (設定ボタンの下/右に配置) -->
                     <div class="w-full flex justify-between items-start relative z-20 shrink-0 pt-6">
@@ -7973,8 +8287,8 @@ pasha_dark: {
                     <!-- 背景エフェクトや装飾 -->
                     <div class="absolute inset-0 overflow-hidden pointer-events-none z-0 opacity-20">
                         <div class="absolute inset-y-0 left-0 flex animate-endless-scroll h-full w-[200%]">
-                            <img src="images/screen.webp" alt="screen" class="w-1/2 h-full object-cover">
-                            <img src="images/screen.webp" alt="screen" class="w-1/2 h-full object-cover">
+                            <img src="${resolveAssetSrc('images/screen.webp')}" alt="screen" class="w-1/2 h-full object-cover">
+                            <img src="${resolveAssetSrc('images/screen.webp')}" alt="screen" class="w-1/2 h-full object-cover">
                         </div>
                     </div>
 
@@ -8052,8 +8366,8 @@ pasha_dark: {
                 <div class="relative w-full h-full flex flex-col justify-between p-4 sm:p-6 select-none overflow-hidden bg-slate-950">
                     <div class="absolute inset-0 overflow-hidden pointer-events-none z-0 opacity-20">
                         <div class="absolute inset-y-0 left-0 flex animate-endless-scroll h-full w-[200%]">
-                            <img src="images/screen.webp" alt="screen" class="w-1/2 h-full object-cover">
-                            <img src="images/screen.webp" alt="screen" class="w-1/2 h-full object-cover">
+                            <img src="${resolveAssetSrc('images/screen.webp')}" alt="screen" class="w-1/2 h-full object-cover">
+                            <img src="${resolveAssetSrc('images/screen.webp')}" alt="screen" class="w-1/2 h-full object-cover">
                         </div>
                     </div>
 
@@ -8463,8 +8777,8 @@ pasha_dark: {
                 <div class="relative w-full h-full flex flex-col justify-between px-2.5 py-1.5 md:px-6 md:py-3 select-none overflow-hidden bg-slate-950 text-white">
                     <div class="absolute inset-0 overflow-hidden pointer-events-none z-0 opacity-20">
                         <div class="absolute inset-y-0 left-0 flex animate-endless-scroll h-full w-[200%]">
-                            <img src="images/screen.webp" alt="screen" class="w-1/2 h-full object-cover">
-                            <img src="images/screen.webp" alt="screen" class="w-1/2 h-full object-cover">
+                            <img src="${resolveAssetSrc('images/screen.webp')}" alt="screen" class="w-1/2 h-full object-cover">
+                            <img src="${resolveAssetSrc('images/screen.webp')}" alt="screen" class="w-1/2 h-full object-cover">
                         </div>
                     </div>
 
@@ -9104,7 +9418,7 @@ pasha_dark: {
                     ${choicePopupHtml}
                     <!-- 背景画像 -->
                     <div class="absolute inset-0 overflow-hidden pointer-events-none z-0">
-                        <img src="images/backnormal.webp" alt="backnormal" class="w-full h-full object-cover opacity-80">
+                        <img src="${resolveAssetSrc('images/backnormal.webp')}" alt="backnormal" class="w-full h-full object-cover opacity-80" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='images/backnormal.webp';}">
                     </div>
                     <!-- 1. 상部エリア（タイトル・行動状態・ターン・制限時間） -->
                     ${(() => {
@@ -9210,7 +9524,7 @@ pasha_dark: {
 
                                             <!-- 全身スプライト -->
                                             <div id="ally-shake-${origIdx}" class="w-full flex-1 flex items-center justify-center relative drop-shadow-[0_8px_8px_rgba(0,0,0,0.8)] ${c.isShaking ? 'char-shake' : ''}">
-                                               <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none">
+                                               <img src="${resolveAssetSrc(img)}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${img}';}else if(this.dataset.fb==='1'){this.dataset.fb='2';this.src=resolveAssetSrc('${(CHARACTER_DATA[c.id]?.allImage) || (CHARACTER_DATA[c.id]?.image) || 'momopin/momopin.webp'}');}">
                                                ${allyRoleBadgeHtml}
                                                <div class="absolute bottom-1 left-1 z-30 flex flex-col gap-0.5 items-start pointer-events-none">
                                                    ${getStatusBadgesHtml(c, true)}
@@ -9290,7 +9604,7 @@ pasha_dark: {
 
                                            <!-- 全身スプライト -->
                                            <div id="enemy-shake-${origIdx}" class="w-full flex-1 flex items-center justify-center relative drop-shadow-[0_8px_8px_rgba(0,0,0,0.8)] ${c.isShaking ? 'char-shake' : ''}">
-                                               <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain" style="${flipStyle}">
+                                               <img src="${resolveAssetSrc(img)}" alt="${c.charName}" class="w-full h-full object-contain" style="${flipStyle}" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${img}';}else if(this.dataset.fb==='1'){this.dataset.fb='2';this.src=resolveAssetSrc('${(CHARACTER_DATA[c.id]?.image) || 'asaiomizu/asaiomizu.webp'}');}">
                                                ${enemyRoleBadgeHtml}
                                                <div class="absolute bottom-1 left-1 z-30 flex flex-col gap-0.5 items-start pointer-events-none">
                                                    ${getStatusBadgesHtml(c, false)}
@@ -10419,9 +10733,15 @@ pasha_dark: {
             fetchMyFriendBoxFromServer(true);
         }
 
-        function forceReloadApp() {
+        async function forceReloadApp() {
             audioSystem.playSelect();
             // セーブデータ（localStorage）は絶対に削除・リセットせず、キャッシュを無視して最新のWebファイルを強制再読み込みする
+            try {
+                if (typeof caches !== 'undefined' && caches.keys) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map(k => caches.delete(k)));
+                }
+            } catch (e) {}
             window.location.reload(true);
         }
 
@@ -10543,9 +10863,12 @@ pasha_dark: {
                 }, 300);
             });
 
-            // 全キャラクターの画像・専用画像を事前プリロード
+            // 全キャラクターの画像・背景・UI素材を毎回すべてスマホ内に読み込み・キャッシュ＆事前デコード
+            AssetPreloader.preloadAll({ showBanner: true });
             Object.values(CHARACTER_DATA).forEach(c => {
                 if (c.image) CharacterRenderer.getImage(c.image);
+                if (c.allImage) CharacterRenderer.getImage(c.allImage);
+                if (c.dieImage) CharacterRenderer.getImage(c.dieImage);
                 if (c.chargedImage) CharacterRenderer.getImage(c.chargedImage);
             });
             Object.values(EXTRA_ICONS).forEach(item => {
@@ -11363,7 +11686,7 @@ pasha_dark: {
                 return `
                     <button onclick="executeDopaSelectChar('${c.id}')" class="pixel-box bg-slate-900 border border-amber-500 hover:border-amber-300 p-2 text-center shadow flex flex-col items-center justify-between transition-all cursor-pointer rounded-lg group">
                         <div class="w-12 h-12 flex items-center justify-center bg-slate-950 rounded mb-1 overflow-hidden">
-                            <img src="${img}" alt="${c.name}" class="w-full h-full object-contain pointer-events-none group-hover:scale-110 transition-transform">
+                            <img src="${resolveAssetSrc(img)}" alt="${c.name}" class="w-full h-full object-contain pointer-events-none group-hover:scale-110 transition-transform" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${img}';}">
                         </div>
                         <div class="font-pixel text-[10px] text-amber-300 font-bold truncate w-full">${c.name}</div>
                         <div class="text-[8px] text-slate-300 truncate w-full">${c.title || c.type || ''}</div>

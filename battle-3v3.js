@@ -2004,7 +2004,7 @@ function renderNewBattleScreen() {
             ${skillModalHtml}
             ${choicePopupHtml}
             <div class="absolute inset-0 overflow-hidden pointer-events-none z-0">
-                <img src="images/backnormal.webp" alt="backnormal" class="w-full h-full object-cover opacity-80">
+                <img src="${typeof window.resolveAssetSrc === 'function' ? window.resolveAssetSrc('images/backnormal.webp') : 'images/backnormal.webp'}" alt="backnormal" class="w-full h-full object-cover opacity-80" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='images/backnormal.webp';}">
             </div>
             <div class="w-full h-7 md:h-9 flex items-center justify-between gap-1 md:gap-2 px-1.5 md:px-3 bg-slate-900/95 rounded-lg border border-slate-700 shadow-md z-20 shrink-0 overflow-hidden">
                 <div class="flex items-center gap-1 text-[9px] md:text-xs font-pixel text-amber-300 min-w-0 max-w-[36%] shrink"><span class="truncate whitespace-nowrap">⚔️ 3v3バトルモード</span></div>
@@ -2057,7 +2057,7 @@ function renderNewBattleScreen() {
                                         <div class="w-full bg-slate-900 h-1 rounded overflow-hidden mt-0.5"><div class="bg-emerald-400 h-full" style="width: ${pct}%;"></div></div>
                                     </div>
                                      <div id="new-ally-img-${origIdx}" class="w-full flex-1 flex items-center justify-center relative ${c.isShaking ? 'char-shake' : ''}">
-                                         <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none" onerror="const fb='${charData.allImage || charData.image || 'momopin/momopin.webp'}'; if(this.src!==fb) this.src=fb;">
+                                         <img src="${typeof window.resolveAssetSrc === 'function' ? window.resolveAssetSrc(img) : img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${img}';}else if(this.dataset.fb==='1'){this.dataset.fb='2';const fb='${charData.allImage || charData.image || 'momopin/momopin.webp'}';this.src=typeof window.resolveAssetSrc==='function'?window.resolveAssetSrc(fb):fb;}">
                                          <div class="absolute bottom-0 left-0 z-30 flex flex-col gap-0.5 items-start pointer-events-none">
                                              ${typeof getStatusBadgesHtml === 'function' ? getStatusBadgesHtml(c, true) : ''}
                                          </div>
@@ -2109,7 +2109,7 @@ function renderNewBattleScreen() {
                                         <div class="w-full bg-slate-900 h-1 rounded overflow-hidden mt-0.5"><div class="bg-red-500 h-full" style="width: ${pct}%;"></div></div>
                                     </div>
                                      <div id="new-enemy-img-${origIdx}" class="w-full flex-1 flex items-center justify-center relative ${c.isShaking ? 'char-shake' : ''}">
-                                         <img src="${img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none" style="transform: scaleX(-1);" onerror="const fb='${charData.image || 'asaiomizu/asaiomizu.webp'}'; if(this.src!==fb) this.src=fb;">
+                                         <img src="${typeof window.resolveAssetSrc === 'function' ? window.resolveAssetSrc(img) : img}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none" style="transform: scaleX(-1);" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${img}';}else if(this.dataset.fb==='1'){this.dataset.fb='2';const fb='${charData.image || 'asaiomizu/asaiomizu.webp'}';this.src=typeof window.resolveAssetSrc==='function'?window.resolveAssetSrc(fb):fb;}">
                                          <div class="absolute bottom-0 right-0 z-30 flex flex-col gap-0.5 items-end pointer-events-none">
                                              ${typeof getStatusBadgesHtml === 'function' ? getStatusBadgesHtml(c, false) : ''}
                                          </div>
