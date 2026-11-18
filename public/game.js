@@ -153,7 +153,7 @@
             });
         };
 
-        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.7';
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.8';
         const STATIC_IMAGE_ASSETS = [
             'assets/aistudio/image_6db88de4.png',
             'images/backnormal.webp',
@@ -203,9 +203,9 @@
         ];
         const SHELL_SITE_ASSETS = [
             'manifest.json',
-            'style.css?v=2.3.7',
-            'battle-3v3.js?v=2.3.7',
-            'game.js?v=2.3.7'
+            'style.css?v=2.3.8',
+            'battle-3v3.js?v=2.3.8',
+            'game.js?v=2.3.8'
         ];
 
         const AssetPreloader = {
@@ -1178,7 +1178,17 @@ static drawDopagaking(p, isCharged) {
             playerState.unlockedChars = [];
             playerState.unlockedIcons = ['dopagaking'];
             playerState.selectedPlayerChar = null;
+            playerState.lastSelectedChar = null;
+            playerState.lastSelectedTeam = [null, null, null];
             playerState.selectedIcon = 'dopagaking';
+            window.selectedNewBattleTeam = [null, null, null];
+            window.selectedNewBattleChar = null;
+            window.selectedOnlineMultiChar = null;
+            try {
+                localStorage.removeItem('dopa_last_selected_team');
+                localStorage.removeItem('dopa_last_selected_char');
+                localStorage.removeItem('dopa_online_multi_char');
+            } catch(e){}
             await savePlayerState();
             renderHomeScreen();
             updateHeaderProfile();
@@ -1560,6 +1570,13 @@ static drawDopagaking(p, isCharged) {
             }
             if (playerState.unlockedChars.length > 0 && (!playerState.selectedPlayerChar || !playerState.unlockedChars.includes(playerState.selectedPlayerChar))) {
                 playerState.selectedPlayerChar = playerState.unlockedChars[0];
+            } else if (playerState.unlockedChars.length === 0) {
+                playerState.selectedPlayerChar = null;
+                playerState.lastSelectedChar = null;
+                playerState.lastSelectedTeam = [null, null, null];
+                window.selectedNewBattleChar = null;
+                window.selectedNewBattleTeam = [null, null, null];
+                window.selectedOnlineMultiChar = null;
             }
             if (!playerState.selectedIcon || !playerState.unlockedIcons.includes(playerState.selectedIcon)) {
                 playerState.selectedIcon = playerState.unlockedIcons[0] || 'dopagaking';
@@ -1567,14 +1584,50 @@ static drawDopagaking(p, isCharged) {
             const el = document.getElementById('dopa-count') || document.getElementById('home-dopa-count');
             if (el) el.innerText = formatDopa(playerState.dopa);
             const lastChar = getLastSelectedChar();
-            if (lastChar) {
-                window.selectedNewBattleChar = lastChar;
-            }
+            window.selectedNewBattleChar = lastChar || null;
             updateHeaderProfile();
+        }
+
+        function getUnlockedCharIds() {
+            const list = Array.isArray(playerState && playerState.unlockedChars) ? playerState.unlockedChars : [];
+            const seen = new Set();
+            return list.filter(id => {
+                if (!id || seen.has(id)) return false;
+                if (typeof CHARACTER_DATA !== 'undefined' && !CHARACTER_DATA[id]) return false;
+                seen.add(id);
+                return true;
+            });
+        }
+
+        function showGachaRequiredModal(title, message) {
+            const titleEl = document.getElementById('modal-title');
+            const bodyEl = document.getElementById('modal-body');
+            const overlay = document.getElementById('modal-overlay');
+            const actionsEl = document.getElementById('modal-actions');
+            const safeMsg = String(message || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            if (titleEl) titleEl.innerText = title || '🎰 ガチャでキャラクターを入手しよう';
+            if (bodyEl) {
+                bodyEl.innerHTML = `<div class="text-xs sm:text-sm text-slate-200 leading-relaxed whitespace-pre-line font-mono text-center py-1">${safeMsg}</div>`;
+            }
+            if (actionsEl) {
+                actionsEl.innerHTML = `
+                    <button type="button" onclick="closeModal()" class="pixel-btn px-4 py-2 font-bold text-xs sm:text-sm">閉じる</button>
+                    <button type="button" onclick="closeModal(); if (typeof openGachaModal === 'function') openGachaModal();" class="pixel-btn pixel-btn-warning px-5 py-2 font-bold text-xs sm:text-sm">🎰 ガチャを引く</button>
+                `;
+            }
+            if (overlay) {
+                overlay.classList.remove('hidden');
+                document.body.classList.add('modal-open');
+            }
         }
 
         function saveLastSelectedChar(charId) {
             if (!charId) return;
+            const unlocked = getUnlockedCharIds();
+            if (!unlocked.includes(charId)) return;
             window.selectedNewBattleChar = charId;
             playerState.selectedPlayerChar = charId;
             playerState.lastSelectedChar = charId;
@@ -1587,41 +1640,58 @@ static drawDopagaking(p, isCharged) {
         }
 
         function getLastSelectedChar() {
-            if (window.selectedNewBattleChar && (typeof CHARACTER_DATA === 'undefined' || CHARACTER_DATA[window.selectedNewBattleChar])) {
+            const unlocked = getUnlockedCharIds();
+            if (unlocked.length === 0) {
+                window.selectedNewBattleChar = null;
+                return null;
+            }
+            const unlockedSet = new Set(unlocked);
+            if (window.selectedNewBattleChar && unlockedSet.has(window.selectedNewBattleChar)) {
                 return window.selectedNewBattleChar;
             }
             let stored = null;
             try {
                 stored = localStorage.getItem('dopa_last_selected_char');
             } catch(e){}
-            if (stored && typeof CHARACTER_DATA !== 'undefined' && CHARACTER_DATA[stored]) {
+            if (stored && unlockedSet.has(stored)) {
                 window.selectedNewBattleChar = stored;
                 return stored;
             }
-            if (playerState.lastSelectedChar && typeof CHARACTER_DATA !== 'undefined' && CHARACTER_DATA[playerState.lastSelectedChar]) {
+            if (playerState.lastSelectedChar && unlockedSet.has(playerState.lastSelectedChar)) {
                 window.selectedNewBattleChar = playerState.lastSelectedChar;
                 return playerState.lastSelectedChar;
             }
-            if (playerState.selectedPlayerChar && typeof CHARACTER_DATA !== 'undefined' && CHARACTER_DATA[playerState.selectedPlayerChar]) {
+            if (playerState.selectedPlayerChar && unlockedSet.has(playerState.selectedPlayerChar)) {
                 window.selectedNewBattleChar = playerState.selectedPlayerChar;
                 return playerState.selectedPlayerChar;
             }
-            window.selectedNewBattleChar = 'asaiomizu';
-            return 'asaiomizu';
+            window.selectedNewBattleChar = unlocked[0];
+            return unlocked[0];
         }
 
+        window.getUnlockedCharIds = getUnlockedCharIds;
+        window.showGachaRequiredModal = showGachaRequiredModal;
         window.saveLastSelectedChar = saveLastSelectedChar;
         window.getLastSelectedChar = getLastSelectedChar;
 
         function getSelectedNewBattleTeam() {
-            if (Array.isArray(window.selectedNewBattleTeam) && window.selectedNewBattleTeam.length === 3) {
-                return [...window.selectedNewBattleTeam];
+            const unlocked = getUnlockedCharIds();
+            const unlockedSet = new Set(unlocked);
+            if (unlocked.length === 0) {
+                window.selectedNewBattleTeam = [null, null, null];
+                return [null, null, null];
             }
+
             let raw = null;
-            try {
-                const stored = localStorage.getItem('dopa_last_selected_team');
-                if (stored) raw = JSON.parse(stored);
-            } catch(e) {}
+            if (Array.isArray(window.selectedNewBattleTeam) && window.selectedNewBattleTeam.length === 3) {
+                raw = window.selectedNewBattleTeam;
+            }
+            if (!Array.isArray(raw)) {
+                try {
+                    const stored = localStorage.getItem('dopa_last_selected_team');
+                    if (stored) raw = JSON.parse(stored);
+                } catch(e) {}
+            }
             if (!Array.isArray(raw) && Array.isArray(playerState.lastSelectedTeam)) {
                 raw = playerState.lastSelectedTeam;
             }
@@ -1630,7 +1700,7 @@ static drawDopagaking(p, isCharged) {
                 const seen = new Set();
                 for (let i = 0; i < 3; i++) {
                     const id = raw[i];
-                    if (id && typeof CHARACTER_DATA !== 'undefined' && CHARACTER_DATA[id] && !seen.has(id)) {
+                    if (id && unlockedSet.has(id) && !seen.has(id)) {
                         team[i] = id;
                         seen.add(id);
                     }
@@ -1638,10 +1708,10 @@ static drawDopagaking(p, isCharged) {
             }
             if (!team[0] && !team[1] && !team[2]) {
                 const lastChar = getLastSelectedChar();
-                if (playerState.unlockedChars && playerState.unlockedChars.length > 0) {
-                    team[0] = playerState.unlockedChars.includes(lastChar) ? lastChar : playerState.unlockedChars[0];
-                } else if (lastChar && (typeof CHARACTER_DATA === 'undefined' || CHARACTER_DATA[lastChar])) {
+                if (lastChar && unlockedSet.has(lastChar)) {
                     team[0] = lastChar;
+                } else if (unlocked[0]) {
+                    team[0] = unlocked[0];
                 }
             }
             window.selectedNewBattleTeam = team;
@@ -1649,10 +1719,11 @@ static drawDopagaking(p, isCharged) {
         }
 
         function saveSelectedNewBattleTeam(team) {
+            const unlockedSet = new Set(getUnlockedCharIds());
             const seen = new Set();
             const normalized = [0, 1, 2].map(i => {
                 const id = Array.isArray(team) ? team[i] : null;
-                if (id && (typeof CHARACTER_DATA === 'undefined' || CHARACTER_DATA[id]) && !seen.has(id)) {
+                if (id && unlockedSet.has(id) && (typeof CHARACTER_DATA === 'undefined' || CHARACTER_DATA[id]) && !seen.has(id)) {
                     seen.add(id);
                     return id;
                 }
@@ -1666,6 +1737,15 @@ static drawDopagaking(p, isCharged) {
                 playerState.lastSelectedChar = normalized[0];
                 try {
                     localStorage.setItem('dopa_last_selected_char', normalized[0]);
+                } catch(e) {}
+            } else {
+                window.selectedNewBattleChar = null;
+                if (unlockedSet.size === 0) {
+                    playerState.selectedPlayerChar = null;
+                    playerState.lastSelectedChar = null;
+                }
+                try {
+                    localStorage.removeItem('dopa_last_selected_char');
                 } catch(e) {}
             }
             try {
@@ -1711,6 +1791,11 @@ static drawDopagaking(p, isCharged) {
         }
 
         function assignNewBattleTeamSlot(slotIdx, charId) {
+            const unlocked = getUnlockedCharIds();
+            if (!unlocked.includes(charId)) {
+                showGachaRequiredModal('未解放キャラクター', 'このキャラクターはまだ所持していません。ガチャで解放してください！');
+                return getSelectedNewBattleTeam();
+            }
             const team = getSelectedNewBattleTeam();
             const targetIdx = (typeof slotIdx === 'number' && slotIdx >= 0 && slotIdx < 3) ? slotIdx : getActiveTeamSlotIndex();
             const existingIdx = team.indexOf(charId);
@@ -1744,8 +1829,8 @@ static drawDopagaking(p, isCharged) {
 
         function toggleNewBattleTeamChar(charId, sortOrder = 'default', sortDir = 'desc', onlyOwned = false, isOnline = false) {
             audioSystem.playSelect();
-            if (!playerState.unlockedChars.includes(charId)) {
-                showModal('未解放キャラクター', 'このキャラクターはまだ所持していません。ガチャで解放してください！');
+            if (!getUnlockedCharIds().includes(charId)) {
+                showGachaRequiredModal('未解放キャラクター', 'このキャラクターはまだ所持していません。ガチャで解放してください！');
                 return;
             }
             const team = getSelectedNewBattleTeam();
@@ -1764,14 +1849,23 @@ static drawDopagaking(p, isCharged) {
 
         function autoFillNewBattleTeam(sortOrder = 'default', sortDir = 'desc', onlyOwned = false, isOnline = false) {
             audioSystem.playSelect();
-            const team = getSelectedNewBattleTeam();
-            const unlocked = Array.isArray(playerState.unlockedChars) ? [...playerState.unlockedChars] : [];
-            const allIds = typeof CHARACTER_DATA !== 'undefined' ? Object.keys(CHARACTER_DATA) : [];
+            const unlocked = getUnlockedCharIds();
+            const unlockedSet = new Set(unlocked);
+
+            if (unlocked.length === 0) {
+                saveSelectedNewBattleTeam([null, null, null]);
+                window.activeTeamSlotIndex = 0;
+                renderNewBattleCharSelectScreen(sortOrder, sortDir, onlyOwned, isOnline);
+                showGachaRequiredModal('ガチャ未実施（未所持）', '所持しているキャラクターがいません！\n「おまかせ」編成や3対3バトルへの参加には、ガチャを引いてキャラクターを手に入れる必要があります。');
+                return;
+            }
+
+            const team = getSelectedNewBattleTeam().map(id => (id && unlockedSet.has(id)) ? id : null);
             const allFull = team.every(Boolean);
             const nextTeam = allFull ? [null, null, null] : [...team];
 
             const pickRandomFrom = (pool, excludeSet) => {
-                const candidates = pool.filter(id => !excludeSet.has(id));
+                const candidates = pool.filter(id => unlockedSet.has(id) && !excludeSet.has(id));
                 if (candidates.length === 0) return null;
                 return candidates[Math.floor(Math.random() * candidates.length)];
             };
@@ -1779,10 +1873,7 @@ static drawDopagaking(p, isCharged) {
             const used = new Set(nextTeam.filter(Boolean));
             for (let i = 0; i < 3; i++) {
                 if (!nextTeam[i]) {
-                    let chosen = pickRandomFrom(unlocked, used);
-                    if (!chosen) {
-                        chosen = pickRandomFrom(allIds, used);
-                    }
+                    const chosen = pickRandomFrom(unlocked, used);
                     if (chosen) {
                         nextTeam[i] = chosen;
                         used.add(chosen);
@@ -1792,17 +1883,45 @@ static drawDopagaking(p, isCharged) {
             saveSelectedNewBattleTeam(nextTeam);
             window.activeTeamSlotIndex = 0;
             renderNewBattleCharSelectScreen(sortOrder, sortDir, onlyOwned, isOnline);
+
+            if (unlocked.length < 3) {
+                const filledCount = nextTeam.filter(Boolean).length;
+                showGachaRequiredModal('所持キャラクター不足', `所持しているキャラクター（${unlocked.length}体）のみでおまかせ編成しました（${filledCount}/3体）。\n3対3バトルに参加するには、ガチャを引いてキャラクターを3体以上集めてください！`);
+            }
         }
 
         function startSelectedNewBattleTeam(isOnline = false) {
             audioSystem.playSelect();
-            const team = getSelectedNewBattleTeam();
+            const unlocked = getUnlockedCharIds();
+            const unlockedSet = new Set(unlocked);
+
+            if (unlocked.length === 0) {
+                saveSelectedNewBattleTeam([null, null, null]);
+                showGachaRequiredModal('ガチャ未実施（参加不可）', '所持しているキャラクターがいないためバトルに参加できません！\nまずはガチャを引いてキャラクターを3体以上手に入れてください。');
+                return;
+            }
+            if (unlocked.length < 3) {
+                showGachaRequiredModal('所持キャラクター不足（参加不可）', `3対3バトルに参加するには、所持キャラクターが3体以上必要です！（現在 ${unlocked.length}/3 体所持）\nガチャを引いてキャラクターを増やしてください。`);
+                return;
+            }
+
+            const rawTeam = getSelectedNewBattleTeam();
+            const team = rawTeam.map(id => (id && unlockedSet.has(id)) ? id : null);
+            if (team.some((id, idx) => id !== rawTeam[idx])) {
+                saveSelectedNewBattleTeam(team);
+                renderNewBattleCharSelectScreen('default', 'desc', false, isOnline);
+            }
+
             const selectedCount = team.filter(Boolean).length;
             if (selectedCount < 3) {
-                showModal('味方チーム未完了', `味方チームのキャラクターを3体選択してください！（現在 ${selectedCount}/3 体選択中）\n\n各キャラクターの「+ 編成」ボタン、詳細画面、または上部の「🎲 おまかせ」から3体を選べます。`);
+                showModal('味方チーム未完了', `味方チームの所持キャラクターを3体選択してください！（現在 ${selectedCount}/3 体選択中）\n\n各キャラクターの「+ 編成」ボタン、詳細画面、または上部の「🎲 おまかせ」から3体を選べます。`);
                 return;
             }
             for (let i = 0; i < 3; i++) {
+                if (!team[i] || !unlockedSet.has(team[i])) {
+                    showGachaRequiredModal('未解放キャラクター', '未所持のキャラクターが含まれているためバトルに参加できません！');
+                    return;
+                }
                 if (!validateCharCustomStats(team[i])) return;
             }
             if (isOnline) {
@@ -1919,22 +2038,20 @@ static drawDopagaking(p, isCharged) {
         }
 
         function getSelectedOnlineMultiChar() {
+            const unlocked = getUnlockedCharIds();
+            if (unlocked.length === 0) {
+                window.selectedOnlineMultiChar = null;
+                return null;
+            }
             let charId = window.selectedOnlineMultiChar;
             if (!charId) {
                 try {
                     charId = localStorage.getItem('dopa_online_multi_char');
                 } catch(e) {}
             }
-            if (!charId || (typeof CHARACTER_DATA !== 'undefined' && !CHARACTER_DATA[charId])) {
+            if (!charId || !unlocked.includes(charId)) {
                 const last = getLastSelectedChar();
-                if (playerState.unlockedChars && playerState.unlockedChars.length > 0) {
-                    charId = playerState.unlockedChars.includes(last) ? last : playerState.unlockedChars[0];
-                } else {
-                    charId = last || 'asaiomizu';
-                }
-            }
-            if (playerState.unlockedChars && playerState.unlockedChars.length > 0 && !playerState.unlockedChars.includes(charId)) {
-                charId = playerState.unlockedChars[0];
+                charId = (last && unlocked.includes(last)) ? last : unlocked[0];
             }
             window.selectedOnlineMultiChar = charId;
             return charId;
@@ -2266,8 +2383,18 @@ static drawDopagaking(p, isCharged) {
         function fallbackLaunchBotFromMatchmaking(mode) {
             audioSystem.playSelect();
             cleanupOnlineLobby();
+            const unlocked = getUnlockedCharIds();
             if (mode === '2p') {
-                const team = window.pendingOnline2pTeam || getSelectedNewBattleTeam();
+                if (unlocked.length < 3) {
+                    showGachaRequiredModal('所持キャラクター不足', `3対3バトルに参加するには、所持キャラクターが3体以上必要です！（現在 ${unlocked.length}/3 体所持）\nガチャを引いてキャラクターを増やしてください。`);
+                    return;
+                }
+                const rawTeam = window.pendingOnline2pTeam || getSelectedNewBattleTeam();
+                const team = rawTeam.filter(id => id && unlocked.includes(id));
+                if (team.length < 3) {
+                    showModal('味方チーム未完了', '所持しているキャラクターから3体選択してください！');
+                    return;
+                }
                 const allIds = Object.keys(CHARACTER_DATA);
                 const otherIds = allIds.filter(id => id !== team[0]);
                 const eChar = otherIds[Math.floor(Math.random() * otherIds.length)] || 'pasha';
@@ -2275,6 +2402,10 @@ static drawDopagaking(p, isCharged) {
             } else {
                 const cfg = getOnlineBattleConfig();
                 const charId = getSelectedOnlineMultiChar();
+                if (!charId || !unlocked.includes(charId)) {
+                    showGachaRequiredModal('ガチャ未実施（参加不可）', '所持しているキャラクターがいないためバトルに参加できません！\nまずはガチャを引いてキャラクターを入手してください。');
+                    return;
+                }
                 const allIds = Object.keys(CHARACTER_DATA);
                 const otherIds = allIds.filter(id => id !== charId);
                 const eChar = otherIds[Math.floor(Math.random() * otherIds.length)] || 'pasha';
@@ -5628,18 +5759,23 @@ pasha_dark: {
                     this.p2 = this.enemies[0];
                 } else if (this.isNewBattle) {
                     const allIds = Object.keys(CHARACTER_DATA);
+                    const unlockedPool = typeof getUnlockedCharIds === 'function'
+                        ? getUnlockedCharIds()
+                        : (Array.isArray(playerState && playerState.unlockedChars) ? playerState.unlockedChars.filter(id => CHARACTER_DATA[id]) : []);
+                    const isLocalSolo3v3 = !this.isOnlineSynced && !this.isOnlineBattleMode;
+                    const allowedAllyPool = (isLocalSolo3v3 && unlockedPool.length > 0) ? unlockedPool : allIds;
                     const rawTeam = isTeamArray ? p1CharId.filter(id => id && CHARACTER_DATA[id]) : [];
                     const allyIds = [];
                     const allySeen = new Set();
                     [ally1Id, rawTeam[1], rawTeam[2]].forEach(id => {
-                        if (id && CHARACTER_DATA[id] && !allySeen.has(id)) {
+                        if (id && CHARACTER_DATA[id] && !allySeen.has(id) && (!isLocalSolo3v3 || allowedAllyPool.includes(id))) {
                             allySeen.add(id);
                             allyIds.push(id);
                         }
                     });
                     while (allyIds.length < 3) {
-                        const pool = allIds.filter(id => !allySeen.has(id));
-                        const picked = pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : 'asaiomizu';
+                        const pool = allowedAllyPool.filter(id => !allySeen.has(id));
+                        const picked = pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : (allowedAllyPool[0] || 'asaiomizu');
                         allySeen.add(picked);
                         allyIds.push(picked);
                     }
@@ -10215,7 +10351,7 @@ pasha_dark: {
                         </div>
                         ${isOnlineMultiSingle ? '' : `
                         <div class="flex flex-col sm:flex-row gap-1 shrink-0">
-                            <button onclick="autoFillNewBattleTeam('${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline})" class="pixel-btn pixel-btn-warning px-2 py-1 text-[10px] font-bold" title="空きスロットを自動編成">
+                            <button onclick="autoFillNewBattleTeam('${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline})" class="pixel-btn pixel-btn-warning px-2 py-1 text-[10px] font-bold" title="${unlockedCount === 0 ? '所持キャラがいません（ガチャで入手）' : '所持キャラのみから空きスロットを自動編成'}">
                                 🎲 おまかせ
                             </button>
                             <button onclick="clearAllNewBattleTeam('${sortOrder}', '${sortDir}', ${onlyOwned}, ${isOnline})" class="pixel-btn bg-slate-800 border-slate-600 px-2 py-1 text-[10px] font-bold text-slate-300" title="編成をクリア">
@@ -10300,11 +10436,11 @@ pasha_dark: {
                     <div class="flex gap-3 w-full justify-center pb-1 flex-shrink-0">
                         ${isOnlineMultiSingle ? `
                         <button onclick="startSelectedOnlineMultiChar()" class="pixel-btn ${selectedMultiCharId ? 'pixel-btn-success' : 'bg-slate-800 border-slate-600 text-slate-300'} px-8 py-2 sm:py-2.5 text-xs sm:text-sm font-bold font-pixel shadow-lg">
-                            ${selectedMultiCharId ? `この1体で出陣！ (${onlineCfg.allyHumanCount}vs${onlineCfg.enemyHumanCount}) ▶` : '操作するキャラクターを1体選んでください'}
+                            ${selectedMultiCharId ? `この1体で出陣！ (${onlineCfg.allyHumanCount}vs${onlineCfg.enemyHumanCount}) ▶` : (unlockedCount === 0 ? '🎰 ガチャを引いてキャラを入手しよう (所持 0体)' : '操作するキャラクターを1体選んでください')}
                         </button>
                         ` : `
-                        <button onclick="startSelectedNewBattleTeam(${isOnline})" class="pixel-btn ${selectedCount === 3 ? (isOnline ? 'pixel-btn-success' : 'pixel-btn-primary') : 'bg-slate-800 border-slate-600 text-slate-300'} px-8 py-2 sm:py-2.5 text-xs sm:text-sm font-bold font-pixel shadow-lg">
-                            ${selectedCount === 3 ? (isOnline ? 'この3体でマッチングへ ▶' : 'この3体で出陣！ ▶') : `あと${3 - selectedCount}体選択してください (${selectedCount}/3)`}
+                        <button onclick="startSelectedNewBattleTeam(${isOnline})" class="pixel-btn ${unlockedCount < 3 ? 'bg-slate-800 border-red-500/70 text-amber-200' : (selectedCount === 3 ? (isOnline ? 'pixel-btn-success' : 'pixel-btn-primary') : 'bg-slate-800 border-slate-600 text-slate-300')} px-8 py-2 sm:py-2.5 text-xs sm:text-sm font-bold font-pixel shadow-lg">
+                            ${unlockedCount === 0 ? '🎰 ガチャを引いてキャラを3体入手しよう (所持 0/3)' : (unlockedCount < 3 ? `🔒 参加には所持キャラ3体以上が必要 (所持 ${unlockedCount}/3体)` : (selectedCount === 3 ? (isOnline ? 'この3体でマッチングへ ▶' : 'この3体で出陣！ ▶') : `あと${3 - selectedCount}体選択してください (${selectedCount}/3)`))}
                         </button>
                         `}
                     </div>
@@ -10483,13 +10619,38 @@ pasha_dark: {
             return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
         }
 
-        function startNewBattleMode(playerCharId = 'asaiomizu', enemyCharId = 'asaiomizu', battleOptions = null) {
+        function startNewBattleMode(playerCharId = null, enemyCharId = 'asaiomizu', battleOptions = null) {
+            const opts = battleOptions || {};
+            if (!opts.isOnlineSynced) {
+                const unlocked = getUnlockedCharIds();
+                if (opts.controlSingleAllyOnly) {
+                    const singleId = Array.isArray(playerCharId) ? playerCharId[0] : playerCharId;
+                    if (!singleId || !unlocked.includes(singleId)) {
+                        showGachaRequiredModal('未解放キャラクター', '所持しているキャラクターがいないためバトルに参加できません！\nガチャを引いてキャラクターを入手してください。');
+                        return;
+                    }
+                } else {
+                    if (unlocked.length < 3) {
+                        showGachaRequiredModal('所持キャラクター不足（参加不可）', `3対3バトルに参加するには、ガチャでキャラクターを3体以上手に入れる必要があります！（現在 ${unlocked.length}/3 体所持）`);
+                        return;
+                    }
+                    const teamArr = Array.isArray(playerCharId) ? playerCharId : [playerCharId];
+                    const uniqueOwned = [...new Set(teamArr.filter(id => id && CHARACTER_DATA[id] && unlocked.includes(id)))];
+                    if (uniqueOwned.length < 3) {
+                        showGachaRequiredModal('未解放キャラクター', '所持しているキャラクターを3体編成しないとバトルに参加できません！');
+                        return;
+                    }
+                    playerCharId = uniqueOwned.slice(0, 3);
+                }
+            }
             audioSystem.playSelect();
-            const leaderCharId = Array.isArray(playerCharId) ? (playerCharId[0] || 'asaiomizu') : playerCharId;
-            if (typeof saveLastSelectedChar === 'function') {
-                saveLastSelectedChar(leaderCharId);
-            } else {
-                window.selectedNewBattleChar = leaderCharId;
+            const leaderCharId = Array.isArray(playerCharId) ? (playerCharId[0] || null) : playerCharId;
+            if (leaderCharId) {
+                if (typeof saveLastSelectedChar === 'function') {
+                    saveLastSelectedChar(leaderCharId);
+                } else {
+                    window.selectedNewBattleChar = leaderCharId;
+                }
             }
             if (Array.isArray(playerCharId) && typeof saveSelectedNewBattleTeam === 'function') {
                 saveSelectedNewBattleTeam(playerCharId);
@@ -12914,8 +13075,16 @@ pasha_dark: {
                 newBattleCustomStats: {}
             };
 
+            playerState.lastSelectedChar = null;
+            playerState.lastSelectedTeam = [null, null, null];
+            window.selectedNewBattleTeam = [null, null, null];
+            window.selectedNewBattleChar = null;
+            window.selectedOnlineMultiChar = null;
             try {
                 localStorage.removeItem('dopa_player_state');
+                localStorage.removeItem('dopa_last_selected_team');
+                localStorage.removeItem('dopa_last_selected_char');
+                localStorage.removeItem('dopa_online_multi_char');
             } catch(e){}
 
             await savePlayerState();
