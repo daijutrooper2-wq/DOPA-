@@ -153,7 +153,7 @@
             });
         };
 
-        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.14';
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.15';
         const STATIC_IMAGE_ASSETS = [
             'assets/aistudio/image_6db88de4.png',
             'images/backnormal.webp',
@@ -203,9 +203,9 @@
         ];
         const SHELL_SITE_ASSETS = [
             'manifest.json',
-            'style.css?v=2.3.14',
-            'battle-3v3.js?v=2.3.14',
-            'game.js?v=2.3.14'
+            'style.css?v=2.3.15',
+            'battle-3v3.js?v=2.3.15',
+            'game.js?v=2.3.15'
         ];
 
         const AssetPreloader = {
@@ -6122,8 +6122,8 @@ pasha_dark: {
                         canonicalTeam,
                         hostTeamNum: this.myTeamNum
                     });
-                    if (this._onlineEventBuffer.length > 45) {
-                        this._onlineEventBuffer = this._onlineEventBuffer.slice(-45);
+                    if (this._onlineEventBuffer.length > 28) {
+                        this._onlineEventBuffer = this._onlineEventBuffer.slice(-28);
                     }
                 }
                 if (this.onLogUpdate) {
@@ -6886,9 +6886,11 @@ pasha_dark: {
                 this.heartbeatTimer = setInterval(async () => {
                     if (this.battleEnded || !this.isOnlineSynced) return;
                     const now = Date.now();
+                    if (this._lastRoomWriteAt && (now - this._lastRoomWriteAt < 4500)) return;
                     const hbPayload = { [`battleHeartbeats.${this.onlineClientId}`]: now };
                     if (this.isOnlineHost) hbPayload.hostLastSeen = now;
                     try {
+                        this._lastRoomWriteAt = now;
                         await window.fbUpdateDoc(roomRef, hbPayload);
                         this._netFailCount = 0;
                     } catch (e) {
@@ -6901,7 +6903,7 @@ pasha_dark: {
                             this.fallbackToBotMode();
                         }
                     }
-                }, 4000);
+                }, 6000);
 
                 this.healthMonitorTimer = setInterval(() => {
                     if (this.battleEnded || !this.isOnlineSynced || !this.latestRoomData) return;
@@ -7019,9 +7021,10 @@ pasha_dark: {
                 }
             }
 
-            async publishOnlineBattleState(roomRef, extraFields = null) {
-                if (!this.isOnlineSynced || !this.isOnlineHost) return;
+            publishOnlineBattleState(roomRef, extraFields = null) {
+                if (!this.isOnlineSynced || !this.isOnlineHost) return Promise.resolve();
                 this._onlinePublishSeq = (this._onlinePublishSeq || 0) + 1;
+                const now = Date.now();
                 const payload = {
                     battleState: {
                         seq: this._onlinePublishSeq,
@@ -7045,10 +7048,11 @@ pasha_dark: {
                         team1Chars: (this.team1Fighters || []).map(f => this.serializePlayer(f)),
                         team2Chars: (this.team2Fighters || []).map(f => this.serializePlayer(f)),
                         events: [...(this._onlineEventBuffer || [])],
-                        updatedAt: Date.now()
+                        updatedAt: now
                     },
-                    hostLastSeen: Date.now(),
-                    updatedAt: Date.now()
+                    [`battleHeartbeats.${this.onlineClientId}`]: now,
+                    hostLastSeen: now,
+                    updatedAt: now
                 };
                 if (this.battleEnded) {
                     payload.status = 'ended';
@@ -7056,12 +7060,17 @@ pasha_dark: {
                 if (extraFields && typeof extraFields === 'object') {
                     Object.assign(payload, extraFields);
                 }
-                try {
-                    await window.fbUpdateDoc(roomRef, payload);
-                    this._netFailCount = 0;
-                } catch (e) {
-                    console.error('publishOnlineBattleState error:', e);
-                }
+                const run = async () => {
+                    try {
+                        this._lastRoomWriteAt = Date.now();
+                        await window.fbUpdateDoc(roomRef, payload);
+                        this._netFailCount = 0;
+                    } catch (e) {
+                        console.error('publishOnlineBattleState error:', e);
+                    }
+                };
+                this._publishChain = (this._publishChain || Promise.resolve()).then(run, run);
+                return this._publishChain;
             }
 
             async startOnlineHostTurn() {
@@ -7141,10 +7150,13 @@ pasha_dark: {
                         this.isProcessing = true;
                         this.currentAttacker = actor;
                         this.onlineStepSeq++;
-                        await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                        const preAutoPub = this.publishOnlineBattleState(roomRef, { pendingAction: null });
                         if (this.onStateChange) this.onStateChange(this);
 
-                        await new Promise(resolve => setTimeout(resolve, 450));
+                        await Promise.all([
+                            preAutoPub,
+                            new Promise(resolve => setTimeout(resolve, 260))
+                        ]);
                         if (this.battleEnded || myGen !== this._stepGen) return;
 
                         const oppArr = teamNum === 1 ? this.team2Fighters : this.team1Fighters;
@@ -7157,8 +7169,13 @@ pasha_dark: {
                             if (this.onStateChange) this.onStateChange(this);
                             return;
                         }
-                        await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                        const postAutoPub = this.publishOnlineBattleState(roomRef, { pendingAction: null });
                         if (this.onStateChange) this.onStateChange(this);
+                        await Promise.all([
+                            postAutoPub,
+                            new Promise(resolve => setTimeout(resolve, 360))
+                        ]);
+                        if (this.battleEnded || myGen !== this._stepGen) return;
                         this.turnCanonicalSlot++;
                         continue;
                     }
@@ -7192,7 +7209,7 @@ pasha_dark: {
                         }
 
                         this.onlineStepSeq++;
-                        await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                        const waitPromptPub = this.publishOnlineBattleState(roomRef, { pendingAction: null });
                         if (this.onStateChange) this.onStateChange(this);
 
                         if (isMine) {
@@ -7200,6 +7217,7 @@ pasha_dark: {
                                 this.onCutin('🟢 自分のターン！', `ターン ${this.turn} - ${actor.charName} の行動を選択してください`);
                             }
                             this.startTimer();
+                            await waitPromptPub;
                         } else {
                             const waitSeq = this.onlineStepSeq;
                             const waitTeam = teamNum;
@@ -7223,6 +7241,7 @@ pasha_dark: {
                                     targetSlot: oppArr.indexOf(defTarget) >= 0 ? oppArr.indexOf(defTarget) : 0
                                 });
                             }, 24000);
+                            await waitPromptPub;
                         }
                         return;
                     }
@@ -7235,10 +7254,13 @@ pasha_dark: {
                     this.isProcessing = true;
                     this.currentAttacker = actor;
                     this.onlineStepSeq++;
-                    await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                    const botStartPub = this.publishOnlineBattleState(roomRef, { pendingAction: null });
                     if (this.onStateChange) this.onStateChange(this);
 
-                    await new Promise(resolve => setTimeout(resolve, BOT_ACTION_DELAY));
+                    await Promise.all([
+                        botStartPub,
+                        new Promise(resolve => setTimeout(resolve, 700))
+                    ]);
                     if (this.battleEnded || myGen !== this._stepGen) return;
                     if (!actor || actor.hp <= 0) {
                         this.turnCanonicalSlot++;
@@ -7267,8 +7289,13 @@ pasha_dark: {
                                 if (this.onStateChange) this.onStateChange(this);
                                 return;
                             }
-                            await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                            const botEndPub = this.publishOnlineBattleState(roomRef, { pendingAction: null });
                             if (this.onStateChange) this.onStateChange(this);
+                            await Promise.all([
+                                botEndPub,
+                                new Promise(resolve => setTimeout(resolve, 380))
+                            ]);
+                            if (this.battleEnded || myGen !== this._stepGen) return;
                         }
                     }
 
@@ -7281,7 +7308,11 @@ pasha_dark: {
                     this.currentAttacker = null;
                     this.endTurnPhase();
                     this.onlineStepSeq++;
-                    await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                    if (await this.checkWinner()) {
+                        await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                        if (this.onStateChange) this.onStateChange(this);
+                        return;
+                    }
                     await this.startOnlineHostTurn();
                 }
             }
@@ -7314,7 +7345,6 @@ pasha_dark: {
                 this.isProcessing = true;
                 this.turnJustStarted = false;
                 this.currentAttacker = attacker;
-                if (this.onStateChange) this.onStateChange(this);
 
                 if (skillId === 'dopa_obey_copy' && actionObj.copiedObeySkill) {
                     window.newBattleTargetSelectCopiedSkill = { ...actionObj.copiedObeySkill };
@@ -7359,11 +7389,14 @@ pasha_dark: {
                     return;
                 }
 
-                await this.publishOnlineBattleState(roomRef, { pendingAction: null });
+                const postActionPub = this.publishOnlineBattleState(roomRef, { pendingAction: null });
                 if (this.onStateChange) this.onStateChange(this);
 
                 const actionGen = this._stepGen || 0;
-                await new Promise(resolve => setTimeout(resolve, 650));
+                await Promise.all([
+                    postActionPub,
+                    new Promise(resolve => setTimeout(resolve, 380))
+                ]);
                 if (this.battleEnded || actionGen !== (this._stepGen || 0)) return;
 
                 this.turnCanonicalSlot++;
@@ -7985,13 +8018,18 @@ pasha_dark: {
                         let sentOk = false;
                         for (let attempt = 0; attempt < 3; attempt++) {
                             try {
-                                await window.fbUpdateDoc(roomRef, { pendingAction: actionObj });
+                                const writeNow = Date.now();
+                                this._lastRoomWriteAt = writeNow;
+                                await window.fbUpdateDoc(roomRef, {
+                                    pendingAction: actionObj,
+                                    [`battleHeartbeats.${this.onlineClientId}`]: writeNow
+                                });
                                 sentOk = true;
                                 this._netFailCount = 0;
                                 break;
                             } catch (e) {
                                 console.warn(`Online 3v3 pendingAction submit error (attempt ${attempt + 1}):`, e);
-                                await new Promise(r => setTimeout(r, 450 * (attempt + 1)));
+                                await new Promise(r => setTimeout(r, 250 * (attempt + 1)));
                             }
                         }
                         if (!sentOk) {
@@ -9731,8 +9769,8 @@ pasha_dark: {
                     canonicalTeam: targetChar.canonicalTeam,
                     canonicalSlot: targetChar.canonicalSlot || 0
                 });
-                if (this._onlineEventBuffer.length > 45) {
-                    this._onlineEventBuffer = this._onlineEventBuffer.slice(-45);
+                if (this._onlineEventBuffer.length > 28) {
+                    this._onlineEventBuffer = this._onlineEventBuffer.slice(-28);
                 }
             }
 
@@ -9758,8 +9796,8 @@ pasha_dark: {
                         effectType: type,
                         text
                     });
-                    if (this._onlineEventBuffer.length > 45) {
-                        this._onlineEventBuffer = this._onlineEventBuffer.slice(-45);
+                    if (this._onlineEventBuffer.length > 28) {
+                        this._onlineEventBuffer = this._onlineEventBuffer.slice(-28);
                     }
                 }
                 if (targetChar && typeof triggerCharacterEffect === 'function') {
@@ -9779,8 +9817,8 @@ pasha_dark: {
                         title,
                         subtitle
                     });
-                    if (this._onlineEventBuffer.length > 45) {
-                        this._onlineEventBuffer = this._onlineEventBuffer.slice(-45);
+                    if (this._onlineEventBuffer.length > 28) {
+                        this._onlineEventBuffer = this._onlineEventBuffer.slice(-28);
                     }
                 }
                 if (this.onCutin) this.onCutin(title, subtitle);
