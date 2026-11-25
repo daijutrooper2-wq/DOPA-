@@ -153,7 +153,7 @@
             });
         };
 
-        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.13';
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.14';
         const STATIC_IMAGE_ASSETS = [
             'assets/aistudio/image_6db88de4.png',
             'images/backnormal.webp',
@@ -203,9 +203,9 @@
         ];
         const SHELL_SITE_ASSETS = [
             'manifest.json',
-            'style.css?v=2.3.13',
-            'battle-3v3.js?v=2.3.13',
-            'game.js?v=2.3.13'
+            'style.css?v=2.3.14',
+            'battle-3v3.js?v=2.3.14',
+            'game.js?v=2.3.14'
         ];
 
         const AssetPreloader = {
@@ -7415,6 +7415,9 @@ pasha_dark: {
                     this.p1 = this.allies[fallbackIdx] || this.allies[0];
                 }
 
+                const pendingShakeTargets = [];
+                const shakenKeys = new Set();
+
                 if (Array.isArray(bs.events)) {
                     bs.events.forEach(ev => {
                         if (!ev || typeof ev.seq !== 'number' || ev.seq <= this.lastAppliedOnlineEventSeq) return;
@@ -7441,12 +7444,29 @@ pasha_dark: {
                                 this.battleLogs.push({ msg: msgText, colorClass: ev.colorClass, teamType: localTeamType });
                             }
                             if (this.onLogUpdate) this.onLogUpdate(msgText, ev.colorClass, localTeamType);
+                        } else if (ev.type === 'shake') {
+                            const targetChar = ev.canonicalTeam === 1
+                                ? this.team1Fighters?.[ev.canonicalSlot]
+                                : (ev.canonicalTeam === 2 ? this.team2Fighters?.[ev.canonicalSlot] : null);
+                            if (targetChar) {
+                                shakenKeys.add(`${ev.canonicalTeam}_${ev.canonicalSlot}`);
+                                pendingShakeTargets.push(targetChar);
+                            }
                         } else if (ev.type === 'effect') {
                             const targetChar = ev.canonicalTeam === 1
                                 ? this.team1Fighters?.[ev.canonicalSlot]
                                 : (ev.canonicalTeam === 2 ? this.team2Fighters?.[ev.canonicalSlot] : null);
                             if (targetChar && typeof triggerCharacterEffect === 'function') {
                                 triggerCharacterEffect(targetChar, ev.effectType, ev.text);
+                            }
+                            if (
+                                targetChar &&
+                                (ev.effectType === 'damage' || ev.effectType === 'counter_damage') &&
+                                ev.text !== '回避DOWN' &&
+                                !shakenKeys.has(`${ev.canonicalTeam}_${ev.canonicalSlot}`)
+                            ) {
+                                shakenKeys.add(`${ev.canonicalTeam}_${ev.canonicalSlot}`);
+                                pendingShakeTargets.push(targetChar);
                             }
                             if (this.onVisualEffect) {
                                 const sideLabel = ev.canonicalTeam === this.myTeamNum ? 'Player' : 'Enemy';
@@ -7457,6 +7477,14 @@ pasha_dark: {
                         }
                     });
                 }
+
+                const triggerPendingShakes = () => {
+                    if (pendingShakeTargets.length > 0 && typeof triggerNewBattleShake === 'function') {
+                        pendingShakeTargets.forEach(tc => {
+                            triggerNewBattleShake(tc, { skipOnlineEmit: true, skipRender: true });
+                        });
+                    }
+                };
 
                 if (bs.battleEnded) {
                     this.stopTimer();
@@ -7488,6 +7516,7 @@ pasha_dark: {
                     this.winnerText = result === 'win' ? '🎉 味方チームの勝利！' : (result === 'lose' ? '💀 敵チームの勝利！' : '⚔️ 引き分け！');
                     if (this.onBattleEnd) this.onBattleEnd(this.winnerText);
                     if (this.onStateChange) this.onStateChange(this);
+                    triggerPendingShakes();
                     return;
                 }
 
@@ -7514,6 +7543,7 @@ pasha_dark: {
                 }
 
                 if (this.onStateChange) this.onStateChange(this);
+                triggerPendingShakes();
             }
 
             async initOnlineSync() {
@@ -8913,7 +8943,7 @@ pasha_dark: {
                     if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
     
                     this.log(`👑🔥 SPドパガキングの「王位継承」発動！！ ${chosenMaster.name}の力を借りて ${defender.charName} に ${inheritDmg} の大ダメージを与えた！！`, 'text-amber-400 font-black text-base');
-                    this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'damage', `-${inheritDmg}`);
+                    this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'damage', `-${inheritDmg}`, defender);
 
                     // 攻撃後の状態リセット
                     attacker.dopaChargeCount = 0;
@@ -8947,7 +8977,7 @@ pasha_dark: {
             if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
 
             this.log(`🃏 SPドパガキングの「ジャグラー」！ 完全ランダムダメージ ⇒ ${defender.charName} に ${jugglerDmg} のダメージ！`, 'text-purple-300 font-bold');
-            this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'damage', `-${jugglerDmg}`);
+            this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'damage', `-${jugglerDmg}`, defender);
             audioSystem.playHit();
             break;
 
@@ -8998,19 +9028,19 @@ pasha_dark: {
                     defender.hp = 1;
                     this.log(`✨⚡【神頼み 5%的中！！】 ${defender.charName} に ${hitDmg} の超絶ダメージ！！（相手のHPが50%以上だったためHP1で踏みとどまった！）`, 'text-yellow-300 font-black font-pixel text-base');
                     this.triggerCutin('⚡ 神頼み 5%的中！！', '超絶ダメージ！(HP50%以上耐え)');
-                    this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'damage', `-${hitDmg}`);
+                    this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'damage', `-${hitDmg}`, defender);
                 } else {
                     defender.hp = 0;
                     this.log(`✨⚡【神頼み 5%的中！！】 ${defender.charName} に 1000 の必殺ダメージ！！`, 'text-yellow-300 font-black font-pixel text-base');
                     this.triggerCutin('⚡ 神頼み 5%的中！！', '奇跡の1000ダメージで撃破！');
-                    this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'damage', '-1000');
+                    this.triggerEffect(this.getCharacterTeam(defender) === 'ally' ? 'Player' : 'Enemy', 'damage', '-1000', defender);
                 }
                 if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
                 audioSystem.playSpecial();
             } else {
                 attacker.hp = Math.max(0, attacker.hp - 50);
                 this.log(`🎲 ${attacker.charName} の「神頼み」… 運悪く失敗し、自分に 50 のダメージを受けた！`, 'text-red-400 font-bold');
-                this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'damage', '-50');
+                this.triggerEffect(this.getCharacterTeam(attacker) === 'ally' ? 'Player' : 'Enemy', 'damage', '-50', attacker);
                 if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(attacker);
                 audioSystem.playHit();
             }
@@ -9102,7 +9132,7 @@ pasha_dark: {
                         else releaseDmg = 18;
 
                         audioSystem.playSpecial();
-                        this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'damage', `🔥 ${releaseDmg} DMG!`);
+                        this.triggerEffect(defender === this.p1 ? 'Player' : 'Enemy', 'damage', `🔥 ${releaseDmg} DMG!`, defender);
                         defender.hp = Math.max(0, defender.hp - releaseDmg);
                         if (typeof triggerNewBattleShake === 'function') triggerNewBattleShake(defender);
         
@@ -9353,7 +9383,7 @@ pasha_dark: {
                     this.log(`🎯💥【パシャ憎キラー発動！！】`, 'text-yellow-300 font-black font-pixel text-sm text-center');
                     this.log(`N高代表の頭脳分析がパシャ憎の弱点を完全に見破った！ 現在HPの50% (${killerDamage} DMG) を粉砕！！`, 'text-red-400 font-bold');
                     this.triggerCutin('🎯 パシャ憎キラー発動！！', '弱点分析完了！ 現在HP 50% を粉砕！');
-                    this.triggerEffect(targetSide, 'damage', `-${killerDamage} (50%)`);
+                    this.triggerEffect(targetSide, 'damage', `-${killerDamage} (50%)`, defender);
                     audioSystem.playSpecial();
                     return;
                 }
@@ -9692,6 +9722,20 @@ pasha_dark: {
                 }
             }
 
+            recordOnlineShake(targetChar) {
+                if (!this.isOnlineSynced || !this.isOnlineHost || !targetChar || typeof targetChar.canonicalTeam !== 'number') return;
+                this._onlineEventSeq = (this._onlineEventSeq || 0) + 1;
+                this._onlineEventBuffer.push({
+                    seq: this._onlineEventSeq,
+                    type: 'shake',
+                    canonicalTeam: targetChar.canonicalTeam,
+                    canonicalSlot: targetChar.canonicalSlot || 0
+                });
+                if (this._onlineEventBuffer.length > 45) {
+                    this._onlineEventBuffer = this._onlineEventBuffer.slice(-45);
+                }
+            }
+
             triggerEffect(side, type, text, targetChar = null) {
                 if (this.currentTurnLogs && this.currentTurnLogs.length > 0) {
                     this.currentTurnLogs[this.currentTurnLogs.length - 1].effect = { side, type, text };
@@ -9777,14 +9821,15 @@ pasha_dark: {
             if (!activeNewBattle || !char) return null;
             if (activeNewBattle.enemies) {
                 const idx = activeNewBattle.enemies.findIndex(e => e === char);
-                if (idx !== -1) return document.getElementById(`enemy-shake-${idx}`) || document.getElementById(`new-enemy-char-${idx}`);
+                if (idx !== -1) return document.getElementById(`enemy-shake-${idx}`) || document.getElementById(`new-enemy-img-${idx}`) || document.getElementById(`new-enemy-char-${idx}`);
             }
             if (activeNewBattle.allies) {
                 const idx = activeNewBattle.allies.findIndex(a => a === char);
-                if (idx !== -1) return document.getElementById(`ally-shake-${idx}`) || document.getElementById(`new-ally-char-${idx}`);
+                if (idx !== -1) return document.getElementById(`ally-shake-${idx}`) || document.getElementById(`new-ally-img-${idx}`) || document.getElementById(`new-ally-char-${idx}`);
             }
             return null;
         }
+        window.getCharacterShakeElement = getCharacterShakeElement;
 
         function getCharacterDOMElement(char) {
             if (!activeNewBattle || !char) {
@@ -11469,8 +11514,13 @@ pasha_dark: {
                                                  </div>
                                              </div>
 
-                                            <!-- 全身スプライト -->
-                                            <div id="ally-shake-${origIdx}" class="w-full flex-1 flex items-center justify-center relative drop-shadow-[0_8px_8px_rgba(0,0,0,0.8)] ${c.isShaking ? 'char-shake' : ''}">
+                                             <!-- 全身スプライト -->
+                                             ${(() => {
+                                                 const isShakingNow = !!(c.isShaking && (!c._shakeUntil || Date.now() < c._shakeUntil));
+                                                 const elapsedShake = (isShakingNow && c._shakeStartedAt) ? Math.max(0, Math.min(340, Date.now() - c._shakeStartedAt)) : 0;
+                                                 const shakeStyleAttr = (isShakingNow && elapsedShake > 16) ? `style="animation-delay: -${elapsedShake}ms;"` : '';
+                                                 return `<div id="ally-shake-${origIdx}" ${shakeStyleAttr} class="w-full flex-1 flex items-center justify-center relative drop-shadow-[0_8px_8px_rgba(0,0,0,0.8)] ${isShakingNow ? 'char-shake' : ''}">`;
+                                             })()}
                                                <img src="${resolveAssetSrc(img)}" alt="${c.charName}" class="w-full h-full object-contain pointer-events-none" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${img}';}else if(this.dataset.fb==='1'){this.dataset.fb='2';this.src=resolveAssetSrc('${(CHARACTER_DATA[c.id]?.allImage) || (CHARACTER_DATA[c.id]?.image) || 'momopin/momopin.webp'}');}">
                                                ${allyRoleBadgeHtml}
                                                <div class="absolute bottom-1 left-1 z-30 flex flex-col gap-0.5 items-start pointer-events-none">
@@ -11550,7 +11600,12 @@ pasha_dark: {
                                              </div>
 
                                            <!-- 全身スプライト -->
-                                           <div id="enemy-shake-${origIdx}" class="w-full flex-1 flex items-center justify-center relative drop-shadow-[0_8px_8px_rgba(0,0,0,0.8)] ${c.isShaking ? 'char-shake' : ''}">
+                                           ${(() => {
+                                               const isShakingNow = !!(c.isShaking && (!c._shakeUntil || Date.now() < c._shakeUntil));
+                                               const elapsedShake = (isShakingNow && c._shakeStartedAt) ? Math.max(0, Math.min(340, Date.now() - c._shakeStartedAt)) : 0;
+                                               const shakeStyleAttr = (isShakingNow && elapsedShake > 16) ? `style="animation-delay: -${elapsedShake}ms;"` : '';
+                                               return `<div id="enemy-shake-${origIdx}" ${shakeStyleAttr} class="w-full flex-1 flex items-center justify-center relative drop-shadow-[0_8px_8px_rgba(0,0,0,0.8)] ${isShakingNow ? 'char-shake' : ''}">`;
+                                           })()}
                                                <img src="${resolveAssetSrc(img)}" alt="${c.charName}" class="w-full h-full object-contain" style="${flipStyle}" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${img}';}else if(this.dataset.fb==='1'){this.dataset.fb='2';this.src=resolveAssetSrc('${(CHARACTER_DATA[c.id]?.image) || 'asaiomizu/asaiomizu.webp'}');}">
                                                ${enemyRoleBadgeHtml}
                                                <div class="absolute bottom-1 left-1 z-30 flex flex-col gap-0.5 items-start pointer-events-none">

@@ -2385,23 +2385,79 @@ function getNewBattleCharacterKey(char) {
     return null;
 }
 
-function triggerNewBattleShake(targetChar) {
+function triggerNewBattleShake(targetChar, options = {}) {
     if (!targetChar) return;
     targetChar.isShaking = true;
-    if (activeNewBattle && activeNewBattle.onStateChange) {
-        activeNewBattle.onStateChange(activeNewBattle);
-    } else if (typeof renderNewBattleScreen === 'function') {
-        renderNewBattleScreen();
+    const now = Date.now();
+    targetChar._shakeStartedAt = now;
+    targetChar._shakeUntil = now + 380;
+    targetChar._shakeSeq = (targetChar._shakeSeq || 0) + 1;
+    const mySeq = targetChar._shakeSeq;
+
+    if (targetChar._shakeTimerId) {
+        clearTimeout(targetChar._shakeTimerId);
+        targetChar._shakeTimerId = null;
     }
 
-    setTimeout(() => {
-        targetChar.isShaking = false;
-        if (activeNewBattle && activeNewBattle.onStateChange) {
+    if (
+        !options.skipOnlineEmit &&
+        typeof activeNewBattle !== 'undefined' &&
+        activeNewBattle &&
+        activeNewBattle.isOnlineSynced &&
+        activeNewBattle.isOnlineHost &&
+        typeof activeNewBattle.recordOnlineShake === 'function'
+    ) {
+        activeNewBattle.recordOnlineShake(targetChar);
+    }
+
+    const findShakeEl = () => {
+        if (typeof window.getCharacterShakeElement === 'function') {
+            const el = window.getCharacterShakeElement(targetChar);
+            if (el) return el;
+        }
+        if (typeof activeNewBattle !== 'undefined' && activeNewBattle) {
+            if (activeNewBattle.enemies) {
+                const idx = activeNewBattle.enemies.findIndex(e => e === targetChar);
+                if (idx !== -1) {
+                    return document.getElementById(`enemy-shake-${idx}`) || document.getElementById(`new-enemy-img-${idx}`);
+                }
+            }
+            if (activeNewBattle.allies) {
+                const idx = activeNewBattle.allies.findIndex(a => a === targetChar);
+                if (idx !== -1) {
+                    return document.getElementById(`ally-shake-${idx}`) || document.getElementById(`new-ally-img-${idx}`);
+                }
+            }
+        }
+        return null;
+    };
+
+    const shakeEl = findShakeEl();
+    if (shakeEl) {
+        shakeEl.style.animationDelay = '';
+        shakeEl.classList.remove('char-shake');
+        void shakeEl.offsetWidth;
+        shakeEl.classList.add('char-shake');
+    } else if (!options.skipRender) {
+        if (typeof activeNewBattle !== 'undefined' && activeNewBattle && activeNewBattle.onStateChange) {
             activeNewBattle.onStateChange(activeNewBattle);
         } else if (typeof renderNewBattleScreen === 'function') {
             renderNewBattleScreen();
         }
-    }, 350);
+    }
+
+    targetChar._shakeTimerId = setTimeout(() => {
+        if (targetChar._shakeSeq !== mySeq) return;
+        targetChar.isShaking = false;
+        targetChar._shakeUntil = 0;
+        targetChar._shakeStartedAt = 0;
+        targetChar._shakeTimerId = null;
+        const currentEl = findShakeEl();
+        if (currentEl) {
+            currentEl.classList.remove('char-shake');
+            currentEl.style.animationDelay = '';
+        }
+    }, 380);
 }
 
 let battleTooltipTimer = null;
