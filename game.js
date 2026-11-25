@@ -153,7 +153,7 @@
             });
         };
 
-        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.15';
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.19';
         const STATIC_IMAGE_ASSETS = [
             'assets/aistudio/image_6db88de4.png',
             'images/backnormal.webp',
@@ -203,9 +203,9 @@
         ];
         const SHELL_SITE_ASSETS = [
             'manifest.json',
-            'style.css?v=2.3.15',
-            'battle-3v3.js?v=2.3.15',
-            'game.js?v=2.3.15'
+            'style.css?v=2.3.19',
+            'battle-3v3.js?v=2.3.19',
+            'game.js?v=2.3.19'
         ];
 
         const AssetPreloader = {
@@ -484,9 +484,11 @@
                             } else if (id === 'zukan-detail-cvs') {
                                 const currentDetailId = window.lastZukanDetailId || 'courtney';
                                 CharacterRenderer.drawCharacter(cvs, currentDetailId);
-                            } else if (id === 'gacha-reveal-cvs') {
-                                const currentGachaId = window.lastGachaRevealId || 'courtney';
+                            } else if (id === 'gacha-reveal-cvs' || id === 'gacha-preview-cvs' || id.startsWith('gacha-sum-cvs-')) {
+                                const currentGachaId = (cvs.dataset && cvs.dataset.charId) || window.lastGachaRevealId || 'courtney';
                                 CharacterRenderer.drawCharacter(cvs, currentGachaId);
+                            } else if (id === 'first-reg-emblem-cvs') {
+                                CharacterRenderer.drawCharacter(cvs, (cvs.dataset && cvs.dataset.charId) || 'dopagaking');
                             } else if (id === 'opp-profile-cvs') {
                                 CharacterRenderer.drawCharacter(cvs, window.lastOppIcon || 'pasha');
                             } else if (id === 'p1-canvas' && typeof activeBattle !== 'undefined' && activeBattle && activeBattle.p1) {
@@ -1074,6 +1076,62 @@ static drawDopagaking(p, isCharged) {
                     osc.stop(this.ctx.currentTime + 0.1);
                 } catch(e) {}
             }
+
+            stopGachaAudio() {
+                if (Array.isArray(this._gachaTimeouts)) {
+                    this._gachaTimeouts.forEach(t => clearTimeout(t));
+                }
+                this._gachaTimeouts = [];
+            }
+
+            playGachaCharge(tier = 'gold') {
+                if (!this.enabled) return;
+                this.init();
+                this.stopGachaAudio();
+                this._gachaTimeouts = [];
+                const scale = tier === 'rainbow'
+                    ? [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1318.51]
+                    : (tier === 'gold'
+                        ? [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50]
+                        : [329.63, 392.00, 493.88, 587.33, 783.99]);
+                scale.forEach((freq, i) => {
+                    const id = setTimeout(() => {
+                        this.playTone(freq, 0.11, i > scale.length - 4 ? 'triangle' : 'square', 0.085);
+                    }, i * 115);
+                    this._gachaTimeouts.push(id);
+                });
+                const escalateDelay = tier === 'rainbow' ? 1050 : 950;
+                const escId = setTimeout(() => {
+                    this.playTone(tier === 'rainbow' ? 1174.66 : 880, 0.25, 'triangle', 0.12);
+                }, escalateDelay);
+                this._gachaTimeouts.push(escId);
+            }
+
+            playGachaBurst(tier = 'gold') {
+                if (!this.enabled) return;
+                this.init();
+                const chord = tier === 'rainbow'
+                    ? [523.25, 659.25, 783.99, 987.77, 1046.50, 1318.51, 1567.98]
+                    : (tier === 'gold'
+                        ? [523.25, 659.25, 783.99, 1046.50, 1318.51]
+                        : [440.00, 554.37, 659.25, 880.00]);
+                chord.forEach((freq, idx) => {
+                    setTimeout(() => this.playTone(freq, 0.24, 'triangle', 0.13), idx * 42);
+                });
+            }
+
+            playGachaCardFlip(isChar = false) {
+                if (!this.enabled) return;
+                this.init();
+                if (isChar) {
+                    this.playTone(587.33, 0.08, 'triangle', 0.12);
+                    setTimeout(() => this.playTone(880.00, 0.1, 'triangle', 0.13), 55);
+                    setTimeout(() => this.playTone(1174.66, 0.2, 'sine', 0.14), 110);
+                } else {
+                    this.playTone(523.25, 0.07, 'sine', 0.1);
+                    setTimeout(() => this.playTone(783.99, 0.12, 'triangle', 0.11), 50);
+                }
+            }
         }
         const audioSystem = new SoundSystem();
 
@@ -1138,8 +1196,111 @@ static drawDopagaking(p, isCharged) {
             openSettingsPanel();
         }
 
+        function validateFighterName(rawValue, options = {}) {
+            const trimmed = String(rawValue || '').trim();
+            if (!trimmed) {
+                return { ok: false, error: 'ファイター名を入力してください！', units: 0, charCount: 0, wordCount: 0 };
+            }
+            if (options.disallowDefault && trimmed === '名無しファイター') {
+                return { ok: false, error: '「名無しファイター」以外の名前を入力してください！', units: 144, charCount: 8, wordCount: 1 };
+            }
+            const chars = Array.from(trimmed);
+            let units = 0;
+            for (const ch of chars) {
+                const isHalfWidth = /^[\u0020-\u007E\uFF61-\uFF9F]$/.test(ch);
+                units += isHalfWidth ? 10 : 18;
+            }
+            const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+            if (units > 180 || wordCount > 18) {
+                return {
+                    ok: false,
+                    error: 'ファイター名は全角10字（半角英数18文字／18単語）以内で入力してください！',
+                    units,
+                    charCount: chars.length,
+                    wordCount
+                };
+            }
+            return { ok: true, name: trimmed, units, charCount: chars.length, wordCount };
+        }
+
+        function updateFirstNameValidationUI() {
+            const input = document.getElementById('first-name-input');
+            const errEl = document.getElementById('first-name-error');
+            const statusEl = document.getElementById('first-name-count');
+            const btn = document.getElementById('first-name-submit-btn');
+            if (!input) return;
+
+            const raw = input.value;
+            const trimmed = raw.trim();
+            const res = validateFighterName(raw, { disallowDefault: true });
+
+            if (statusEl) {
+                const charLen = Array.from(trimmed).length;
+                if (!trimmed) {
+                    statusEl.className = 'text-[10px] text-slate-400 font-mono';
+                    statusEl.innerText = '全角10字 / 半角英数18文字まで';
+                } else if (res.ok) {
+                    statusEl.className = 'text-[10px] text-emerald-400 font-mono font-bold';
+                    statusEl.innerText = `✓ 登録できます (${charLen}文字)`;
+                } else {
+                    statusEl.className = 'text-[10px] text-red-400 font-mono font-bold';
+                    statusEl.innerText = `⚠ 文字数制限超過 (${charLen}文字)`;
+                }
+            }
+
+            if (errEl) {
+                if (!trimmed) {
+                    errEl.classList.add('hidden');
+                    errEl.innerText = '';
+                } else if (!res.ok) {
+                    errEl.classList.remove('hidden');
+                    errEl.innerText = res.error;
+                } else {
+                    errEl.classList.add('hidden');
+                    errEl.innerText = '';
+                }
+            }
+
+            if (btn) {
+                if (res.ok) {
+                    btn.disabled = false;
+                    btn.className = 'pixel-btn pixel-btn-primary w-full min-h-[44px] px-6 py-2 font-bold text-sm font-pixel';
+                } else {
+                    btn.disabled = true;
+                    btn.className = 'pixel-btn pixel-btn-disabled w-full min-h-[44px] px-6 py-2 font-bold text-sm font-pixel opacity-60 cursor-not-allowed';
+                }
+            }
+        }
+        window.updateFirstNameValidationUI = updateFirstNameValidationUI;
+
+        function setModalDialogLayout(wide = false) {
+            const dialog = document.getElementById('modal-dialog');
+            const titleEl = document.getElementById('modal-title');
+            const bodyEl = document.getElementById('modal-body');
+            const actionsEl = document.getElementById('modal-actions');
+            if (dialog) {
+                dialog.className = wide
+                    ? 'pixel-box bg-slate-900 max-w-2xl w-[94vw] p-3 sm:p-4 text-center relative z-10 border-amber-400 max-h-[94dvh] flex flex-col'
+                    : 'pixel-box bg-slate-900 max-w-md w-full p-3 sm:p-5 text-center relative z-10 border-amber-400 max-h-[90vh] flex flex-col';
+            }
+            if (titleEl) {
+                titleEl.className = wide
+                    ? 'text-sm sm:text-lg font-bold text-amber-400 mb-2 font-pixel shrink-0'
+                    : 'text-base sm:text-xl font-bold text-amber-400 mb-2 sm:mb-3 font-pixel';
+            }
+            if (bodyEl) {
+                bodyEl.className = wide
+                    ? 'text-slate-200 mb-1 text-xs sm:text-sm leading-snug whitespace-normal max-h-[78dvh] overflow-y-auto text-left flex-1'
+                    : 'text-slate-200 mb-4 sm:mb-6 text-xs sm:text-sm leading-relaxed whitespace-pre-line max-h-[60vh] overflow-y-auto text-left flex-1 pr-1';
+            }
+            if (actionsEl) {
+                actionsEl.className = 'flex justify-center gap-3';
+            }
+        }
+
         function promptFirstTimeProfileName() {
             audioSystem.playSelect();
+            setModalDialogLayout(true);
             const titleEl = document.getElementById('modal-title');
             const bodyEl = document.getElementById('modal-body');
             const overlay = document.getElementById('modal-overlay');
@@ -1147,32 +1308,41 @@ static drawDopagaking(p, isCharged) {
 
             if (titleEl) titleEl.innerText = "🌟 ファイター登録";
             if (bodyEl) {
-                bodyEl.innerHTML = `
-                    <div class="text-center space-y-2.5 py-1">
-                        <p class="text-[11px] text-slate-200 leading-normal font-mono">
-                            ドパガキングダムへようこそ！<br>
-                            まずはあなたのファイター名を登録してください。
-                        </p>
-                        <div class="text-left">
-                            <label class="text-xs text-amber-300 font-bold block mb-1">あなたのファイター名を入力してください：</label>
-                            <input id="first-name-input" type="text" value="${playerState.playerName || '名無しファイター'}" maxlength="12" onkeydown="if(event.key==='Enter'){event.preventDefault();completeFirstTimeSetup();}" class="pixel-box bg-slate-950 px-3 py-1.5 text-sm font-bold text-amber-300 w-full outline-none border-amber-600">
-                        </div>
-                    </div>
-                `;
+                bodyEl.innerHTML = `<div class="flex flex-row items-stretch gap-3 sm:gap-4 w-full"><div class="w-[38%] max-w-[210px] shrink-0 pixel-box-dark bg-slate-950/90 border-amber-500/40 p-2.5 sm:p-3 flex flex-col items-center justify-center text-center gap-1.5"><canvas id="first-reg-emblem-cvs" width="76" height="76" data-char-id="dopagaking" class="pixel-box bg-slate-900 border-2 border-amber-400 w-14 h-14 sm:w-16 sm:h-16 shrink-0"></canvas><div class="text-[11px] sm:text-xs font-bold text-amber-300 font-pixel leading-snug">ようこそ！<br>ドパガ王国へ</div><div class="text-[10px] text-emerald-300 font-mono leading-tight">登録完了で<br><b class="text-amber-300">1,000 DOPA</b> 贈呈</div></div><div class="flex-1 min-w-0 flex flex-col justify-between gap-2 text-left"><p class="text-[11px] sm:text-xs text-slate-200 font-mono leading-snug">対戦で使うファイター名を登録してください（未登録では進めません）。</p><div class="space-y-1"><div class="flex items-center justify-between gap-2 flex-wrap"><label for="first-name-input" class="text-xs text-amber-300 font-bold">ファイター名</label><span id="first-name-count" class="text-[10px] text-slate-400 font-mono">全角10字 / 半角英数18文字まで</span></div><input id="first-name-input" type="text" value="" placeholder="例: ドパキング / DOPA123" maxlength="18" autocomplete="off" oninput="updateFirstNameValidationUI()" onkeydown="if(event.key==='Enter'){event.preventDefault();completeFirstTimeSetup();}" class="pixel-box bg-slate-950 px-3 py-2 text-base font-bold text-amber-300 w-full outline-none border-amber-500"><p id="first-name-error" class="hidden text-[11px] text-red-400 font-bold font-mono leading-tight"></p></div><button id="first-name-submit-btn" type="button" disabled onclick="completeFirstTimeSetup()" class="pixel-btn pixel-btn-disabled w-full min-h-[44px] px-6 py-2 font-bold text-sm font-pixel opacity-60 cursor-not-allowed">名前を登録する ▶</button></div></div>`;
             }
             if (actionsEl) {
-                actionsEl.innerHTML = `<button onclick="completeFirstTimeSetup()" class="pixel-btn pixel-btn-primary px-8 py-2 font-bold text-sm">名前を登録する ▶</button>`;
+                actionsEl.innerHTML = '';
+                actionsEl.className = 'hidden';
             }
             if (overlay) {
                 overlay.classList.remove('hidden');
                 document.body.classList.add('modal-open');
             }
+            setTimeout(() => {
+                const cvs = document.getElementById('first-reg-emblem-cvs');
+                if (cvs && typeof CharacterRenderer !== 'undefined') {
+                    CharacterRenderer.drawCharacter(cvs, 'dopagaking');
+                }
+                updateFirstNameValidationUI();
+            }, 40);
         }
 
         async function completeFirstTimeSetup() {
             const input = document.getElementById('first-name-input');
-            const rawName = input ? input.value.trim() : '';
-            playerState.playerName = rawName ? rawName.slice(0, 12) : '名無しファイター';
+            const errEl = document.getElementById('first-name-error');
+            const validation = validateFighterName(input ? input.value : '', { disallowDefault: true });
+            if (!validation.ok) {
+                if (errEl) {
+                    errEl.innerText = validation.error;
+                    errEl.classList.remove('hidden');
+                }
+                if (input) input.focus({ preventScroll: true });
+                if (typeof audioSystem !== 'undefined' && typeof audioSystem.playSelect === 'function') {
+                    audioSystem.playSelect();
+                }
+                return;
+            }
+            playerState.playerName = validation.name;
             playerState.isFirstTime = false;
             playerState.dopa = 1000;
             playerState.unlockedChars = [];
@@ -1206,6 +1376,7 @@ static drawDopagaking(p, isCharged) {
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;');
+            setModalDialogLayout(true);
             const titleEl = document.getElementById('modal-title');
             const bodyEl = document.getElementById('modal-body');
             const overlay = document.getElementById('modal-overlay');
@@ -1213,24 +1384,11 @@ static drawDopagaking(p, isCharged) {
 
             if (titleEl) titleEl.innerText = "🎁 1000 DOPA プレゼント！";
             if (bodyEl) {
-                bodyEl.innerHTML = `
-                    <div class="text-center space-y-3 py-1">
-                        <p class="text-xs sm:text-sm text-emerald-300 font-bold font-mono">
-                            ようこそ、<span class="text-amber-300">${safeDisplayName}</span> さん！
-                        </p>
-                        <div class="pixel-box bg-amber-950/70 border-2 border-amber-400 p-3 space-y-1.5 shadow-lg">
-                            <p class="text-xs text-amber-300 font-bold font-pixel">🎉 新規プレイヤー特典 🎉</p>
-                            <div class="text-xl sm:text-2xl font-black text-amber-300 font-pixel tracking-wider">+ 1,000 DOPA</div>
-                            <p class="text-[11px] text-slate-200 leading-relaxed font-mono">
-                                初回登録プレゼントとして <b class="text-amber-300">1000 DOPA</b> を贈りました！<br>
-                                ガチャやストアでキャラクターをゲットしてバトルしよう！
-                            </p>
-                        </div>
-                    </div>
-                `;
+                bodyEl.innerHTML = `<div class="flex flex-row items-center gap-3 sm:gap-4 w-full py-1"><div class="w-[44%] shrink-0 pixel-box-gold bg-amber-950/80 border-2 border-amber-400 p-3 text-center space-y-1 shadow-lg"><div class="text-[11px] text-amber-300 font-bold font-pixel">🎉 新規プレイヤー特典 🎉</div><div class="text-xl sm:text-2xl font-black text-amber-300 font-pixel tracking-wider">+ 1,000 DOPA</div></div><div class="flex-1 min-w-0 flex flex-col justify-center gap-2 text-left"><p class="text-xs sm:text-sm text-emerald-300 font-bold font-mono">ようこそ、<span class="text-amber-300">${safeDisplayName}</span> さん！</p><p class="text-[11px] sm:text-xs text-slate-200 leading-snug font-mono">初回登録プレゼントとして <b class="text-amber-300">1000 DOPA</b> を贈りました！まずはガチャ画面でキャラクターをゲットしよう！</p><button type="button" onclick="closeModal(); if (typeof openGachaModal === 'function') openGachaModal();" class="pixel-btn pixel-btn-success w-full min-h-[44px] px-6 py-2 font-bold text-sm font-pixel">🎰 ガチャ画面へ進む！ ▶</button></div></div>`;
             }
             if (actionsEl) {
-                actionsEl.innerHTML = `<button onclick="audioSystem.playSelect(); closeModal();" class="pixel-btn pixel-btn-success px-8 py-2 font-bold text-sm">冒険へ出発！ ▶</button>`;
+                actionsEl.innerHTML = '';
+                actionsEl.className = 'hidden';
             }
             if (overlay) {
                 overlay.classList.remove('hidden');
@@ -1484,6 +1642,7 @@ static drawDopagaking(p, isCharged) {
                         playerId: playerState.playerId,
                         startDate: playerState.startDate,
                         selectedIcon: playerState.selectedIcon,
+                        isFirstTime: !!playerState.isFirstTime,
                         skipOpening: !!playerState.skipOpening,
                         totalBattles: typeof playerState.totalBattles === 'number' ? playerState.totalBattles : 0,
                         wins: typeof playerState.wins === 'number' ? playerState.wins : 0,
@@ -1540,6 +1699,11 @@ static drawDopagaking(p, isCharged) {
                             playerState.unlockedIcons = data.unlockedIcons;
                         }
                         if (data.playerName) playerState.playerName = data.playerName;
+                        if (data.isFirstTime !== undefined) {
+                            playerState.isFirstTime = !!data.isFirstTime;
+                        } else if (data.playerName && data.playerName !== '名無しファイター') {
+                            playerState.isFirstTime = false;
+                        }
                         if (data.playerId) playerState.playerId = data.playerId;
                         if (data.startDate) playerState.startDate = data.startDate;
                         if (data.selectedIcon) playerState.selectedIcon = data.selectedIcon;
@@ -1600,6 +1764,7 @@ static drawDopagaking(p, isCharged) {
         }
 
         function showGachaRequiredModal(title, message) {
+            setModalDialogLayout(false);
             const titleEl = document.getElementById('modal-title');
             const bodyEl = document.getElementById('modal-body');
             const overlay = document.getElementById('modal-overlay');
@@ -4360,6 +4525,7 @@ static drawDopagaking(p, isCharged) {
         }
 
         function showModal(title, body) {
+            setModalDialogLayout(false);
             const titleEl = document.getElementById('modal-title');
             const bodyEl = document.getElementById('modal-body');
             const overlay = document.getElementById('modal-overlay');
@@ -4376,6 +4542,7 @@ static drawDopagaking(p, isCharged) {
         }
 
         function showConfirmModal(title, body, onConfirm, confirmText = '決定') {
+            setModalDialogLayout(false);
             const titleEl = document.getElementById('modal-title');
             const bodyEl = document.getElementById('modal-body');
             const overlay = document.getElementById('modal-overlay');
@@ -4399,8 +4566,12 @@ static drawDopagaking(p, isCharged) {
         }
 
         function closeModal() {
+            if (typeof playerState !== 'undefined' && playerState.isFirstTime && document.getElementById('first-name-input')) {
+                return;
+            }
             const overlay = document.getElementById('modal-overlay');
             if (overlay) overlay.classList.add('hidden');
+            setModalDialogLayout(false);
             document.body.classList.remove('modal-open');
         }
 
@@ -4466,8 +4637,161 @@ static drawDopagaking(p, isCharged) {
             }, "降参する");
         }
 
+        function stopGachaEffects() {
+            if (window._gachaSuspenseTimeout) {
+                clearTimeout(window._gachaSuspenseTimeout);
+                window._gachaSuspenseTimeout = null;
+            }
+            if (Array.isArray(window._gachaPhaseTimers)) {
+                window._gachaPhaseTimers.forEach(t => clearTimeout(t));
+            }
+            window._gachaPhaseTimers = [];
+            if (window._gachaPreviewInterval) {
+                clearInterval(window._gachaPreviewInterval);
+                window._gachaPreviewInterval = null;
+            }
+            if (window._gachaParticleRaf) {
+                cancelAnimationFrame(window._gachaParticleRaf);
+                window._gachaParticleRaf = null;
+            }
+            if (typeof audioSystem !== 'undefined' && typeof audioSystem.stopGachaAudio === 'function') {
+                audioSystem.stopGachaAudio();
+            }
+        }
+
+        function ensureGachaStageOverlay() {
+            let overlay = document.getElementById('gacha-stage-overlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'gacha-stage-overlay';
+                overlay.className = 'fixed inset-0 z-[9994] flex flex-col overflow-hidden select-none text-slate-100';
+                document.body.appendChild(overlay);
+            }
+            overlay.classList.remove('hidden');
+            document.body.classList.add('modal-open');
+            return overlay;
+        }
+
+        function closeGachaStage(silent = false) {
+            if (!silent && typeof audioSystem !== 'undefined') audioSystem.playSelect();
+            stopGachaEffects();
+            const overlay = document.getElementById('gacha-stage-overlay');
+            if (overlay) overlay.remove();
+            const modalOverlay = document.getElementById('modal-overlay');
+            const settingsBackdrop = document.getElementById('settings-backdrop');
+            const anyOpen = (modalOverlay && !modalOverlay.classList.contains('hidden')) || (settingsBackdrop && !settingsBackdrop.classList.contains('hidden'));
+            if (!anyOpen) {
+                document.body.classList.remove('modal-open');
+            }
+            const dopaEl = document.getElementById('dopa-count') || document.getElementById('home-dopa-count');
+            if (dopaEl && typeof playerState !== 'undefined') {
+                dopaEl.innerText = formatDopa(playerState.dopa);
+            }
+        }
+
+        function startGachaParticleCanvas(canvasId, mode = 'portal', tier = 'gold') {
+            if (window._gachaParticleRaf) {
+                cancelAnimationFrame(window._gachaParticleRaf);
+                window._gachaParticleRaf = null;
+            }
+            const cvs = document.getElementById(canvasId);
+            if (!cvs) return;
+            const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            const ctx = cvs.getContext('2d');
+            if (!ctx) return;
+
+            const resize = () => {
+                const rect = cvs.getBoundingClientRect();
+                cvs.width = Math.max(320, Math.floor(rect.width || window.innerWidth));
+                cvs.height = Math.max(200, Math.floor(rect.height || window.innerHeight));
+            };
+            resize();
+
+            const palette = tier === 'rainbow'
+                ? ['#fbbf24', '#f472b6', '#38bdf8', '#34d399', '#a78bfa', '#ffffff']
+                : (tier === 'gold'
+                    ? ['#fbbf24', '#f59e0b', '#fef08a', '#ffffff']
+                    : ['#38bdf8', '#22d3ee', '#a5f3fc', '#ffffff']);
+
+            const count = mode === 'charge' ? 56 : (mode === 'burst' ? 68 : 26);
+            const particles = [];
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = mode === 'charge'
+                    ? (60 + Math.random() * Math.max(cvs.width, cvs.height) * 0.55)
+                    : (mode === 'burst' ? (6 + Math.random() * 24) : 0);
+                particles.push({
+                    x: mode === 'portal' ? Math.random() * cvs.width : (cvs.width / 2 + Math.cos(angle) * dist),
+                    y: mode === 'portal' ? Math.random() * cvs.height : (cvs.height / 2 + Math.sin(angle) * dist),
+                    angle,
+                    dist,
+                    speed: mode === 'charge' ? (2.2 + Math.random() * 3.8) : (mode === 'burst' ? (3.5 + Math.random() * 7) : (0.35 + Math.random() * 0.65)),
+                    size: mode === 'burst' ? (3 + Math.floor(Math.random() * 5)) : (2 + Math.floor(Math.random() * 4)),
+                    alpha: 0.35 + Math.random() * 0.65,
+                    color: palette[i % palette.length]
+                });
+            }
+
+            if (prefersReduced) {
+                ctx.clearRect(0, 0, cvs.width, cvs.height);
+                particles.forEach(p => {
+                    ctx.globalAlpha = p.alpha * 0.6;
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(Math.floor(p.x), Math.floor(p.y), p.size, p.size);
+                });
+                ctx.globalAlpha = 1;
+                return;
+            }
+
+            const tick = () => {
+                if (!document.body.contains(cvs)) {
+                    window._gachaParticleRaf = null;
+                    return;
+                }
+                ctx.clearRect(0, 0, cvs.width, cvs.height);
+                const cx = cvs.width / 2;
+                const cy = cvs.height / 2;
+
+                for (let i = 0; i < particles.length; i++) {
+                    const p = particles[i];
+                    if (mode === 'portal') {
+                        p.y -= p.speed;
+                        if (p.y < -10) {
+                            p.y = cvs.height + 10;
+                            p.x = Math.random() * cvs.width;
+                        }
+                    } else if (mode === 'charge') {
+                        p.dist -= p.speed;
+                        p.angle += 0.035;
+                        if (p.dist < 10) {
+                            p.dist = Math.max(cvs.width, cvs.height) * 0.48 + Math.random() * 80;
+                            p.angle = Math.random() * Math.PI * 2;
+                        }
+                        p.x = cx + Math.cos(p.angle) * p.dist;
+                        p.y = cy + Math.sin(p.angle) * p.dist;
+                    } else if (mode === 'burst') {
+                        p.x += Math.cos(p.angle) * p.speed;
+                        p.y += Math.sin(p.angle) * p.speed;
+                        p.speed *= 0.96;
+                        p.alpha *= 0.965;
+                    }
+                    if (p.alpha > 0.03) {
+                        ctx.globalAlpha = p.alpha;
+                        ctx.fillStyle = p.color;
+                        ctx.fillRect(Math.floor(p.x), Math.floor(p.y), p.size, p.size);
+                    }
+                }
+                ctx.globalAlpha = 1;
+                window._gachaParticleRaf = requestAnimationFrame(tick);
+            };
+            window._gachaParticleRaf = requestAnimationFrame(tick);
+        }
+
         function openGachaModal() {
             audioSystem.playSelect();
+            stopGachaEffects();
+            closeModal();
+
             const allCharIds = Object.keys(CHARACTER_DATA);
             const allExtraIconIds = Object.keys(EXTRA_ICONS);
             const allIconIds = [...allCharIds, ...allExtraIconIds];
@@ -4477,60 +4801,158 @@ static drawDopagaking(p, isCharged) {
             const totalRemaining = lockedChars.length + lockedIcons.length;
             const isCompleted = totalRemaining === 0;
             const canTenPull = totalRemaining >= 10;
+            const canSinglePull = totalRemaining >= 1;
 
-            const titleEl = document.getElementById('modal-title');
-            const bodyEl = document.getElementById('modal-body');
-            const overlay = document.getElementById('modal-overlay');
-            const actionsEl = document.getElementById('modal-actions');
+            const previewPool = lockedChars.length > 0 ? lockedChars : allCharIds;
+            let previewIdx = 0;
+            const firstPreviewId = previewPool[0] || 'dopagaking';
+            const firstPreviewName = isCompleted
+                ? '全キャラクター＆アイコン制覇！'
+                : (CHARACTER_DATA[firstPreviewId]?.name || firstPreviewId);
 
-            if (titleEl) titleEl.innerText = "🎰 DOPAガチャ";
-            if (bodyEl) {
-                if (isCompleted) {
-                    bodyEl.innerHTML = `
-                        <div class="text-center space-y-4 py-4">
-                            <p class="text-amber-300 font-bold text-base font-pixel">🏆 完全コンプリート！</p>
-                            <p class="text-xs text-slate-200 leading-relaxed font-mono">
-                                すべてのキャラクターとプロフィールアイコンをコンプリートしました！<br>
-                                アイコン画像、新キャラクター追加をお待ちください。
-                            </p>
+            const overlay = ensureGachaStageOverlay();
+            overlay.innerHTML = `
+                <div class="relative w-full h-full flex flex-col justify-between gacha-grid-floor overflow-hidden" style="padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);">
+                    <canvas id="gacha-portal-particles" class="absolute inset-0 w-full h-full pointer-events-none z-0"></canvas>
+
+                    <!-- Top Bar -->
+                    <header class="relative z-10 flex items-center justify-between gap-2 px-3 sm:px-5 py-2 border-b border-amber-500/30 bg-slate-950/85 shrink-0 gacha-compact-pad">
+                        <button type="button" onclick="closeGachaStage()" class="pixel-btn px-3 min-h-[40px] text-xs font-bold whitespace-nowrap shrink-0 flex items-center gap-1">
+                            <span>◀ もどる</span>
+                        </button>
+                        <div class="flex items-center gap-3 min-w-0">
+                            <h2 class="text-sm sm:text-lg font-bold text-amber-300 font-pixel whitespace-nowrap truncate">🎰 DOPAガチャ</h2>
+                            <span class="hidden sm:inline text-xs text-slate-400 font-mono whitespace-nowrap">·</span>
+                            <span class="hidden sm:inline text-xs text-slate-300 font-mono tabular-nums whitespace-nowrap">残り ${totalRemaining}個</span>
                         </div>
-                    `;
-                } else {
-                    bodyEl.innerHTML = `
-                        <div class="text-center space-y-3 py-1">
-                            <div class="flex flex-col gap-2.5 w-full">
-                                ${canTenPull ? `
-                                 <button onclick="executeGacha(10)" class="pixel-btn pixel-btn-warning w-full py-3.5 font-bold text-sm sm:text-base shadow-lg animate-pulse">
-                                     🌟 10連ガチャ (${formatDopa(1000)} DOPA)
-                                 </button>
-                                 ` : `
-                                 <button class="pixel-btn pixel-btn-disabled w-full py-3.5 font-bold text-sm sm:text-base cursor-not-allowed opacity-60">
-                                     🌟 10連ガチャ (ストック不足)
-                                 </button>
-                                 <p class="text-[10px] text-amber-300 font-mono">※残りストックが10未満のため10連不可（1回ガチャのみ可能）</p>
-                                 `}
-                                 <button onclick="executeGacha(1)" class="pixel-btn pixel-btn-primary w-full py-2.5 font-bold text-xs sm:text-sm">
-                                     1回ガチャ (${formatDopa(100)} DOPA)
-                                 </button>
-                             </div>
-                             <div class="flex justify-between items-center gap-2">
-                                 <button onclick="openGachaLineupModal()" class="pixel-btn px-3 py-1 text-xs font-bold bg-slate-800 border-slate-600">
-                                     📋 ラインナップ・確率
-                                 </button>
-                                 <div class="text-[11px] text-slate-300 bg-slate-950 px-3 py-1.5 rounded border border-slate-800">
-                                     所持: <b class="text-amber-400">${formatDopa(playerState.dopa)}</b> DOPA | 残り: <b class="text-amber-300">${totalRemaining}</b>個
-                                 </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <div class="bg-slate-900 border border-amber-500/50 rounded px-2.5 py-1.5 text-[11px] sm:text-xs font-mono tabular-nums whitespace-nowrap">
+                                所持: <b class="text-amber-300">${formatDopa(playerState.dopa)}</b> DOPA
                             </div>
+                            <button type="button" onclick="openGachaLineupModal()" class="pixel-btn px-2.5 sm:px-3 min-h-[40px] text-xs font-bold bg-slate-800 border-slate-500 whitespace-nowrap shrink-0">
+                                📋 ラインナップ
+                            </button>
                         </div>
-                    `;
+                    </header>
+
+                    <!-- Landscape 2-Column Stage -->
+                    <main class="relative z-10 flex-1 min-h-0 w-full max-w-5xl mx-auto flex flex-row items-stretch gap-3 sm:gap-5 p-2.5 sm:p-4 gacha-compact-pad gacha-compact-gap">
+                        <!-- Left: Summon Pedestal & Live Preview -->
+                        <section class="w-[42%] max-w-[330px] min-w-0 pixel-box-dark bg-slate-950/90 border-amber-500/50 p-2.5 sm:p-4 flex flex-col items-center justify-between relative overflow-hidden">
+                            <div class="w-full flex items-center justify-between text-[10px] sm:text-xs text-slate-300 font-mono tabular-nums">
+                                <span>未所持キャラ <b class="text-amber-300">${lockedChars.length}</b>体</span>
+                                <span>·</span>
+                                <span>アイコン <b class="text-cyan-300">${lockedIcons.length}</b>個</span>
+                            </div>
+
+                            <div class="relative flex-1 min-h-0 w-full flex items-center justify-center my-1">
+                                <div class="absolute w-[min(36vh,164px)] h-[min(36vh,164px)] rounded-full border-2 border-dashed border-amber-400/45 animate-gacha-ring pointer-events-none"></div>
+                                <div class="absolute w-[min(28vh,130px)] h-[min(28vh,130px)] rounded-full border border-cyan-400/40 animate-gacha-ring-rev pointer-events-none"></div>
+                                <div class="relative z-10 animate-gacha-float">
+                                    ${isCompleted ? `
+                                        <div class="w-[min(30vh,132px)] h-[min(30vh,132px)] pixel-box-gold flex items-center justify-center text-5xl shadow-2xl">
+                                            🏆
+                                        </div>
+                                    ` : `
+                                        <canvas id="gacha-preview-cvs" width="132" height="132" data-char-id="${firstPreviewId}" class="pixel-box bg-slate-950 border-2 border-amber-400 shadow-[0_0_24px_rgba(251,191,36,0.28)] w-[min(30vh,132px)] h-[min(30vh,132px)]"></canvas>
+                                    `}
+                                </div>
+                            </div>
+
+                            <div class="w-full text-center border-t border-slate-800 pt-1.5">
+                                <div id="gacha-preview-caption" class="text-[11px] sm:text-xs font-bold text-amber-200 font-pixel truncate">
+                                    ${isCompleted ? '完全コンプリート達成！' : `PICKUP: ${firstPreviewName}`}
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Right: Pull Cards -->
+                        <section class="flex-1 min-w-0 flex flex-col justify-center gap-2.5 sm:gap-3.5 gacha-compact-gap">
+                            ${isCompleted ? `
+                                <div class="pixel-box-gold p-4 sm:p-5 flex-1 flex flex-col items-center justify-center text-center gap-3">
+                                    <p class="text-amber-300 font-bold text-base sm:text-lg font-pixel">🏆 完全コンプリート！</p>
+                                    <p class="text-xs sm:text-sm text-slate-200 leading-relaxed font-mono max-w-md">
+                                        すべてのキャラクターとプロフィールアイコンを獲得しました！<br>
+                                        新キャラクター・アイコンの追加をお待ちください。
+                                    </p>
+                                    <div class="flex flex-wrap gap-3 justify-center pt-1">
+                                        <button type="button" onclick="closeGachaStage(); renderZukanScreen();" class="pixel-btn pixel-btn-primary px-5 min-h-[44px] font-bold text-xs sm:text-sm">📖 キャラクター図鑑</button>
+                                        <button type="button" onclick="closeGachaStage()" class="pixel-btn px-5 min-h-[44px] font-bold text-xs sm:text-sm">🏠 ホームに戻る</button>
+                                    </div>
+                                </div>
+                            ` : `
+                                <!-- 10連ガチャ Card -->
+                                <div class="pixel-box-gold bg-gradient-to-br from-amber-950/90 via-slate-900 to-slate-950 p-3 sm:p-4 flex-1 min-h-0 flex flex-col justify-between gap-2 gacha-compact-pad">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="flex items-center gap-2 min-w-0">
+                                            <span class="text-base sm:text-lg font-bold text-amber-300 font-pixel whitespace-nowrap">🌟 10連ガチャ</span>
+                                        </div>
+                                        <span class="text-[11px] sm:text-xs font-bold text-emerald-300 font-mono whitespace-nowrap">キャラ3〜5体確定 · 重複なし</span>
+                                    </div>
+                                    <p class="text-[11px] sm:text-xs text-amber-100/85 font-mono leading-snug">
+                                        未所持のキャラクターとアイコンを一気に10個召喚！
+                                    </p>
+                                    <div>
+                                        ${canTenPull ? `
+                                            <button type="button" onclick="executeGacha(10)" class="relative overflow-hidden gacha-shimmer pixel-btn pixel-btn-warning w-full min-h-[46px] py-2.5 px-4 font-bold text-xs sm:text-base shadow-lg font-pixel">
+                                                🌟 10連ガチャを引く (${formatDopa(1000)} DOPA)
+                                            </button>
+                                        ` : `
+                                            <button type="button" disabled class="pixel-btn pixel-btn-disabled w-full min-h-[44px] py-2 px-4 font-bold text-xs sm:text-sm opacity-70">
+                                                🌟 10連ガチャ (残りストック10未満のため利用不可)
+                                            </button>
+                                        `}
+                                    </div>
+                                </div>
+
+                                <!-- 1回ガチャ Card -->
+                                <div class="pixel-box bg-slate-900/95 border-sky-400 p-3 sm:p-4 flex-1 min-h-0 flex flex-col justify-between gap-2 gacha-compact-pad">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="text-sm sm:text-base font-bold text-sky-300 font-pixel whitespace-nowrap">⚡ 1回ガチャ</span>
+                                        <span class="text-[11px] sm:text-xs text-slate-300 font-mono whitespace-nowrap">単発召喚 · 重複なし</span>
+                                    </div>
+                                    <p class="text-[11px] sm:text-xs text-slate-300 font-mono leading-snug">
+                                        キャラクター または プロフィールアイコンを1個獲得します。
+                                    </p>
+                                    <div>
+                                        <button type="button" onclick="executeGacha(1)" ${canSinglePull ? '' : 'disabled'} class="pixel-btn pixel-btn-primary w-full min-h-[44px] py-2 px-4 font-bold text-xs sm:text-sm font-pixel">
+                                            ⚡ 1回ガチャを引く (${formatDopa(100)} DOPA)
+                                        </button>
+                                    </div>
+                                </div>
+                            `}
+                        </section>
+                    </main>
+                </div>
+            `;
+
+            startGachaParticleCanvas('gacha-portal-particles', 'portal', 'gold');
+
+            if (!isCompleted) {
+                const cvs = document.getElementById('gacha-preview-cvs');
+                if (cvs) {
+                    window.lastGachaRevealId = firstPreviewId;
+                    CharacterRenderer.drawCharacter(cvs, firstPreviewId);
                 }
-            }
-            if (actionsEl) {
-                actionsEl.innerHTML = `<button onclick="closeModal()" class="pixel-btn px-6 py-1.5 font-bold text-xs">もどる</button>`;
-            }
-            if (overlay) {
-                overlay.classList.remove('hidden');
-                document.body.classList.add('modal-open');
+                if (previewPool.length > 1) {
+                    window._gachaPreviewInterval = setInterval(() => {
+                        const c = document.getElementById('gacha-preview-cvs');
+                        const cap = document.getElementById('gacha-preview-caption');
+                        if (!c || !document.body.contains(c)) {
+                            clearInterval(window._gachaPreviewInterval);
+                            window._gachaPreviewInterval = null;
+                            return;
+                        }
+                        previewIdx = (previewIdx + 1) % previewPool.length;
+                        const nextId = previewPool[previewIdx];
+                        c.dataset.charId = nextId;
+                        window.lastGachaRevealId = nextId;
+                        CharacterRenderer.drawCharacter(c, nextId);
+                        if (cap) {
+                            cap.innerText = `PICKUP: ${CHARACTER_DATA[nextId]?.name || nextId}`;
+                        }
+                    }, 2800);
+                }
             }
         }
 
@@ -4540,7 +4962,7 @@ static drawDopagaking(p, isCharged) {
             const allExtras = Object.values(EXTRA_ICONS);
 
             let html = `
-                <div class="text-left space-y-3 max-h-96 overflow-y-auto pr-1 text-xs font-mono">
+                <div class="text-left space-y-3 max-h-[56vh] overflow-y-auto pr-1 text-xs font-mono">
                     <div class="bg-slate-950 p-2.5 rounded border border-amber-600/50 space-y-1">
                         <div class="text-amber-300 font-bold">📊 ガチャ仕様・獲得確率</div>
                         <p class="text-[11px] text-slate-300">・10連ガチャ: キャラクター3〜5体（ランダム） ＋ 残りプロフィールアイコン・チャージアイコン等</p>
@@ -4551,19 +4973,19 @@ static drawDopagaking(p, isCharged) {
 
                     <div class="space-y-2">
                         <div class="text-amber-300 font-bold border-b border-slate-800 pb-1">🌟 キャラクター ラインナップ (${allChars.length}種)</div>
-                        <div class="grid grid-cols-1 gap-1.5">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             `;
 
             allChars.forEach(c => {
                 const hasChar = playerState.unlockedChars.includes(c.id);
                 const hasIcon = (playerState.unlockedIcons || []).includes(c.id);
                 html += `
-                    <div class="bg-slate-950 p-2 rounded border border-slate-800 flex items-center justify-between">
-                        <div>
-                            <b class="text-amber-200">${c.name}</b>
-                            <span class="text-[10px] text-slate-400 ml-1">(${c.title})</span>
+                    <div class="bg-slate-950 p-2 rounded border border-slate-800 flex items-center justify-between gap-2">
+                        <div class="min-w-0">
+                            <b class="text-amber-200 truncate block">${c.name}</b>
+                            <span class="text-[10px] text-slate-400 truncate block">${c.title}</span>
                         </div>
-                        <div class="flex gap-2 text-[10px]">
+                        <div class="flex flex-col items-end text-[10px] shrink-0">
                             <span class="${hasChar ? 'text-emerald-400 font-bold' : 'text-slate-500'}">キャラ:${hasChar ? '所持' : '未所持'}</span>
                             <span class="${hasIcon ? 'text-cyan-400 font-bold' : 'text-slate-500'}">アイコン:${hasIcon ? '所持' : '未所持'}</span>
                         </div>
@@ -4576,18 +4998,18 @@ static drawDopagaking(p, isCharged) {
             html += `
                 <div class="space-y-2 pt-2">
                     <div class="text-amber-300 font-bold border-b border-slate-800 pb-1">🌟 チャージアイコン・その他 ラインナップ (${allExtras.length}種)</div>
-                    <div class="grid grid-cols-1 gap-1.5">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             `;
 
             allExtras.forEach(item => {
                 const hasIcon = (playerState.unlockedIcons || []).includes(item.id);
                 html += `
-                    <div class="bg-slate-950 p-2 rounded border border-slate-800 flex items-center justify-between">
-                        <div>
-                            <b class="text-cyan-200">${item.name}</b>
-                            <span class="text-[10px] text-slate-400 ml-1">(${item.title})</span>
+                    <div class="bg-slate-950 p-2 rounded border border-slate-800 flex items-center justify-between gap-2">
+                        <div class="min-w-0">
+                            <b class="text-cyan-200 truncate block">${item.name}</b>
+                            <span class="text-[10px] text-slate-400 truncate block">${item.title}</span>
                         </div>
-                        <div class="text-[10px]">
+                        <div class="text-[10px] shrink-0">
                             <span class="${hasIcon ? 'text-cyan-400 font-bold' : 'text-slate-500'}">アイコン:${hasIcon ? '所持' : '未所持'}</span>
                         </div>
                     </div>
@@ -4725,6 +5147,7 @@ static drawDopagaking(p, isCharged) {
             });
 
             await savePlayerState();
+            window._gachaMaxRevealedIndex = 0;
 
             showGachaSuspenseModal(results, () => {
                 showGachaRevealStep(results, 0);
@@ -4732,132 +5155,424 @@ static drawDopagaking(p, isCharged) {
         }
 
         function showGachaSuspenseModal(results, onComplete) {
+            stopGachaEffects();
             window._currentGachaResults = results;
-            audioSystem.playOpeningMelody();
-            const titleEl = document.getElementById('modal-title');
-            const bodyEl = document.getElementById('modal-body');
-            const actionsEl = document.getElementById('modal-actions');
+            const charCount = results.filter(r => r.type === 'character').length;
+            const tier = (results.length >= 10 && charCount >= 4) ? 'rainbow' : (charCount >= 1 ? 'gold' : 'cyan');
+            const isTenPull = results.length > 1;
 
-            if (titleEl) titleEl.innerText = "🎰 抽選中... (DEXING)";
-            if (bodyEl) {
-                bodyEl.innerHTML = `
-                    <div class="text-center space-y-4 py-8">
-                        <div class="w-24 h-24 mx-auto pixel-box bg-amber-950 flex items-center justify-center animate-opening-shake border-4 border-amber-400 shadow-2xl">
-                            <span class="text-4xl animate-bounce">⚡</span>
-                        </div>
-                        <p class="text-amber-300 font-pixel text-sm animate-pulse">DOPAエネルギーが最高潮に達する……！</p>
+            if (typeof audioSystem.playGachaCharge === 'function') {
+                audioSystem.playGachaCharge(tier);
+            } else {
+                audioSystem.playOpeningMelody();
+            }
+
+            const overlay = ensureGachaStageOverlay();
+            const orbOrbitHtml = isTenPull
+                ? Array.from({ length: 10 }, (_, i) => {
+                    const deg = i * 36;
+                    return `<span class="absolute w-2.5 h-2.5 rounded-full bg-amber-300 shadow-[0_0_8px_#fbbf24]" style="top:50%;left:50%;transform:rotate(${deg}deg) translateY(-76px) translate(-50%,-50%);"></span>`;
+                }).join('')
+                : '';
+
+            overlay.innerHTML = `
+                <div class="relative w-full h-full flex flex-col justify-between overflow-hidden" style="padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);">
+                    <canvas id="gacha-suspense-particles" class="absolute inset-0 w-full h-full pointer-events-none z-0"></canvas>
+                    <div id="gacha-suspense-flash" class="fixed inset-0 bg-white opacity-0 pointer-events-none z-30"></div>
+
+                    <!-- Top Strip -->
+                    <div class="relative z-10 flex items-center justify-between px-4 py-2.5 shrink-0">
+                        <span class="text-xs sm:text-sm font-pixel text-amber-300 tracking-wider">
+                            ${isTenPull ? '🌟 10連召喚ゲート起動' : '⚡ 単発召喚ゲート起動'}
+                        </span>
+                        <span class="text-[11px] text-slate-300 font-mono">DOPA ENERGY CHARGING</span>
                     </div>
-                `;
-            }
-            if (actionsEl) {
-                actionsEl.innerHTML = `<button onclick="skipGachaSuspense()" class="pixel-btn pixel-btn-danger px-4 py-1.5 font-bold text-xs">スキップ ⏩</button>`;
-            }
+
+                    <!-- Center Summon Core -->
+                    <div class="relative z-10 flex-1 min-h-0 flex flex-col items-center justify-center gap-4 px-4">
+                        <div class="relative flex items-center justify-center w-[min(46vh,210px)] h-[min(46vh,210px)]">
+                            <!-- Outer Magic Ring -->
+                            <div id="gacha-ring-outer" class="absolute inset-0 rounded-full border-2 border-dashed border-sky-400/70 animate-gacha-ring-fast pointer-events-none">
+                                ${orbOrbitHtml}
+                            </div>
+                            <!-- Inner Magic Ring -->
+                            <div id="gacha-ring-inner" class="absolute inset-5 rounded-full border-2 border-amber-400/70 animate-gacha-ring-rev-fast pointer-events-none"></div>
+                            <!-- Shockwave -->
+                            <div id="gacha-shockwave-ring" class="hidden absolute w-24 h-24 rounded-full border-4 border-amber-300 pointer-events-none"></div>
+
+                            <!-- Core Capsule -->
+                            <div id="gacha-core-orb" class="relative z-10 w-24 h-24 sm:w-28 sm:h-28 pixel-box bg-sky-950 border-4 border-sky-300 flex items-center justify-center shadow-[0_0_32px_rgba(56,189,248,0.65)] animate-gacha-drop">
+                                <span id="gacha-core-icon" class="text-4xl sm:text-5xl">⚡</span>
+                            </div>
+                        </div>
+
+                        <p id="gacha-suspense-text" class="text-xs sm:text-base font-pixel text-sky-300 text-center tracking-wide">
+                            DOPAエネルギーを集束中……
+                        </p>
+                    </div>
+
+                    <!-- Bottom Controls -->
+                    <div class="relative z-10 flex items-center justify-end px-4 py-3 shrink-0">
+                        <button type="button" onclick="skipGachaSuspense()" class="pixel-btn pixel-btn-danger px-5 min-h-[44px] font-bold text-xs sm:text-sm font-pixel">
+                            スキップ ⏩
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            startGachaParticleCanvas('gacha-suspense-particles', 'charge', tier);
+
+            window._gachaPhaseTimers = [];
+            // Phase 2: Start shaking at 380ms
+            window._gachaPhaseTimers.push(setTimeout(() => {
+                const orb = document.getElementById('gacha-core-orb');
+                const txt = document.getElementById('gacha-suspense-text');
+                if (orb) {
+                    orb.classList.remove('animate-gacha-drop');
+                    orb.classList.add('animate-gacha-charge');
+                }
+                if (txt) {
+                    txt.innerText = '召喚陣に強い共鳴反応……！';
+                }
+            }, 380));
+
+            // Phase 3: Color Escalation at 980ms
+            window._gachaPhaseTimers.push(setTimeout(() => {
+                const orb = document.getElementById('gacha-core-orb');
+                const ringOuter = document.getElementById('gacha-ring-outer');
+                const wave = document.getElementById('gacha-shockwave-ring');
+                const icon = document.getElementById('gacha-core-icon');
+                const txt = document.getElementById('gacha-suspense-text');
+                if (wave) {
+                    wave.classList.remove('hidden');
+                    wave.classList.add('animate-gacha-shockwave');
+                }
+                if (tier === 'rainbow') {
+                    if (orb) {
+                        orb.className = 'relative z-10 w-24 h-24 sm:w-28 sm:h-28 pixel-box bg-gradient-to-br from-amber-500 via-fuchsia-600 to-cyan-500 border-4 border-white flex items-center justify-center shadow-[0_0_45px_rgba(255,255,255,0.9)] animate-gacha-charge animate-gacha-rainbow';
+                    }
+                    if (ringOuter) ringOuter.classList.replace('border-sky-400/70', 'border-amber-300');
+                    if (icon) icon.innerText = '🌈';
+                    if (txt) {
+                        txt.className = 'text-sm sm:text-lg font-pixel text-amber-300 text-center tracking-wider drop-shadow';
+                        txt.innerText = '虹色の奇跡！！ 超確定演出発動！！';
+                    }
+                } else if (tier === 'gold') {
+                    if (orb) {
+                        orb.className = 'relative z-10 w-24 h-24 sm:w-28 sm:h-28 pixel-box-gold bg-amber-900 border-4 border-amber-300 flex items-center justify-center shadow-[0_0_40px_rgba(251,191,36,0.9)] animate-gacha-charge';
+                    }
+                    if (ringOuter) ringOuter.classList.replace('border-sky-400/70', 'border-amber-300');
+                    if (icon) icon.innerText = '🌟';
+                    if (txt) {
+                        txt.className = 'text-sm sm:text-base font-pixel text-amber-300 text-center tracking-wide';
+                        txt.innerText = '金色の輝き！！ キャラクター召喚！！';
+                    }
+                } else {
+                    if (txt) txt.innerText = 'エネルギー臨界突破！！';
+                }
+            }, 980));
+
+            // Phase 4: Burst Flash at 1620ms
+            window._gachaPhaseTimers.push(setTimeout(() => {
+                const flash = document.getElementById('gacha-suspense-flash');
+                if (flash) flash.classList.add('animate-gacha-flash');
+                if (typeof audioSystem.playGachaBurst === 'function') {
+                    audioSystem.playGachaBurst(tier);
+                }
+            }, 1620));
 
             window._gachaSuspenseTimeout = setTimeout(() => {
                 window._gachaSuspenseTimeout = null;
                 onComplete();
-            }, 2200);
+            }, 2050);
         }
 
         window.skipGachaSuspense = function() {
-            if (window._gachaSuspenseTimeout) {
-                clearTimeout(window._gachaSuspenseTimeout);
-                window._gachaSuspenseTimeout = null;
-            }
+            stopGachaEffects();
             if (window._currentGachaResults && window._currentGachaResults.length > 0) {
                 showGachaRevealStep(window._currentGachaResults, 0);
             }
         };
 
         function showGachaRevealStep(results, index) {
+            stopGachaEffects();
             window._currentGachaResults = results;
-            if (index >= results.length) {
-                showGachaSummaryModal(results);
+            if (!Array.isArray(results) || index >= results.length) {
+                showGachaSummaryModal(results || []);
                 return;
             }
+            if (index < 0) index = 0;
+            window._gachaMaxRevealedIndex = Math.max(window._gachaMaxRevealedIndex || 0, index);
 
             const res = results[index];
             const isChar = res.type === 'character';
+            const isTenPull = results.length > 1;
+            const charMaster = CHARACTER_DATA[res.id] || null;
+            const extraMaster = EXTRA_ICONS[res.id] || null;
 
+            if (typeof audioSystem.playGachaCardFlip === 'function') {
+                audioSystem.playGachaCardFlip(isChar);
+            }
             if (isChar) {
-                audioSystem.playVictory();
-            } else {
-                audioSystem.playBuff();
+                audioSystem.playCharacterSound(res.id);
             }
 
-            const titleEl = document.getElementById('modal-title');
-            const bodyEl = document.getElementById('modal-body');
-            const actionsEl = document.getElementById('modal-actions');
+            const allCharIds = Object.keys(CHARACTER_DATA);
+            const allIconIds = [...allCharIds, ...Object.keys(EXTRA_ICONS)];
+            const totalRemaining =
+                allCharIds.filter(id => !playerState.unlockedChars.includes(id)).length +
+                allIconIds.filter(id => !(playerState.unlockedIcons || []).includes(id)).length;
 
-            if (titleEl) titleEl.innerText = `🎰 ガチャ結果 (${index + 1}/${results.length})`;
-            if (bodyEl) {
-                bodyEl.innerHTML = `
-                    <div class="text-center space-y-3 py-2 animate-cutin">
-                        <div class="flex justify-center mb-1">
-                            ${isChar ? '<span class="bg-amber-500 text-slate-950 px-3 py-1 rounded font-bold text-xs font-pixel shadow">✨ 新キャラクター</span>' : '<span class="bg-blue-600 text-white px-3 py-1 rounded font-bold text-xs font-pixel shadow">👤 プロフィールアイコン</span>'}
-                        </div>
-                        <div class="cursor-pointer inline-block group" onclick="closeModal(); openCharDetail('${res.id}', 'gacha_reveal', ${index});" title="タップして図鑑内容を表示">
-                            <canvas id="gacha-reveal-cvs" width="140" height="140" class="pixel-box bg-slate-950 border-2 border-amber-400 mx-auto shadow-lg group-hover:scale-105 transition-transform"></canvas>
-                        </div>
-                        <div>
-                            <h3 class="text-base font-bold text-amber-300 font-pixel">${res.name}</h3>
-                            <p class="text-xs text-slate-300 mt-0.5">${res.title}</p>
-                        </div>
-                        <p class="text-[11px] text-cyan-300 font-mono">💡 アイコンをタップすると図鑑（解説・ステータス）が表示されます</p>
+            const orbStripHtml = isTenPull ? `
+                <div class="hidden sm:flex items-center gap-1.5">
+                    ${results.map((item, i) => {
+                        const revealed = i <= window._gachaMaxRevealedIndex;
+                        const active = i === index;
+                        const itemIsChar = item.type === 'character';
+                        const dotColor = !revealed
+                            ? 'bg-slate-800 border-slate-600 text-slate-500'
+                            : (itemIsChar ? 'bg-amber-500 border-amber-200 text-slate-950' : 'bg-cyan-500 border-cyan-200 text-slate-950');
+                        const activeRing = active ? 'ring-2 ring-white scale-110' : 'opacity-80 hover:opacity-100';
+                        const clickAttr = revealed ? `onclick="showGachaRevealStep(window._currentGachaResults, ${i})"` : 'disabled';
+                        return `<button type="button" ${clickAttr} class="w-6 h-6 rounded border text-[10px] font-bold font-mono tabular-nums flex items-center justify-center transition-transform ${dotColor} ${activeRing}">${i + 1}</button>`;
+                    }).join('')}
+                </div>
+            ` : '';
+
+            const statsHtml = (isChar && charMaster) ? `
+                <div class="grid grid-cols-4 gap-1.5 w-full font-mono text-center bg-slate-950/90 border border-amber-500/40 rounded p-2">
+                    <div>
+                        <div class="text-[10px] text-slate-400">HP</div>
+                        <div class="text-xs sm:text-sm font-bold text-emerald-300 tabular-nums">${charMaster.id === 'dopagaking' ? '130~250' : charMaster.hp}</div>
                     </div>
-                `;
-            }
-            if (actionsEl) {
-                actionsEl.innerHTML = `
-                    <button onclick="skipGachaRevealAll()" class="pixel-btn pixel-btn-danger px-3 py-1.5 font-bold text-xs">すべてスキップ ⏩</button>
-                    <button onclick="showGachaRevealStep(window._currentGachaResults, ${index + 1})" class="pixel-btn pixel-btn-primary px-6 py-1.5 font-bold text-xs">次へ ▶</button>
-                `;
-            }
+                    <div>
+                        <div class="text-[10px] text-slate-400">攻撃</div>
+                        <div class="text-xs sm:text-sm font-bold text-rose-300 tabular-nums">${charMaster.atk}</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-slate-400">防御</div>
+                        <div class="text-xs sm:text-sm font-bold text-sky-300 tabular-nums">${charMaster.def}</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-slate-400">回避</div>
+                        <div class="text-xs sm:text-sm font-bold text-amber-300 tabular-nums">${charMaster.eva}%</div>
+                    </div>
+                </div>
+                <p class="text-[11px] sm:text-xs text-slate-300 font-mono leading-snug line-clamp-2">${charMaster.desc || ''}</p>
+            ` : `
+                <div class="bg-slate-950/85 border border-cyan-500/40 rounded p-2.5 text-[11px] sm:text-xs text-slate-200 font-mono leading-snug">
+                    ${extraMaster ? `${extraMaster.title} — プロフィールアイコンとして使用できます！` : 'プロフィールアイコンとして設定できます！'}
+                </div>
+            `;
 
+            const overlay = ensureGachaStageOverlay();
+            overlay.innerHTML = `
+                <div class="relative w-full h-full flex flex-col justify-between gacha-grid-floor overflow-hidden" style="padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);">
+                    <canvas id="gacha-reveal-particles" class="absolute inset-0 w-full h-full pointer-events-none z-0"></canvas>
+
+                    <!-- Top Bar -->
+                    <header class="relative z-10 flex items-center justify-between gap-2 px-3 sm:px-5 py-2 border-b ${isChar ? 'border-amber-500/40' : 'border-cyan-500/35'} bg-slate-950/85 shrink-0 gacha-compact-pad">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="text-xs sm:text-sm font-bold font-pixel text-amber-300 whitespace-nowrap">
+                                🎰 ${isTenPull ? `ガチャ結果 (${index + 1}/${results.length})` : '単発ガチャ結果'}
+                            </span>
+                        </div>
+                        ${orbStripHtml}
+                        <div class="shrink-0">
+                            ${isTenPull ? `
+                                <button type="button" onclick="skipGachaRevealAll()" class="pixel-btn pixel-btn-danger px-3 min-h-[38px] font-bold text-xs whitespace-nowrap">
+                                    結果一覧へ ⏩
+                                </button>
+                            ` : `
+                                <button type="button" onclick="openGachaModal()" class="pixel-btn px-3 min-h-[38px] font-bold text-xs whitespace-nowrap">
+                                    🎰 ガチャTOP
+                                </button>
+                            `}
+                        </div>
+                    </header>
+
+                    <!-- Center Landscape Spotlight -->
+                    <main class="relative z-10 flex-1 min-h-0 w-full max-w-4xl mx-auto flex flex-row items-center justify-center gap-4 sm:gap-8 px-3 sm:px-6 py-2 gacha-compact-pad">
+                        <!-- Left: Pedestal + Canvas -->
+                        <div class="shrink-0 relative flex items-center justify-center">
+                            <div class="absolute w-[min(46vh,200px)] h-[min(46vh,200px)] rounded-full border-2 border-dashed ${isChar ? 'border-amber-400/60' : 'border-cyan-400/50'} animate-gacha-ring pointer-events-none"></div>
+                            <div class="absolute w-[min(38vh,166px)] h-[min(38vh,166px)] rounded-full ${isChar ? 'bg-amber-400/15' : 'bg-cyan-400/15'} blur-xl pointer-events-none"></div>
+                            <button type="button" onclick="closeGachaStage(true); openCharDetail('${res.id}', 'gacha_reveal', ${index});" title="タップして図鑑詳細を表示" class="relative z-10 cursor-pointer group animate-gacha-reveal focus:outline-none">
+                                <canvas id="gacha-reveal-cvs" width="180" height="180" data-char-id="${res.id}" class="${isChar ? 'pixel-box-gold shadow-[0_0_28px_rgba(251,191,36,0.45)]' : 'pixel-box border-cyan-400 shadow-[0_0_24px_rgba(34,211,238,0.35)]'} bg-slate-950 w-[min(40vh,168px)] h-[min(40vh,168px)] group-hover:scale-105 transition-transform"></canvas>
+                            </button>
+                        </div>
+
+                        <!-- Right: Info & Stats -->
+                        <div class="flex-1 min-w-0 max-w-md flex flex-col justify-center gap-2 text-left">
+                            <div class="flex items-center gap-2">
+                                <span class="${isChar ? 'bg-amber-400 text-slate-950' : 'bg-cyan-500 text-slate-950'} px-2.5 py-0.5 font-bold text-[11px] sm:text-xs font-pixel">
+                                    ${isChar ? '✨ NEW CHARACTER' : '👤 PROFILE ICON'}
+                                </span>
+                                <span class="text-xs font-bold text-emerald-400 font-mono">GET!</span>
+                            </div>
+
+                            <div>
+                                <h3 class="text-lg sm:text-2xl font-bold text-amber-300 font-pixel leading-tight truncate">${res.name}</h3>
+                                <p class="text-xs sm:text-sm text-slate-200 font-mono mt-0.5 truncate">${res.title}</p>
+                            </div>
+
+                            ${statsHtml}
+
+                            <div class="pt-0.5">
+                                <button type="button" onclick="closeGachaStage(true); openCharDetail('${res.id}', 'gacha_reveal', ${index});" class="pixel-btn px-3 min-h-[40px] text-xs font-bold bg-slate-800 border-cyan-400 text-cyan-200">
+                                    📖 図鑑でステータス・スキルを見る
+                                </button>
+                            </div>
+                        </div>
+                    </main>
+
+                    <!-- Bottom Action Bar -->
+                    <footer class="relative z-10 flex items-center justify-between gap-2 px-3 sm:px-5 py-2.5 border-t border-slate-800 bg-slate-950/90 shrink-0 gacha-compact-pad">
+                        ${isTenPull ? `
+                            <button type="button" onclick="skipGachaRevealAll()" class="pixel-btn pixel-btn-danger px-3.5 min-h-[44px] font-bold text-xs whitespace-nowrap">
+                                ${(!isChar && index > 0 && results[index - 1].type === 'character') ? 'アイコンをまとめて見る ⏩' : 'すべてスキップ ⏩'}
+                            </button>
+                            <button type="button" onclick="showGachaRevealStep(window._currentGachaResults, ${index + 1})" class="pixel-btn pixel-btn-primary px-6 min-h-[44px] font-bold text-xs sm:text-sm font-pixel whitespace-nowrap">
+                                ${index + 1 >= results.length ? '🎉 10連結果一覧を見る ▶' : `次へ (${index + 2}/${results.length}) ▶`}
+                            </button>
+                        ` : `
+                            <div class="text-[11px] sm:text-xs text-slate-300 font-mono tabular-nums truncate">
+                                所持: <b class="text-amber-300">${formatDopa(playerState.dopa)}</b> DOPA · 残り <b class="text-cyan-300">${totalRemaining}</b>個
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                ${(totalRemaining >= 1 && playerState.dopa >= 100) ? `
+                                    <button type="button" onclick="executeGacha(1)" class="pixel-btn pixel-btn-warning px-4 min-h-[44px] font-bold text-xs font-pixel whitespace-nowrap">
+                                        ⚡ もう一度1回引く
+                                    </button>
+                                ` : ''}
+                                <button type="button" onclick="closeGachaStage(); renderHomeScreen();" class="pixel-btn pixel-btn-primary px-5 min-h-[44px] font-bold text-xs font-pixel whitespace-nowrap">
+                                    ホームに戻る
+                                </button>
+                            </div>
+                        `}
+                    </footer>
+                </div>
+            `;
+
+            startGachaParticleCanvas('gacha-reveal-particles', 'burst', isChar ? 'gold' : 'cyan');
+            window.lastGachaRevealId = res.id;
             setTimeout(() => {
                 const cvs = document.getElementById('gacha-reveal-cvs');
-                if (cvs) CharacterRenderer.drawCharacter(cvs, res.id);
-            }, 50);
+                if (cvs) {
+                    cvs.dataset.charId = res.id;
+                    CharacterRenderer.drawCharacter(cvs, res.id);
+                }
+            }, 30);
         }
 
         window.skipGachaRevealAll = function() {
+            stopGachaEffects();
             if (window._currentGachaResults) {
                 showGachaSummaryModal(window._currentGachaResults);
             }
         };
 
         function showGachaSummaryModal(results) {
-            const titleEl = document.getElementById('modal-title');
-            const bodyEl = document.getElementById('modal-body');
-            const actionsEl = document.getElementById('modal-actions');
+            stopGachaEffects();
+            results = Array.isArray(results) ? results : [];
+            window._currentGachaResults = results;
 
-            if (titleEl) titleEl.innerText = `🎉 ガチャ結果一覧 (${results.length}連)`;
-            if (bodyEl) {
-                let html = `<div class="text-center p-1 space-y-2 max-h-72 overflow-y-auto"><div class="grid grid-cols-1 gap-2 text-left">`;
-                results.forEach((res) => {
-                    const isChar = res.type === 'character';
-                    html += `
-                        <div class="pixel-box p-2.5 ${isChar ? 'bg-amber-950/60 border-amber-400' : 'bg-blue-950/40 border-blue-500'} flex items-center justify-between text-xs cursor-pointer hover:opacity-90" onclick="closeModal(); openCharDetail('${res.id}', 'gacha_summary');" title="タップして図鑑を表示">
-                            <div class="flex items-center gap-2">
-                                <span class="${isChar ? 'bg-amber-500 text-slate-950' : 'bg-blue-600 text-white'} px-2 py-0.5 rounded font-bold text-[10px]">${isChar ? 'キャラ' : 'アイコン'}</span>
-                                <div>
-                                    <b class="${isChar ? 'text-amber-300' : 'text-cyan-300'} text-sm">${res.name}</b>
-                                    <span class="text-slate-300 ml-1">(${res.title})</span>
-                                </div>
-                            </div>
-                            <span class="text-emerald-400 font-bold text-[11px]">✨ ゲット!</span>
+            const charCount = results.filter(r => r.type === 'character').length;
+            const iconCount = results.length - charCount;
+
+            const allCharIds = Object.keys(CHARACTER_DATA);
+            const allIconIds = [...allCharIds, ...Object.keys(EXTRA_ICONS)];
+            const totalRemaining =
+                allCharIds.filter(id => !playerState.unlockedChars.includes(id)).length +
+                allIconIds.filter(id => !(playerState.unlockedIcons || []).includes(id)).length;
+            const canTenAgain = totalRemaining >= 10 && playerState.dopa >= 1000;
+            const canOneAgain = totalRemaining >= 1 && playerState.dopa >= 100;
+
+            if (typeof audioSystem.playGachaBurst === 'function') {
+                audioSystem.playGachaBurst(charCount >= 4 ? 'rainbow' : (charCount >= 1 ? 'gold' : 'cyan'));
+            }
+
+            const isTenGrid = results.length > 5;
+            const gridClass = isTenGrid
+                ? 'grid grid-cols-5 grid-rows-2 gap-1.5 sm:gap-2.5 flex-1 min-h-0 w-full max-w-5xl mx-auto'
+                : 'grid grid-cols-2 sm:grid-cols-3 gap-2.5 flex-1 min-h-0 w-full max-w-3xl mx-auto items-center';
+
+            const cardsHtml = results.map((res, idx) => {
+                const isChar = res.type === 'character';
+                const delayMs = idx * 55;
+                return `
+                    <button type="button" onclick="closeGachaStage(true); openCharDetail('${res.id}', 'gacha_summary');" title="タップして図鑑を表示" style="animation-delay:${delayMs}ms;" class="animate-gacha-cascade min-h-0 h-full w-full ${isChar ? 'pixel-box-gold bg-amber-950/75 border-amber-400 shadow-[0_0_16px_rgba(251,191,36,0.22)]' : 'pixel-box bg-slate-900/90 border-cyan-500/80'} p-1.5 sm:p-2 flex flex-col items-center justify-between gap-1 cursor-pointer hover:brightness-110 active:scale-95 transition-transform text-center">
+                        <div class="w-full flex items-center justify-between text-[9px] sm:text-[10px] font-bold leading-none">
+                            <span class="${isChar ? 'text-amber-300' : 'text-cyan-300'}">${isChar ? 'キャラ' : 'アイコン'}</span>
+                            <span class="text-emerald-300">NEW</span>
                         </div>
-                    `;
-                });
-                html += `</div></div>`;
-                bodyEl.innerHTML = html;
-            }
-            if (actionsEl) {
-                actionsEl.innerHTML = `
-                    <button onclick="openGachaModal()" class="pixel-btn pixel-btn-warning px-4 py-1.5 font-bold text-xs">もう一度引く 🎰</button>
-                    <button onclick="closeModal(); renderHomeScreen();" class="pixel-btn pixel-btn-primary px-6 py-1.5 font-bold text-xs">ホームに戻る</button>
+                        <canvas id="gacha-sum-cvs-${idx}" width="84" height="84" data-char-id="${res.id}" class="pixel-box bg-slate-950 border ${isChar ? 'border-amber-400' : 'border-cyan-500'} w-[min(14vh,58px)] h-[min(14vh,58px)] shrink-0"></canvas>
+                        <div class="w-full truncate text-[10px] sm:text-xs font-bold ${isChar ? 'text-amber-200' : 'text-cyan-100'} leading-tight">
+                            ${res.name}
+                        </div>
+                    </button>
                 `;
-            }
+            }).join('');
+
+            const overlay = ensureGachaStageOverlay();
+            overlay.innerHTML = `
+                <div class="relative w-full h-full flex flex-col justify-between gacha-grid-floor overflow-hidden" style="padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);">
+                    <canvas id="gacha-summary-particles" class="absolute inset-0 w-full h-full pointer-events-none z-0"></canvas>
+
+                    <!-- Top Bar -->
+                    <header class="relative z-10 flex items-center justify-between gap-2 px-3 sm:px-5 py-2 border-b border-amber-500/40 bg-slate-950/90 shrink-0 gacha-compact-pad">
+                        <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+                            <h2 class="text-xs sm:text-base font-bold text-amber-300 font-pixel whitespace-nowrap">🎉 ガチャ結果一覧 (${results.length}連)</h2>
+                            <span class="text-[11px] sm:text-xs text-slate-300 font-mono whitespace-nowrap truncate">
+                                キャラ <b class="text-amber-300">${charCount}</b>体 · アイコン <b class="text-cyan-300">${iconCount}</b>個
+                            </span>
+                        </div>
+                        <div class="text-[11px] sm:text-xs text-slate-300 font-mono tabular-nums whitespace-nowrap shrink-0">
+                            所持: <b class="text-amber-300">${formatDopa(playerState.dopa)}</b> DOPA · 残り <b class="text-cyan-300">${totalRemaining}</b>個
+                        </div>
+                    </header>
+
+                    <!-- 5x2 Landscape Result Grid -->
+                    <main class="relative z-10 flex-1 min-h-0 flex flex-col justify-center p-2 sm:p-3.5 gacha-compact-pad">
+                        <div class="${gridClass}">
+                            ${cardsHtml}
+                        </div>
+                    </main>
+
+                    <!-- Bottom Action Bar -->
+                    <footer class="relative z-10 flex items-center justify-between gap-2 px-3 sm:px-5 py-2 border-t border-slate-800 bg-slate-950/90 shrink-0 gacha-compact-pad">
+                        <span class="hidden sm:inline text-[11px] text-cyan-300 font-mono">💡 カードをタップすると図鑑（解説・ステータス）を表示できます</span>
+                        <div class="flex items-center gap-2 ml-auto shrink-0">
+                            ${canTenAgain ? `
+                                <button type="button" onclick="executeGacha(10)" class="relative overflow-hidden gacha-shimmer pixel-btn pixel-btn-warning px-4 min-h-[42px] font-bold text-xs font-pixel whitespace-nowrap">
+                                    🌟 もう一度10連 (1,000)
+                                </button>
+                            ` : (canOneAgain ? `
+                                <button type="button" onclick="executeGacha(1)" class="pixel-btn pixel-btn-warning px-4 min-h-[42px] font-bold text-xs font-pixel whitespace-nowrap">
+                                    ⚡ 1回引く (100)
+                                </button>
+                            ` : '')}
+                            <button type="button" onclick="openGachaModal()" class="pixel-btn px-3.5 min-h-[42px] font-bold text-xs whitespace-nowrap">
+                                🎰 ガチャTOP
+                            </button>
+                            <button type="button" onclick="closeGachaStage(); renderHomeScreen();" class="pixel-btn pixel-btn-primary px-5 min-h-[42px] font-bold text-xs font-pixel whitespace-nowrap">
+                                ホームに戻る
+                            </button>
+                        </div>
+                    </footer>
+                </div>
+            `;
+
+            startGachaParticleCanvas('gacha-summary-particles', 'portal', charCount >= 4 ? 'rainbow' : 'gold');
+            setTimeout(() => {
+                results.forEach((res, idx) => {
+                    const cvs = document.getElementById(`gacha-sum-cvs-${idx}`);
+                    if (cvs) {
+                        cvs.dataset.charId = res.id;
+                        CharacterRenderer.drawCharacter(cvs, res.id);
+                    }
+                });
+            }, 30);
         }
 
         function renderZukanScreen(sortOrder = 'default', sortDir = 'desc') {
@@ -5023,9 +5738,9 @@ static drawDopagaking(p, isCharged) {
             let backLabel = "🔙 戻る";
             if (returnSource === 'gacha_reveal') {
                 const index = typeof arg1 === 'number' ? arg1 : 0;
-                backAction = `document.getElementById('modal-overlay').classList.remove('hidden'); document.body.classList.add('modal-open'); showGachaRevealStep(window._currentGachaResults || [], ${index})`;
+                backAction = `showGachaRevealStep(window._currentGachaResults || [], ${index})`;
             } else if (returnSource === 'gacha_summary') {
-                backAction = `document.getElementById('modal-overlay').classList.remove('hidden'); document.body.classList.add('modal-open'); showGachaSummaryModal(window._currentGachaResults || [])`;
+                backAction = `showGachaSummaryModal(window._currentGachaResults || [])`;
             } else if (returnSource === 'select' || returnSource === 'new_select') {
                 const sortOrder = arg1 || 'default';
                 const sortDir = arg2 || 'desc';
@@ -9989,6 +10704,10 @@ pasha_dark: {
                 activeBattle.destroy();
                 activeBattle = null;
             }
+            if (typeof playerState !== 'undefined' && playerState.isFirstTime) {
+                promptFirstTimeProfileName();
+                return;
+            }
 
             const container = document.getElementById('screen-container');
             if (!container) return;
@@ -10519,11 +11238,11 @@ pasha_dark: {
                     <div class="flex gap-3 w-full justify-center pb-1 flex-shrink-0">
                         ${isOnlineMultiSingle ? `
                         <button onclick="startSelectedOnlineMultiChar()" class="pixel-btn ${selectedMultiCharId ? 'pixel-btn-success' : 'bg-slate-800 border-slate-600 text-slate-300'} px-8 py-2 sm:py-2.5 text-xs sm:text-sm font-bold font-pixel shadow-lg">
-                            ${selectedMultiCharId ? `この1体で出陣！ (${onlineCfg.allyHumanCount}vs${onlineCfg.enemyHumanCount}) ▶` : (unlockedCount === 0 ? '🎰 ガチャを引いてキャラを入手しよう (所持 0体)' : '操作するキャラクターを1体選んでください')}
+                            ${selectedMultiCharId ? `この1体で出陣！ (${onlineCfg.allyHumanCount}vs${onlineCfg.enemyHumanCount}) ▶` : '操作するキャラクターを1体選んでください'}
                         </button>
                         ` : `
-                        <button onclick="startSelectedNewBattleTeam(${isOnline})" class="pixel-btn ${unlockedCount < 3 ? 'bg-slate-800 border-red-500/70 text-amber-200' : (selectedCount === 3 ? (isOnline ? 'pixel-btn-success' : 'pixel-btn-primary') : 'bg-slate-800 border-slate-600 text-slate-300')} px-8 py-2 sm:py-2.5 text-xs sm:text-sm font-bold font-pixel shadow-lg">
-                            ${unlockedCount === 0 ? '🎰 ガチャを引いてキャラを3体入手しよう (所持 0/3)' : (unlockedCount < 3 ? `🔒 参加には所持キャラ3体以上が必要 (所持 ${unlockedCount}/3体)` : (selectedCount === 3 ? (isOnline ? 'この3体でマッチングへ ▶' : 'この3体で出陣！ ▶') : `あと${3 - selectedCount}体選択してください (${selectedCount}/3)`))}
+                        <button onclick="startSelectedNewBattleTeam(${isOnline})" class="pixel-btn ${selectedCount === 3 ? (isOnline ? 'pixel-btn-success' : 'pixel-btn-primary') : 'bg-slate-800 border-slate-600 text-slate-300'} px-8 py-2 sm:py-2.5 text-xs sm:text-sm font-bold font-pixel shadow-lg">
+                            ${selectedCount === 3 ? (isOnline ? 'この3体でマッチングへ ▶' : 'この3体で出陣！ ▶') : `あと${3 - selectedCount}体選択してください (${selectedCount}/3)`}
                         </button>
                         `}
                     </div>
@@ -13350,7 +14069,7 @@ pasha_dark: {
                                     </div>
                                     <div class="flex flex-col justify-center gap-1 text-left flex-1 min-w-0">
                                         <div class="flex items-center gap-1 sm:gap-1.5 min-w-0">
-                                            <input id="profile-name-input" type="text" value="${playerState.playerName || ''}" maxlength="12" class="pixel-box bg-slate-950 px-2 py-1 text-xs font-bold text-amber-300 flex-1 min-w-0 max-w-[150px] outline-none border-amber-600">
+                                            <input id="profile-name-input" type="text" value="${playerState.playerName || ''}" maxlength="18" placeholder="全角10字/半角18文字" class="pixel-box bg-slate-950 px-2 py-1 text-xs font-bold text-amber-300 flex-1 min-w-0 max-w-[150px] outline-none border-amber-600">
                                             <button onclick="savePlayerName()" class="pixel-btn pixel-btn-primary px-2 py-1 text-[10px] sm:text-[11px] font-bold shrink-0">保存</button>
                                         </div>
                                         <div class="flex items-center gap-1.5 flex-wrap">
@@ -13591,19 +14310,15 @@ pasha_dark: {
             audioSystem.playSelect();
             const input = document.getElementById('profile-name-input');
             if (!input) return;
-            const newName = input.value.trim();
-            if (!newName) {
-                showModal("エラー", "ファイター名を入力してください！");
+            const validation = validateFighterName(input.value, { disallowDefault: false });
+            if (!validation.ok) {
+                showModal("エラー", validation.error);
                 return;
             }
-            if (newName.length > 12) {
-                showModal("エラー", "ファイター名は12文字以内で入力してください！");
-                return;
-            }
-            playerState.playerName = newName;
+            playerState.playerName = validation.name;
             savePlayerState();
             updateHeaderProfile();
-            showModal("保存完了", `ファイター名を「${newName}」に更新しました！`);
+            showModal("保存完了", `ファイター名を「${validation.name}」に更新しました！`);
         }
 
         function openIconSelectModal() {
@@ -14136,7 +14851,10 @@ pasha_dark: {
         window.openCharDetail = openCharDetail;
         window.openInBattleCharDetail = openInBattleCharDetail;
         window.openGachaModal = openGachaModal;
+        window.closeGachaStage = closeGachaStage;
         window.executeGacha = executeGacha;
+        window.showGachaRevealStep = showGachaRevealStep;
+        window.showGachaSummaryModal = showGachaSummaryModal;
         window.openCharacterListModal = openCharacterListModal;
         window.confirmRetireBattle = confirmRetireBattle;
         window.closeModal = closeModal;
@@ -14292,6 +15010,9 @@ pasha_dark: {
 
                 if (restoredData) {
                     Object.assign(playerState, restoredData);
+                    if (restoredData.isFirstTime === undefined && restoredData.playerName && restoredData.playerName !== '名無しファイター') {
+                        playerState.isFirstTime = false;
+                    }
                     await savePlayerState();
                     updateHeaderProfile();
                     showModal("復元成功！", `プレイヤーID「${targetId}」のデータを正常に復元しました！\nようこそおかえりなさい、${playerState.playerName}さん！`);

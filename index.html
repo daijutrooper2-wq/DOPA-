@@ -35,7 +35,7 @@
       if (typeof window !== 'undefined' && 'caches' in window) {
         caches.keys().then(function(names) {
           for (let name of names) {
-            if (name !== 'dopakin-site-assets-v2.3.15') {
+            if (name !== 'dopakin-site-assets-v2.3.19') {
               caches.delete(name);
             }
           }
@@ -51,7 +51,7 @@
     <!-- Tailwind CSS CDN & Google Fonts -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DotGothic16&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.3.15">
+    <link rel="stylesheet" href="style.css?v=2.3.19">
 </head>
 <body class="w-full h-full overflow-hidden flex flex-col items-center justify-center p-0 m-0 bg-slate-950">
 
@@ -70,8 +70,8 @@
     </div>
 
     <!-- MODAL / NOTIFICATION OVERLAY -->
-    <div id="modal-overlay" class="fixed inset-0 bg-black/85 hidden flex items-center justify-center p-2 sm:p-4 z-[9995]">
-        <div class="pixel-box bg-slate-900 max-w-md w-full p-3 sm:p-5 text-center relative border-amber-400 max-h-[90vh] flex flex-col">
+    <div id="modal-overlay" class="fixed inset-0 bg-black/85 hidden flex items-center justify-center p-2 sm:p-4 z-[9998]">
+        <div id="modal-dialog" class="pixel-box bg-slate-900 max-w-md w-full p-3 sm:p-5 text-center relative z-10 border-amber-400 max-h-[90vh] flex flex-col">
             <h3 id="modal-title" class="text-base sm:text-xl font-bold text-amber-400 mb-2 sm:mb-3 font-pixel"></h3>
             <div id="modal-body" class="text-slate-200 mb-4 sm:mb-6 text-xs sm:text-sm leading-relaxed whitespace-pre-line max-h-[60vh] overflow-y-auto text-left flex-1 pr-1"></div>
             <div id="modal-actions" class="flex justify-center gap-3">
@@ -92,7 +92,7 @@
     </div>
 
     <!-- Standalone Game Scripts -->
-    <script src="battle-3v3.js?v=2.3.15"></script>
-    <script src="game.js?v=2.3.15"></script>
+    <script src="battle-3v3.js?v=2.3.19"></script>
+    <script src="game.js?v=2.3.19"></script>
 </body>
 </html>
