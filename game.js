@@ -153,7 +153,7 @@
             });
         };
 
-        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.21';
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.22';
         const STATIC_IMAGE_ASSETS = [
             'assets/aistudio/image_6db88de4.png',
             'images/backnormal.webp',
@@ -203,9 +203,9 @@
         ];
         const SHELL_SITE_ASSETS = [
             'manifest.json',
-            'style.css?v=2.3.21',
-            'battle-3v3.js?v=2.3.21',
-            'game.js?v=2.3.21'
+            'style.css?v=2.3.22',
+            'battle-3v3.js?v=2.3.22',
+            'game.js?v=2.3.22'
         ];
 
         const AssetPreloader = {
@@ -1310,32 +1310,6 @@ static drawDopagaking(p, isCharged) {
         }
         window.updateFirstNameValidationUI = updateFirstNameValidationUI;
 
-        function pickRandomFighterName() {
-            const input = document.getElementById('first-name-input');
-            if (!input) return;
-            const candidates = [
-                'ドパキング',
-                '雷帝パシャ',
-                '紅蓮コートニー',
-                '王国騎士ゼロ',
-                '蒼穹の勇者',
-                '鉄壁ガンバン',
-                '疾風モモピン',
-                '夜明けの剣士',
-                'DOPAマスター',
-                'ドパガの星'
-            ];
-            const current = input.value.trim();
-            const pool = candidates.filter(name => name !== current);
-            const picked = pool[Math.floor(Math.random() * pool.length)] || candidates[0];
-            input.value = picked;
-            if (typeof audioSystem !== 'undefined' && typeof audioSystem.playSelect === 'function') {
-                audioSystem.playSelect();
-            }
-            updateFirstNameValidationUI();
-        }
-        window.pickRandomFighterName = pickRandomFighterName;
-
         function setModalDialogLayout(wide = false) {
             const isOnboarding = wide === 'onboarding' || wide === true;
             const overlay = document.getElementById('modal-overlay');
@@ -1403,7 +1377,7 @@ static drawDopagaking(p, isCharged) {
                 titleEl.innerHTML = `<span class="whitespace-nowrap">🌟 ファイター登録</span><span class="text-[10px] sm:text-xs font-mono font-normal text-amber-200/80 tabular-nums whitespace-nowrap">STEP 1 / 2 · ライセンス発行</span>`;
             }
             if (bodyEl) {
-                bodyEl.innerHTML = `<div class="flex flex-row items-stretch gap-3 sm:gap-4 onboarding-compact-gap w-full"><section class="w-[41%] max-w-[260px] shrink-0 onboarding-license-card onboarding-compact-pad rounded p-2.5 sm:p-3.5 flex flex-col items-center justify-between text-center gap-1.5 relative overflow-hidden"><div class="w-full flex items-center justify-between text-[9px] sm:text-[10px] font-mono text-amber-200/80 border-b border-amber-500/25 pb-1"><span class="font-bold tracking-wide text-amber-300">FIGHTER CARD</span><span class="tabular-nums text-slate-300">${fighterIdDisplay}</span></div><div class="relative flex items-center justify-center my-0.5"><div class="onboarding-ring-outer absolute w-20 h-20 sm:w-24 sm:h-24 rounded-full border border-dashed border-amber-400/50 animate-gacha-ring pointer-events-none"></div><div class="onboarding-ring-inner absolute w-16 h-16 sm:w-[76px] sm:h-[76px] rounded-full border border-cyan-400/35 animate-gacha-ring-rev pointer-events-none"></div><canvas id="first-reg-emblem-cvs" width="76" height="76" data-char-id="dopagaking" class="onboarding-emblem-size relative z-10 pixel-box bg-slate-950 border-2 border-amber-400 w-14 h-14 sm:w-16 sm:h-16 shrink-0 shadow-[0_0_16px_rgba(251,191,36,0.28)]"></canvas></div><div class="w-full space-y-0.5"><div id="first-name-live-preview" class="text-xs sm:text-sm font-bold text-slate-500 font-pixel truncate w-full">あなたのファイター名</div><div id="first-name-live-status" class="text-[10px] text-slate-400 font-mono">名前を入力してください</div></div><div class="w-full border-t border-amber-500/25 pt-1 text-[10px] sm:text-[11px] font-mono text-emerald-300">登録特典 <span aria-hidden="true">·</span> <b class="text-amber-300 tabular-nums">+1,000 DOPA</b></div></section><section class="flex-1 min-w-0 flex flex-col justify-between gap-2 text-left"><p class="text-[11px] sm:text-xs text-slate-200 font-mono leading-snug">オンライン対戦やランキングで使われるファイター名を決めてください。</p><div class="space-y-1.5"><div class="flex items-center justify-between gap-2"><label for="first-name-input" class="text-xs text-amber-300 font-bold whitespace-nowrap">ファイター名</label><span id="first-name-count" class="text-[10px] text-slate-400 font-mono tabular-nums whitespace-nowrap">0 / 10字（半角18字）</span></div><div class="relative"><input id="first-name-input" type="text" value="" placeholder="例: ドパキング / DOPA123" maxlength="18" autocomplete="off" oninput="updateFirstNameValidationUI()" onkeydown="if(event.key==='Enter'){event.preventDefault();completeFirstTimeSetup();}" class="pixel-box bg-slate-950 pl-3 pr-8 py-2 text-base font-bold text-amber-300 w-full outline-none border-amber-500 focus:border-amber-300 transition-colors"><span id="first-name-valid-mark" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-emerald-400 font-bold text-sm pointer-events-none">✓</span></div><div class="flex items-center justify-between gap-2 flex-wrap"><button type="button" onclick="pickRandomFighterName()" class="pixel-btn px-2.5 min-h-[34px] text-[11px] font-bold bg-slate-800 border-slate-500 text-amber-200 whitespace-nowrap shrink-0">🎲 おまかせ名</button><span class="text-[10px] text-slate-400 font-mono">全角10字・半角18文字まで</span></div><p id="first-name-error" class="hidden text-[11px] text-red-400 font-bold font-mono leading-tight"></p></div><button id="first-name-submit-btn" type="button" disabled onclick="completeFirstTimeSetup()" class="pixel-btn pixel-btn-disabled w-full min-h-[44px] px-6 py-2 font-bold text-sm font-pixel opacity-60 cursor-not-allowed">ライセンスを発行して次へ ▶</button></section></div>`;
+                bodyEl.innerHTML = `<div class="flex flex-row items-stretch gap-3 sm:gap-4 onboarding-compact-gap w-full"><section class="w-[41%] max-w-[260px] shrink-0 onboarding-license-card onboarding-compact-pad rounded p-2.5 sm:p-3.5 flex flex-col items-center justify-between text-center gap-1.5 relative overflow-hidden"><div class="w-full flex items-center justify-between text-[9px] sm:text-[10px] font-mono text-amber-200/80 border-b border-amber-500/25 pb-1"><span class="font-bold tracking-wide text-amber-300">FIGHTER CARD</span><span class="tabular-nums text-slate-300">${fighterIdDisplay}</span></div><div class="relative flex items-center justify-center my-0.5"><div class="onboarding-ring-outer absolute w-20 h-20 sm:w-24 sm:h-24 rounded-full border border-dashed border-amber-400/50 animate-gacha-ring pointer-events-none"></div><div class="onboarding-ring-inner absolute w-16 h-16 sm:w-[76px] sm:h-[76px] rounded-full border border-cyan-400/35 animate-gacha-ring-rev pointer-events-none"></div><canvas id="first-reg-emblem-cvs" width="76" height="76" data-char-id="dopagaking" class="onboarding-emblem-size relative z-10 pixel-box bg-slate-950 border-2 border-amber-400 w-14 h-14 sm:w-16 sm:h-16 shrink-0 shadow-[0_0_16px_rgba(251,191,36,0.28)]"></canvas></div><div class="w-full space-y-0.5"><div id="first-name-live-preview" class="text-xs sm:text-sm font-bold text-slate-500 font-pixel truncate w-full">あなたのファイター名</div><div id="first-name-live-status" class="text-[10px] text-slate-400 font-mono">名前を入力してください</div></div><div class="w-full border-t border-amber-500/25 pt-1 text-[10px] sm:text-[11px] font-mono text-emerald-300">登録特典 <span aria-hidden="true">·</span> <b class="text-amber-300 tabular-nums">+1,000 DOPA</b></div></section><section class="flex-1 min-w-0 flex flex-col justify-between gap-2 text-left"><p class="text-[11px] sm:text-xs text-slate-200 font-mono leading-snug">オンライン対戦やランキングで使われるファイター名を決めてください。</p><div class="space-y-1.5"><div class="flex items-center justify-between gap-2"><label for="first-name-input" class="text-xs text-amber-300 font-bold whitespace-nowrap">ファイター名</label><span id="first-name-count" class="text-[10px] text-slate-400 font-mono tabular-nums whitespace-nowrap">0 / 10字（半角18字）</span></div><div class="relative"><input id="first-name-input" type="text" value="" placeholder="例: ドパキング / DOPA123" maxlength="18" autocomplete="off" oninput="updateFirstNameValidationUI()" onkeydown="if(event.key==='Enter'){event.preventDefault();completeFirstTimeSetup();}" class="pixel-box bg-slate-950 pl-3 pr-8 py-2 text-base font-bold text-amber-300 w-full outline-none border-amber-500 focus:border-amber-300 transition-colors"><span id="first-name-valid-mark" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-emerald-400 font-bold text-sm pointer-events-none">✓</span></div><p class="text-[10px] text-slate-400 font-mono">全角10字・半角18文字まで使用できます</p><p id="first-name-error" class="hidden text-[11px] text-red-400 font-bold font-mono leading-tight"></p></div><button id="first-name-submit-btn" type="button" disabled onclick="completeFirstTimeSetup()" class="pixel-btn pixel-btn-disabled w-full min-h-[44px] px-6 py-2 font-bold text-sm font-pixel opacity-60 cursor-not-allowed">ライセンスを発行して次へ ▶</button></section></div>`;
             }
             if (actionsEl) {
                 actionsEl.innerHTML = '';
