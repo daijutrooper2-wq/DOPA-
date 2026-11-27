@@ -153,7 +153,7 @@
             });
         };
 
-        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.19';
+        const ASSET_CACHE_NAME = 'dopakin-site-assets-v2.3.21';
         const STATIC_IMAGE_ASSETS = [
             'assets/aistudio/image_6db88de4.png',
             'images/backnormal.webp',
@@ -203,9 +203,9 @@
         ];
         const SHELL_SITE_ASSETS = [
             'manifest.json',
-            'style.css?v=2.3.19',
-            'battle-3v3.js?v=2.3.19',
-            'game.js?v=2.3.19'
+            'style.css?v=2.3.21',
+            'battle-3v3.js?v=2.3.21',
+            'game.js?v=2.3.21'
         ];
 
         const AssetPreloader = {
@@ -487,7 +487,7 @@
                             } else if (id === 'gacha-reveal-cvs' || id === 'gacha-preview-cvs' || id.startsWith('gacha-sum-cvs-')) {
                                 const currentGachaId = (cvs.dataset && cvs.dataset.charId) || window.lastGachaRevealId || 'courtney';
                                 CharacterRenderer.drawCharacter(cvs, currentGachaId);
-                            } else if (id === 'first-reg-emblem-cvs') {
+                            } else if (id === 'first-reg-emblem-cvs' || id === 'gift-welcome-icon-cvs') {
                                 CharacterRenderer.drawCharacter(cvs, (cvs.dataset && cvs.dataset.charId) || 'dopagaking');
                             } else if (id === 'opp-profile-cvs') {
                                 CharacterRenderer.drawCharacter(cvs, window.lastOppIcon || 'pasha');
@@ -1228,6 +1228,9 @@ static drawDopagaking(p, isCharged) {
             const errEl = document.getElementById('first-name-error');
             const statusEl = document.getElementById('first-name-count');
             const btn = document.getElementById('first-name-submit-btn');
+            const livePreviewEl = document.getElementById('first-name-live-preview');
+            const liveStatusEl = document.getElementById('first-name-live-status');
+            const validMarkEl = document.getElementById('first-name-valid-mark');
             if (!input) return;
 
             const raw = input.value;
@@ -1237,14 +1240,48 @@ static drawDopagaking(p, isCharged) {
             if (statusEl) {
                 const charLen = Array.from(trimmed).length;
                 if (!trimmed) {
-                    statusEl.className = 'text-[10px] text-slate-400 font-mono';
-                    statusEl.innerText = '全角10字 / 半角英数18文字まで';
+                    statusEl.className = 'text-[10px] text-slate-400 font-mono tabular-nums';
+                    statusEl.innerText = '0 / 10字（半角18字）';
                 } else if (res.ok) {
-                    statusEl.className = 'text-[10px] text-emerald-400 font-mono font-bold';
-                    statusEl.innerText = `✓ 登録できます (${charLen}文字)`;
+                    statusEl.className = 'text-[10px] text-emerald-400 font-mono font-bold tabular-nums';
+                    statusEl.innerText = `✓ 登録OK (${charLen}文字)`;
                 } else {
-                    statusEl.className = 'text-[10px] text-red-400 font-mono font-bold';
-                    statusEl.innerText = `⚠ 文字数制限超過 (${charLen}文字)`;
+                    statusEl.className = 'text-[10px] text-red-400 font-mono font-bold tabular-nums';
+                    statusEl.innerText = `⚠ 制限超過 (${charLen}文字)`;
+                }
+            }
+
+            if (livePreviewEl) {
+                if (!trimmed) {
+                    livePreviewEl.innerText = 'あなたのファイター名';
+                    livePreviewEl.className = 'text-xs sm:text-sm font-bold text-slate-500 font-pixel truncate w-full';
+                } else if (res.ok) {
+                    livePreviewEl.innerText = trimmed;
+                    livePreviewEl.className = 'text-xs sm:text-sm font-bold text-amber-300 font-pixel truncate w-full drop-shadow-[0_0_8px_rgba(251,191,36,0.45)]';
+                } else {
+                    livePreviewEl.innerText = trimmed;
+                    livePreviewEl.className = 'text-xs sm:text-sm font-bold text-red-300 font-pixel truncate w-full';
+                }
+            }
+
+            if (liveStatusEl) {
+                if (!trimmed) {
+                    liveStatusEl.innerText = '名前を入力してください';
+                    liveStatusEl.className = 'text-[10px] text-slate-400 font-mono';
+                } else if (res.ok) {
+                    liveStatusEl.innerText = 'ライセンス発行可能';
+                    liveStatusEl.className = 'text-[10px] text-emerald-300 font-mono font-bold';
+                } else {
+                    liveStatusEl.innerText = '入力条件を確認してください';
+                    liveStatusEl.className = 'text-[10px] text-red-400 font-mono font-bold';
+                }
+            }
+
+            if (validMarkEl) {
+                if (res.ok) {
+                    validMarkEl.classList.remove('hidden');
+                } else {
+                    validMarkEl.classList.add('hidden');
                 }
             }
 
@@ -1264,7 +1301,7 @@ static drawDopagaking(p, isCharged) {
             if (btn) {
                 if (res.ok) {
                     btn.disabled = false;
-                    btn.className = 'pixel-btn pixel-btn-primary w-full min-h-[44px] px-6 py-2 font-bold text-sm font-pixel';
+                    btn.className = 'relative overflow-hidden gacha-shimmer pixel-btn pixel-btn-warning w-full min-h-[44px] px-6 py-2 font-bold text-sm font-pixel shadow-lg';
                 } else {
                     btn.disabled = true;
                     btn.className = 'pixel-btn pixel-btn-disabled w-full min-h-[44px] px-6 py-2 font-bold text-sm font-pixel opacity-60 cursor-not-allowed';
@@ -1273,24 +1310,75 @@ static drawDopagaking(p, isCharged) {
         }
         window.updateFirstNameValidationUI = updateFirstNameValidationUI;
 
+        function pickRandomFighterName() {
+            const input = document.getElementById('first-name-input');
+            if (!input) return;
+            const candidates = [
+                'ドパキング',
+                '雷帝パシャ',
+                '紅蓮コートニー',
+                '王国騎士ゼロ',
+                '蒼穹の勇者',
+                '鉄壁ガンバン',
+                '疾風モモピン',
+                '夜明けの剣士',
+                'DOPAマスター',
+                'ドパガの星'
+            ];
+            const current = input.value.trim();
+            const pool = candidates.filter(name => name !== current);
+            const picked = pool[Math.floor(Math.random() * pool.length)] || candidates[0];
+            input.value = picked;
+            if (typeof audioSystem !== 'undefined' && typeof audioSystem.playSelect === 'function') {
+                audioSystem.playSelect();
+            }
+            updateFirstNameValidationUI();
+        }
+        window.pickRandomFighterName = pickRandomFighterName;
+
         function setModalDialogLayout(wide = false) {
+            const isOnboarding = wide === 'onboarding' || wide === true;
+            const overlay = document.getElementById('modal-overlay');
             const dialog = document.getElementById('modal-dialog');
             const titleEl = document.getElementById('modal-title');
             const bodyEl = document.getElementById('modal-body');
             const actionsEl = document.getElementById('modal-actions');
+
+            if (window._giftDopaRollupRaf) {
+                cancelAnimationFrame(window._giftDopaRollupRaf);
+                window._giftDopaRollupRaf = null;
+            }
+
+            if (overlay) {
+                if (isOnboarding) {
+                    overlay.classList.add('onboarding-backdrop', 'gacha-grid-floor');
+                    let pCvs = document.getElementById('onboarding-particles');
+                    if (!pCvs) {
+                        pCvs = document.createElement('canvas');
+                        pCvs.id = 'onboarding-particles';
+                        pCvs.className = 'absolute inset-0 w-full h-full pointer-events-none z-0';
+                        overlay.insertBefore(pCvs, overlay.firstChild);
+                    }
+                } else {
+                    overlay.classList.remove('onboarding-backdrop', 'gacha-grid-floor');
+                    const pCvs = document.getElementById('onboarding-particles');
+                    if (pCvs) pCvs.remove();
+                }
+            }
+
             if (dialog) {
-                dialog.className = wide
-                    ? 'pixel-box bg-slate-900 max-w-2xl w-[94vw] p-3 sm:p-4 text-center relative z-10 border-amber-400 max-h-[94dvh] flex flex-col'
+                dialog.className = isOnboarding
+                    ? 'pixel-box onboarding-dialog bg-slate-900/95 max-w-3xl w-[94vw] p-3 sm:p-4 text-center relative z-10 border-amber-400 max-h-[94dvh] flex flex-col'
                     : 'pixel-box bg-slate-900 max-w-md w-full p-3 sm:p-5 text-center relative z-10 border-amber-400 max-h-[90vh] flex flex-col';
             }
             if (titleEl) {
-                titleEl.className = wide
-                    ? 'text-sm sm:text-lg font-bold text-amber-400 mb-2 font-pixel shrink-0'
+                titleEl.className = isOnboarding
+                    ? 'onboarding-compact-title flex items-center justify-between gap-2 pb-2 mb-2.5 border-b border-amber-500/35 text-sm sm:text-base font-bold text-amber-300 font-pixel shrink-0 text-left'
                     : 'text-base sm:text-xl font-bold text-amber-400 mb-2 sm:mb-3 font-pixel';
             }
             if (bodyEl) {
-                bodyEl.className = wide
-                    ? 'text-slate-200 mb-1 text-xs sm:text-sm leading-snug whitespace-normal max-h-[78dvh] overflow-y-auto text-left flex-1'
+                bodyEl.className = isOnboarding
+                    ? 'text-slate-200 mb-0 text-xs sm:text-sm leading-snug whitespace-normal max-h-[78dvh] overflow-y-auto text-left flex-1'
                     : 'text-slate-200 mb-4 sm:mb-6 text-xs sm:text-sm leading-relaxed whitespace-pre-line max-h-[60vh] overflow-y-auto text-left flex-1 pr-1';
             }
             if (actionsEl) {
@@ -1300,15 +1388,22 @@ static drawDopagaking(p, isCharged) {
 
         function promptFirstTimeProfileName() {
             audioSystem.playSelect();
-            setModalDialogLayout(true);
+            setModalDialogLayout('onboarding');
             const titleEl = document.getElementById('modal-title');
             const bodyEl = document.getElementById('modal-body');
             const overlay = document.getElementById('modal-overlay');
             const actionsEl = document.getElementById('modal-actions');
 
-            if (titleEl) titleEl.innerText = "🌟 ファイター登録";
+            const fighterIdDisplay = String((typeof playerState !== 'undefined' && playerState.playerId) ? playerState.playerId : 'DP-NEW')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            if (titleEl) {
+                titleEl.innerHTML = `<span class="whitespace-nowrap">🌟 ファイター登録</span><span class="text-[10px] sm:text-xs font-mono font-normal text-amber-200/80 tabular-nums whitespace-nowrap">STEP 1 / 2 · ライセンス発行</span>`;
+            }
             if (bodyEl) {
-                bodyEl.innerHTML = `<div class="flex flex-row items-stretch gap-3 sm:gap-4 w-full"><div class="w-[38%] max-w-[210px] shrink-0 pixel-box-dark bg-slate-950/90 border-amber-500/40 p-2.5 sm:p-3 flex flex-col items-center justify-center text-center gap-1.5"><canvas id="first-reg-emblem-cvs" width="76" height="76" data-char-id="dopagaking" class="pixel-box bg-slate-900 border-2 border-amber-400 w-14 h-14 sm:w-16 sm:h-16 shrink-0"></canvas><div class="text-[11px] sm:text-xs font-bold text-amber-300 font-pixel leading-snug">ようこそ！<br>ドパガ王国へ</div><div class="text-[10px] text-emerald-300 font-mono leading-tight">登録完了で<br><b class="text-amber-300">1,000 DOPA</b> 贈呈</div></div><div class="flex-1 min-w-0 flex flex-col justify-between gap-2 text-left"><p class="text-[11px] sm:text-xs text-slate-200 font-mono leading-snug">対戦で使うファイター名を登録してください（未登録では進めません）。</p><div class="space-y-1"><div class="flex items-center justify-between gap-2 flex-wrap"><label for="first-name-input" class="text-xs text-amber-300 font-bold">ファイター名</label><span id="first-name-count" class="text-[10px] text-slate-400 font-mono">全角10字 / 半角英数18文字まで</span></div><input id="first-name-input" type="text" value="" placeholder="例: ドパキング / DOPA123" maxlength="18" autocomplete="off" oninput="updateFirstNameValidationUI()" onkeydown="if(event.key==='Enter'){event.preventDefault();completeFirstTimeSetup();}" class="pixel-box bg-slate-950 px-3 py-2 text-base font-bold text-amber-300 w-full outline-none border-amber-500"><p id="first-name-error" class="hidden text-[11px] text-red-400 font-bold font-mono leading-tight"></p></div><button id="first-name-submit-btn" type="button" disabled onclick="completeFirstTimeSetup()" class="pixel-btn pixel-btn-disabled w-full min-h-[44px] px-6 py-2 font-bold text-sm font-pixel opacity-60 cursor-not-allowed">名前を登録する ▶</button></div></div>`;
+                bodyEl.innerHTML = `<div class="flex flex-row items-stretch gap-3 sm:gap-4 onboarding-compact-gap w-full"><section class="w-[41%] max-w-[260px] shrink-0 onboarding-license-card onboarding-compact-pad rounded p-2.5 sm:p-3.5 flex flex-col items-center justify-between text-center gap-1.5 relative overflow-hidden"><div class="w-full flex items-center justify-between text-[9px] sm:text-[10px] font-mono text-amber-200/80 border-b border-amber-500/25 pb-1"><span class="font-bold tracking-wide text-amber-300">FIGHTER CARD</span><span class="tabular-nums text-slate-300">${fighterIdDisplay}</span></div><div class="relative flex items-center justify-center my-0.5"><div class="onboarding-ring-outer absolute w-20 h-20 sm:w-24 sm:h-24 rounded-full border border-dashed border-amber-400/50 animate-gacha-ring pointer-events-none"></div><div class="onboarding-ring-inner absolute w-16 h-16 sm:w-[76px] sm:h-[76px] rounded-full border border-cyan-400/35 animate-gacha-ring-rev pointer-events-none"></div><canvas id="first-reg-emblem-cvs" width="76" height="76" data-char-id="dopagaking" class="onboarding-emblem-size relative z-10 pixel-box bg-slate-950 border-2 border-amber-400 w-14 h-14 sm:w-16 sm:h-16 shrink-0 shadow-[0_0_16px_rgba(251,191,36,0.28)]"></canvas></div><div class="w-full space-y-0.5"><div id="first-name-live-preview" class="text-xs sm:text-sm font-bold text-slate-500 font-pixel truncate w-full">あなたのファイター名</div><div id="first-name-live-status" class="text-[10px] text-slate-400 font-mono">名前を入力してください</div></div><div class="w-full border-t border-amber-500/25 pt-1 text-[10px] sm:text-[11px] font-mono text-emerald-300">登録特典 <span aria-hidden="true">·</span> <b class="text-amber-300 tabular-nums">+1,000 DOPA</b></div></section><section class="flex-1 min-w-0 flex flex-col justify-between gap-2 text-left"><p class="text-[11px] sm:text-xs text-slate-200 font-mono leading-snug">オンライン対戦やランキングで使われるファイター名を決めてください。</p><div class="space-y-1.5"><div class="flex items-center justify-between gap-2"><label for="first-name-input" class="text-xs text-amber-300 font-bold whitespace-nowrap">ファイター名</label><span id="first-name-count" class="text-[10px] text-slate-400 font-mono tabular-nums whitespace-nowrap">0 / 10字（半角18字）</span></div><div class="relative"><input id="first-name-input" type="text" value="" placeholder="例: ドパキング / DOPA123" maxlength="18" autocomplete="off" oninput="updateFirstNameValidationUI()" onkeydown="if(event.key==='Enter'){event.preventDefault();completeFirstTimeSetup();}" class="pixel-box bg-slate-950 pl-3 pr-8 py-2 text-base font-bold text-amber-300 w-full outline-none border-amber-500 focus:border-amber-300 transition-colors"><span id="first-name-valid-mark" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-emerald-400 font-bold text-sm pointer-events-none">✓</span></div><div class="flex items-center justify-between gap-2 flex-wrap"><button type="button" onclick="pickRandomFighterName()" class="pixel-btn px-2.5 min-h-[34px] text-[11px] font-bold bg-slate-800 border-slate-500 text-amber-200 whitespace-nowrap shrink-0">🎲 おまかせ名</button><span class="text-[10px] text-slate-400 font-mono">全角10字・半角18文字まで</span></div><p id="first-name-error" class="hidden text-[11px] text-red-400 font-bold font-mono leading-tight"></p></div><button id="first-name-submit-btn" type="button" disabled onclick="completeFirstTimeSetup()" class="pixel-btn pixel-btn-disabled w-full min-h-[44px] px-6 py-2 font-bold text-sm font-pixel opacity-60 cursor-not-allowed">ライセンスを発行して次へ ▶</button></section></div>`;
             }
             if (actionsEl) {
                 actionsEl.innerHTML = '';
@@ -1317,6 +1412,9 @@ static drawDopagaking(p, isCharged) {
             if (overlay) {
                 overlay.classList.remove('hidden');
                 document.body.classList.add('modal-open');
+            }
+            if (typeof startGachaParticleCanvas === 'function') {
+                startGachaParticleCanvas('onboarding-particles', 'portal', 'gold');
             }
             setTimeout(() => {
                 const cvs = document.getElementById('first-reg-emblem-cvs');
@@ -1365,7 +1463,9 @@ static drawDopagaking(p, isCharged) {
             const dopaEl = document.getElementById('dopa-count');
             if (dopaEl) dopaEl.innerText = formatDopa(playerState.dopa);
 
-            if (typeof audioSystem.playTitleSound === 'function') {
+            if (typeof audioSystem.playGachaBurst === 'function') {
+                audioSystem.playGachaBurst('gold');
+            } else if (typeof audioSystem.playTitleSound === 'function') {
                 audioSystem.playTitleSound();
             } else {
                 audioSystem.playSelect();
@@ -1376,15 +1476,24 @@ static drawDopagaking(p, isCharged) {
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;');
-            setModalDialogLayout(true);
+            const safeFighterId = String(playerState.playerId || 'DP-1004')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            setModalDialogLayout('onboarding');
             const titleEl = document.getElementById('modal-title');
             const bodyEl = document.getElementById('modal-body');
             const overlay = document.getElementById('modal-overlay');
             const actionsEl = document.getElementById('modal-actions');
 
-            if (titleEl) titleEl.innerText = "🎁 1000 DOPA プレゼント！";
+            window._isInitialGachaOnboarding = true;
+            if (titleEl) {
+                titleEl.innerHTML = `<span class="whitespace-nowrap">🎁 1,000 DOPA 贈呈</span><span class="text-[10px] sm:text-xs font-mono font-normal text-emerald-300 tabular-nums whitespace-nowrap">STEP 2 / 2 · 登録完了</span>`;
+            }
             if (bodyEl) {
-                bodyEl.innerHTML = `<div class="flex flex-row items-center gap-3 sm:gap-4 w-full py-1"><div class="w-[44%] shrink-0 pixel-box-gold bg-amber-950/80 border-2 border-amber-400 p-3 text-center space-y-1 shadow-lg"><div class="text-[11px] text-amber-300 font-bold font-pixel">🎉 新規プレイヤー特典 🎉</div><div class="text-xl sm:text-2xl font-black text-amber-300 font-pixel tracking-wider">+ 1,000 DOPA</div></div><div class="flex-1 min-w-0 flex flex-col justify-center gap-2 text-left"><p class="text-xs sm:text-sm text-emerald-300 font-bold font-mono">ようこそ、<span class="text-amber-300">${safeDisplayName}</span> さん！</p><p class="text-[11px] sm:text-xs text-slate-200 leading-snug font-mono">初回登録プレゼントとして <b class="text-amber-300">1000 DOPA</b> を贈りました！まずはガチャ画面でキャラクターをゲットしよう！</p><button type="button" onclick="closeModal(); if (typeof openGachaModal === 'function') openGachaModal();" class="pixel-btn pixel-btn-success w-full min-h-[44px] px-6 py-2 font-bold text-sm font-pixel">🎰 ガチャ画面へ進む！ ▶</button></div></div>`;
+                const coinSvg = `<svg viewBox="0 0 36 36" class="w-11 h-11 sm:w-12 sm:h-12 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)]" aria-hidden="true"><circle cx="18" cy="18" r="16" fill="#f59e0b" stroke="#fef08a" stroke-width="2.5"/><circle cx="18" cy="18" r="11.5" fill="#d97706" stroke="#fde047" stroke-width="1.5"/><path d="M18 9 L20.5 14.5 L26.5 14.5 L21.8 18.2 L23.5 24 L18 20.5 L12.5 24 L14.2 18.2 L9.5 14.5 L15.5 14.5 Z" fill="#fef08a"/></svg>`;
+                bodyEl.innerHTML = `<div class="flex flex-row items-stretch gap-3 sm:gap-4 onboarding-compact-gap w-full"><section class="w-[44%] max-w-[285px] shrink-0 onboarding-treasury-vault onboarding-compact-pad rounded p-3 sm:p-4 flex flex-col items-center justify-between text-center gap-1.5 relative overflow-hidden"><div class="text-[10px] sm:text-[11px] font-bold text-amber-200 font-pixel tracking-wide">初回登録プレゼント</div><div class="relative flex items-center justify-center my-0.5"><div class="onboarding-ring-outer absolute w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-dashed border-amber-300/60 animate-gacha-ring pointer-events-none"></div><div class="onboarding-ring-inner absolute w-14 h-14 sm:w-[70px] sm:h-[70px] rounded-full bg-amber-400/20 blur-md pointer-events-none"></div><div class="relative z-10 animate-coin-float">${coinSvg}</div></div><div class="space-y-0.5 w-full"><div id="gift-dopa-counter" class="text-xl sm:text-2xl font-black text-amber-300 font-pixel tracking-wider tabular-nums drop-shadow-[0_2px_10px_rgba(251,191,36,0.55)]">+ 1,000 DOPA</div><div class="text-[10px] sm:text-[11px] text-emerald-300 font-mono">所持DOPAに付与されました</div></div></section><section class="flex-1 min-w-0 flex flex-col justify-between gap-2.5 text-left"><div class="flex items-center gap-2.5 pb-2 border-b border-slate-700/80"><canvas id="gift-welcome-icon-cvs" width="48" height="48" data-char-id="dopagaking" class="pixel-box bg-slate-950 border-2 border-amber-400 w-11 h-11 shrink-0"></canvas><div class="min-w-0 flex-1"><div class="text-xs sm:text-sm font-bold text-emerald-300 font-mono truncate">ようこそ、<span class="text-amber-300">${safeDisplayName}</span> さん！</div><div class="text-[10px] text-slate-400 font-mono tabular-nums truncate">FIGHTER ID <span aria-hidden="true">·</span> ${safeFighterId}</div></div></div><div class="space-y-1.5 text-[11px] sm:text-xs font-mono text-slate-200 leading-snug"><div class="flex items-start gap-2"><span class="text-amber-300 shrink-0 font-bold">★</span><div><b class="text-amber-200">10連ガチャ（1,000 DOPA）が引けます</b><div class="text-[10px] sm:text-[11px] text-slate-400">キャラクター3〜5体確定＋アイコン獲得</div></div></div><div class="flex items-start gap-2 pt-1 border-t border-slate-800/80"><span class="text-cyan-300 shrink-0 font-bold">⚔</span><div><b class="text-cyan-200">まずは仲間を召喚しよう</b><div class="text-[10px] sm:text-[11px] text-slate-400">3体そろうとCPU戦・オンライン対戦に出陣できます</div></div></div></div><button type="button" onclick="closeModal(); if (typeof openGachaModal === 'function') openGachaModal({ isInitial: true });" class="relative overflow-hidden gacha-shimmer pixel-btn pixel-btn-warning w-full min-h-[46px] px-5 py-2 font-bold text-xs sm:text-sm font-pixel shadow-lg">🎰 ガチャを引いて仲間をゲット！ ▶</button></section></div>`;
             }
             if (actionsEl) {
                 actionsEl.innerHTML = '';
@@ -1394,6 +1503,39 @@ static drawDopagaking(p, isCharged) {
                 overlay.classList.remove('hidden');
                 document.body.classList.add('modal-open');
             }
+            if (typeof startGachaParticleCanvas === 'function') {
+                startGachaParticleCanvas('onboarding-particles', 'burst', 'gold');
+            }
+            setTimeout(() => {
+                const iconCvs = document.getElementById('gift-welcome-icon-cvs');
+                if (iconCvs && typeof CharacterRenderer !== 'undefined') {
+                    CharacterRenderer.drawCharacter(iconCvs, 'dopagaking');
+                }
+                const counterEl = document.getElementById('gift-dopa-counter');
+                const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                if (counterEl && !prefersReduced) {
+                    const startTs = performance.now();
+                    const duration = 620;
+                    const step = (now) => {
+                        if (!document.body.contains(counterEl)) {
+                            window._giftDopaRollupRaf = null;
+                            return;
+                        }
+                        const t = Math.min(1, (now - startTs) / duration);
+                        const eased = 1 - Math.pow(1 - t, 3);
+                        const val = Math.round(eased * 1000);
+                        counterEl.innerText = `+ ${formatDopa(val)} DOPA`;
+                        if (t < 1) {
+                            window._giftDopaRollupRaf = requestAnimationFrame(step);
+                        } else {
+                            counterEl.innerText = '+ 1,000 DOPA';
+                            window._giftDopaRollupRaf = null;
+                        }
+                    };
+                    counterEl.innerText = '+ 0 DOPA';
+                    window._giftDopaRollupRaf = requestAnimationFrame(step);
+                }
+            }, 35);
         }
 
         function renderOpeningScreen(startScene = 1) {
@@ -4674,6 +4816,7 @@ static drawDopagaking(p, isCharged) {
 
         function closeGachaStage(silent = false) {
             if (!silent && typeof audioSystem !== 'undefined') audioSystem.playSelect();
+            window._isInitialGachaOnboarding = false;
             stopGachaEffects();
             const overlay = document.getElementById('gacha-stage-overlay');
             if (overlay) overlay.remove();
@@ -4787,10 +4930,12 @@ static drawDopagaking(p, isCharged) {
             window._gachaParticleRaf = requestAnimationFrame(tick);
         }
 
-        function openGachaModal() {
+        function openGachaModal(options = {}) {
             audioSystem.playSelect();
             stopGachaEffects();
             closeModal();
+
+            const isInitialGacha = Boolean((options && options.isInitial) || window._isInitialGachaOnboarding) || (playerState.unlockedChars.length === 0 && playerState.dopa >= 100);
 
             const allCharIds = Object.keys(CHARACTER_DATA);
             const allExtraIconIds = Object.keys(EXTRA_ICONS);
@@ -4817,9 +4962,11 @@ static drawDopagaking(p, isCharged) {
 
                     <!-- Top Bar -->
                     <header class="relative z-10 flex items-center justify-between gap-2 px-3 sm:px-5 py-2 border-b border-amber-500/30 bg-slate-950/85 shrink-0 gacha-compact-pad">
+                        ${isInitialGacha ? '' : `
                         <button type="button" onclick="closeGachaStage()" class="pixel-btn px-3 min-h-[40px] text-xs font-bold whitespace-nowrap shrink-0 flex items-center gap-1">
                             <span>◀ もどる</span>
                         </button>
+                        `}
                         <div class="flex items-center gap-3 min-w-0">
                             <h2 class="text-sm sm:text-lg font-bold text-amber-300 font-pixel whitespace-nowrap truncate">🎰 DOPAガチャ</h2>
                             <span class="hidden sm:inline text-xs text-slate-400 font-mono whitespace-nowrap">·</span>
@@ -5147,6 +5294,9 @@ static drawDopagaking(p, isCharged) {
             });
 
             await savePlayerState();
+            if (playerState.unlockedChars.length > 0) {
+                window._isInitialGachaOnboarding = false;
+            }
             window._gachaMaxRevealedIndex = 0;
 
             showGachaSuspenseModal(results, () => {
